@@ -1,9 +1,9 @@
 import { AIPlayer, type Style } from '../ai/ai';
 import type { Level } from '../ai/combatAI';
-import { playOptions } from './actions';
+import { performAction, playOptions } from './actions';
 import { runGame } from './flow';
-import { createGame, type PlayerSetup } from './state';
-import type { Decision, Flow, GameState, PID, Response } from './types';
+import { cloneGame, createGame, type PlayerSetup } from './state';
+import type { Decision, Flow, GameState, PID, PriorityAction, Response } from './types';
 
 export interface MatchOptions {
   human: PlayerSetup;
@@ -74,6 +74,11 @@ export class MatchController {
     this.notify();
   }
 
+  /** 先在複本上試做，回傳錯誤訊息（若可以執行則回傳 null） */
+  validate(a: PriorityAction): string | null {
+    return performAction(cloneGame(this.g), 0, a);
+  }
+
   /** 人類玩家送出決策 */
   submit(resp: Response): void {
     if (!this.decision || this.finished) return;
@@ -101,7 +106,11 @@ export class MatchController {
         const d = r.value;
         if (d.player === this.ai.pid) {
           const a = this.ai.decide(this.g, d);
-          const meaningful = !(d.type === 'priority' && a.type === 'pass') && d.type !== 'yesno';
+          const meaningful =
+            (d.type === 'priority' && a.type !== 'pass') ||
+            (d.type === 'attackers' && a.type === 'attackers' && a.ids.length > 0) ||
+            (d.type === 'blockers' && a.type === 'blockers' && a.blocks.length > 0) ||
+            d.type === 'targets';
           if (this.aiDelay > 0 && meaningful) {
             this.aiThinking = true;
             this.decision = null;
