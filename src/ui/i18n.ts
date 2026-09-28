@@ -226,7 +226,7 @@ export const KW_DESC: Record<Keyword, string> = {
   trample: '對阻擋者造成致命傷害後，多餘的傷害可以打到玩家身上。',
   lifelink: '此生物造成傷害時，你獲得等量的生命。',
   vigilance: '攻擊時不需要橫置。',
-  haste: '進場的回合就能攻擊與使用 {T} 異能。',
+  haste: '進場的回合就能攻擊與使用含 ↷（橫置）的異能。',
   menace: '只能被兩個或更多生物阻擋。',
   defender: '不能攻擊。',
   indestructible: '不會因傷害或「消滅」效果而被置入墳墓場。',

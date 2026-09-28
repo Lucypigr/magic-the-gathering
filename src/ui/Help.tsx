@@ -3,6 +3,7 @@ import { SET_INFO } from '../data';
 import { STANDARD_SETS, type Keyword } from '../engine/types';
 import { MYTHIC_PTS, PIPS, ladderReward } from '../meta/ladder';
 import { MIN_DECK, MIN_DECK_STANDARD, REWARDS } from '../meta/profile';
+import { MECHANICS } from './explain';
 import { KW_DESC, KW_ZH } from './i18n';
 
 export function Help({ go }: { go: (s: Screen) => void }) {
@@ -98,93 +99,15 @@ export function Help({ go }: { go: (s: Screen) => void }) {
               <dd>{KW_DESC[k]}</dd>
             </div>
           ))}
+          {MECHANICS.map((t) => (
+            <div key={t.term}>
+              <dt>{t.term}</dt>
+              <dd>{t.desc}</dd>
+            </div>
+          ))}
           <div>
-            <dt>地落</dt>
-            <dd>每當一個地在你的操控下進戰場時觸發。</dd>
-          </div>
-          <div>
-            <dt>英勇</dt>
-            <dd>每回合此生物第一次成為你的咒語或異能的目標時觸發。</dd>
-          </div>
-          <div>
-            <dt>占卜 N</dt>
-            <dd>檢視牌庫頂 N 張牌，把任意數量放到牌庫底，其餘放回牌庫頂。</dd>
-          </div>
-          <div>
-            <dt>刺探 N</dt>
-            <dd>檢視牌庫頂 N 張牌，把任意數量置入墳墓場，其餘放回牌庫頂。</dd>
-          </div>
-          <div>
-            <dt>守護 N</dt>
-            <dd>對手的咒語或異能以它為目標時，需要額外支付 {'{N}'}。</dd>
-          </div>
-          <div>
-            <dt>大地彎折 N</dt>
-            <dd>（簡化）派出一個 0/0 具敏捷的大地元素，並放上 N 個 +1/+1 指示物。</dd>
-          </div>
-          <div>
-            <dt>枯萎 N</dt>
-            <dd>在一個由你操控的生物上放置 N 個 -1/-1 指示物。</dd>
-          </div>
-          <div>
-            <dt>繽紛</dt>
-            <dd>X 等於由你操控的永久物中的顏色數量。</dd>
-          </div>
-          <div>
-            <dt>集結鬼怪 N</dt>
-            <dd>在你的軍隊上放置 N 個 +1/+1 指示物；沒有軍隊就先派出 0/0 鬼怪軍隊。</dd>
-          </div>
-          <div>
-            <dt>招募</dt>
-            <dd>抓一張牌再棄一張牌；棄掉的不是地時，派出 1/1 人類士兵。</dd>
-          </div>
-          <div>
-            <dt>密謀</dt>
-            <dd>抓一張牌再棄一張牌；棄掉的不是地時，該生物得到一個 +1/+1 指示物。</dd>
-          </div>
-          <div>
-            <dt>樂章</dt>
-            <dd>每當你施放瞬間或法術咒語時觸發；法術力值 5 以上的咒語效果更強。</dd>
-          </div>
-          <div>
-            <dt>疾風</dt>
-            <dd>每當你施放本回合的第二個咒語時觸發。</dd>
-          </div>
-          <div>
-            <dt>灌注</dt>
-            <dd>若你本回合獲得過生命，效果會增強或改變。</dd>
-          </div>
-          <div>
-            <dt>詭異</dt>
-            <dd>每當一個結界在你的操控下進戰場時觸發。</dd>
-          </div>
-          <div>
-            <dt>生存</dt>
-            <dd>（簡化）在你的結束步驟開始時，若此生物已橫置則觸發。</dd>
-          </div>
-          <div>
-            <dt>門檻</dt>
-            <dd>你的墳墓場中有七張或更多牌時生效。</dd>
-          </div>
-          <div>
-            <dt>傳說故事</dt>
-            <dd>你操控三個或更多神器及／或傳奇永久物時生效。</dd>
-          </div>
-          <div>
-            <dt>兇猛</dt>
-            <dd>你操控力量 4 以上的生物時生效。</dd>
-          </div>
-          <div>
-            <dt>強化</dt>
-            <dd>一種每回合只能起動一次的起動式異能。</dd>
-          </div>
-          <div>
-            <dt>結盟</dt>
-            <dd>每當另一個生物在你的操控下進戰場時觸發。</dd>
-          </div>
-          <div>
-            <dt>暈眩指示物</dt>
-            <dd>有暈眩指示物的永久物在重置步驟不會重置，而是移除一個暈眩指示物。</dd>
+            <dt>↷</dt>
+            <dd>橫置符號：把這張牌轉橫當作代價，每回合通常只能用一次；生物剛進場的回合不能用，除非有敏捷。</dd>
           </div>
         </dl>
 

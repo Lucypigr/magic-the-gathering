@@ -794,7 +794,7 @@ button {
 .kw-glossary > div,
 .cd-kw > div {
   display: grid;
-  grid-template-columns: 4.5em 1fr;
+  grid-template-columns: 6.5em 1fr;
   gap: 8px;
 }
 .kw-glossary dt,
@@ -807,6 +807,109 @@ button {
   margin: 0;
   color: var(--muted);
   font-size: 13px;
+}
+
+/* 效果解說 */
+.cd-explain {
+  grid-column: 1 / -1;
+  min-width: 0;
+  margin-top: 4px;
+  border-top: 1px solid var(--line);
+  padding-top: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.cd-explain summary {
+  cursor: pointer;
+  font-weight: 700;
+  color: var(--brass-hi);
+  margin-bottom: 6px;
+}
+.cd-explain .cd-kw > div {
+  display: block;
+}
+.cd-explain .cd-kw dt {
+  display: inline;
+  margin-right: 8px;
+}
+.cd-explain .cd-kw dd {
+  display: inline;
+}
+.ex-type {
+  margin: 0 0 8px;
+  font-size: 13px;
+  color: var(--muted);
+}
+.ex-lines {
+  list-style: none;
+  margin: 0 0 10px;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.ex-line {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.04);
+  border-left: 3px solid var(--line);
+  font-size: 13px;
+}
+.ex-activated,
+.ex-mana {
+  border-left-color: #e0b64e;
+}
+.ex-triggered {
+  border-left-color: #6fbf73;
+}
+.ex-static {
+  border-left-color: #7fb2de;
+}
+.ex-spell,
+.ex-modes,
+.ex-mode {
+  border-left-color: #c98ad8;
+}
+.ex-kind {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--brass-hi);
+  letter-spacing: 0.05em;
+}
+.ex-ce {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 8px;
+}
+.ex-cost,
+.ex-effect,
+.ex-quote {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+}
+.ex-ce .rules-line,
+.ex-quote .rules-line {
+  margin: 0;
+  display: inline;
+}
+.ex-cost {
+  padding: 1px 6px;
+  border-radius: 5px;
+  background: rgba(224, 182, 78, 0.14);
+}
+.ex-arrow {
+  color: var(--muted);
+}
+.ex-desc {
+  color: var(--muted);
+  font-size: 12px;
 }
 
 /* ---------- 對話框 ---------- */
@@ -2901,6 +3004,9 @@ button {
     position: static;
     order: -1;
     padding: 8px;
+    /* 固定高度，切換卡牌時下方的牌不會跳動 */
+    height: 40vh;
+    overflow: auto;
   }
   .modal .inspect-detail .card-detail {
     grid-template-columns: 130px minmax(0, 1fr);

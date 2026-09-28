@@ -5,7 +5,8 @@ import { colorsOf } from '../engine/mana';
 import type { CardDef, Keyword } from '../engine/types';
 import { KW_DESC, KW_ZH, RARITY_ZH, typeLine } from './i18n';
 import { imageFor, useImageVersion } from './images';
-import { ManaCost, RulesText } from './Mana';
+import { ManaCost, ManaSymbol, RulesText } from './Mana';
+import { LINE_KIND_ZH, lineNotes, symbolNotes, termNotes, typeNote } from './explain';
 
 export const ImagesEnabled = createContext(true);
 
@@ -154,18 +155,75 @@ export function CardDetail({ def, extra }: { def: CardDef; extra?: ReactNode }) 
             力量／防禦力 <b>{`${def.power}/${def.toughness}`}</b>
           </div>
         )}
-        {kws.size > 0 && (
-          <dl className="cd-kw">
-            {[...kws].map((k) => (
-              <div key={k}>
-                <dt>{KW_ZH[k]}</dt>
-                <dd>{KW_DESC[k]}</dd>
-              </div>
-            ))}
-          </dl>
-        )}
         {extra}
       </div>
+      <Explain def={def} kws={[...kws]} />
     </div>
+  );
+}
+
+/** 白話解說：卡牌類別、每一行異能、符號、關鍵字與術語 */
+function Explain({ def, kws }: { def: CardDef; kws: Keyword[] }) {
+  const lines = lineNotes(def);
+  const syms = symbolNotes(def);
+  const terms = termNotes(def);
+  const tn = typeNote(def);
+  if (!tn && !lines.length && !kws.length) return null;
+  return (
+    <details className="cd-explain" open>
+      <summary>效果解說</summary>
+      {tn && <p className="ex-type">{tn}</p>}
+      {lines.filter((l) => l.kind !== 'keyword').length > 0 && (
+        <ul className="ex-lines">
+          {lines
+            .filter((l) => l.kind !== 'keyword')
+            .map((l, i) => (
+              <li key={i} className={`ex-line ex-${l.kind}`}>
+                <span className="ex-kind">{LINE_KIND_ZH[l.kind]}</span>
+                {l.cost != null ? (
+                  <span className="ex-ce">
+                    <span className="ex-cost">
+                      代價 <RulesText text={l.cost} size={14} />
+                    </span>
+                    <span className="ex-arrow">→</span>
+                    <span className="ex-effect">
+                      效果 <RulesText text={l.effect ?? ''} size={14} />
+                    </span>
+                  </span>
+                ) : (
+                  <span className="ex-quote">
+                    <RulesText text={l.text} size={14} />
+                  </span>
+                )}
+                <span className="ex-desc">{l.desc}</span>
+              </li>
+            ))}
+        </ul>
+      )}
+      {(kws.length > 0 || syms.length > 0 || terms.length > 0) && (
+        <dl className="cd-kw">
+          {kws.map((k) => (
+            <div key={k}>
+              <dt>{KW_ZH[k]}</dt>
+              <dd>{KW_DESC[k]}</dd>
+            </div>
+          ))}
+          {syms.map((n) => (
+            <div key={n.sym}>
+              <dt>
+                <ManaSymbol sym={n.sym} size={16} />
+              </dt>
+              <dd>{n.desc}</dd>
+            </div>
+          ))}
+          {terms.map((t) => (
+            <div key={t.term}>
+              <dt>{t.term}</dt>
+              <dd>{t.desc}</dd>
+            </div>
+          ))}
+        </dl>
+      )}
+    </details>
   );
 }
