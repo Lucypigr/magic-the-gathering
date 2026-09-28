@@ -1,8 +1,51 @@
 import { useState } from 'react';
 import type { ReactNode } from 'react';
 import type { Decision, GameState, TargetRef } from '../../engine/types';
-import { CardFace } from '../CardView';
+import { CardDetail, CardFace } from '../CardView';
 import { Modal } from '../common';
+
+/**
+ * 卡牌格子 + 放大檢視：滑鼠移過或點一下卡牌，旁邊會顯示完整的卡圖與效果。
+ */
+function InspectGrid({
+  g,
+  ids,
+  cardClass,
+  onCard,
+}: {
+  g: GameState;
+  ids: number[];
+  cardClass?: (id: number) => string;
+  /** 點卡牌時額外要做的事（例如選取）；wasShown 表示這張牌原本就在放大檢視中 */
+  onCard?: (id: number, wasShown: boolean) => void;
+}) {
+  const [shown, setShown] = useState<number | null>(ids[0] ?? null);
+  const cur = shown != null && ids.includes(shown) ? shown : (ids[0] ?? null);
+  return (
+    <div className="inspect-layout">
+      <div className="card-grid">
+        {ids.map((id) => (
+          <CardFace
+            key={id}
+            def={g.cards[id].def}
+            size="md"
+            className={`${cardClass?.(id) ?? ''} ${cur === id ? 'inspecting' : ''}`}
+            onMouseEnter={() => setShown(id)}
+            onClick={() => {
+              setShown(id);
+              onCard?.(id, cur === id);
+            }}
+          />
+        ))}
+      </div>
+      {cur != null && (
+        <div className="inspect-detail" aria-live="polite">
+          <CardDetail def={g.cards[cur].def} />
+        </div>
+      )}
+    </div>
+  );
+}
 
 export function MulliganModal({ g, mulligans, onKeep, onMull }: { g: GameState; mulligans: number; onKeep: () => void; onMull: () => void }) {
   const hand = g.players[0].hand.map((id) => g.cards[id]);
@@ -25,12 +68,9 @@ export function MulliganModal({ g, mulligans, onKeep, onMull }: { g: GameState; 
       <p className="muted">
         {g.firstPlayer === 0 ? '你先攻（第一回合不抓牌）。' : '對手先攻，你後手。'}這手牌有 {lands} 張地。
         {mulligans > 0 && `保留後需要把 ${mulligans} 張牌放到牌庫底。`}
+        <span className="inspect-hint">點一下或把滑鼠移到卡牌上，可以放大查看效果。</span>
       </p>
-      <div className="card-grid">
-        {hand.map((c) => (
-          <CardFace key={c.id} def={c.def} size="md" />
-        ))}
-      </div>
+      <InspectGrid g={g} ids={hand.map((c) => c.id)} />
     </Modal>
   );
 }
@@ -65,17 +105,7 @@ export function ChooseModal({ g, d, onSubmit }: { g: GameState; d: Extract<Decis
       }
     >
       {hint && <p className="muted">{hint}</p>}
-      <div className="card-grid">
-        {d.options.map((id) => (
-          <CardFace
-            key={id}
-            def={g.cards[id].def}
-            size="md"
-            className={`pickable ${sel.includes(id) ? 'picked' : ''}`}
-            onClick={() => toggle(id)}
-          />
-        ))}
-      </div>
+      <InspectGrid g={g} ids={d.options} cardClass={(id) => `pickable ${sel.includes(id) ? 'picked' : ''}`} onCard={toggle} />
     </Modal>
   );
 }
@@ -126,17 +156,12 @@ export function PileModal({
       {ids.length === 0 ? (
         <p className="muted">沒有牌。</p>
       ) : (
-        <div className="card-grid">
-          {ids.map((id) => (
-            <CardFace
-              key={id}
-              def={g.cards[id].def}
-              size="md"
-              className={selectable?.has(id) ? 'pickable' : selectable ? 'dim' : ''}
-              onClick={selectable?.has(id) && onPick ? () => onPick(id) : undefined}
-            />
-          ))}
-        </div>
+        <InspectGrid
+          g={g}
+          ids={ids}
+          cardClass={(id) => (selectable?.has(id) ? 'pickable' : selectable ? 'dim' : '')}
+          onCard={(id, wasShown) => wasShown && selectable?.has(id) && onPick?.(id)}
+        />
       )}
     </Modal>
   );
