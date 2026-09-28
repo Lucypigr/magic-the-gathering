@@ -230,7 +230,9 @@ export type Effect =
   | { e: 'shuffleIn'; what: Ref }
   | { e: 'exileGy'; what: Ref }
   | { e: 'landFromHand' }
-  | { e: 'cantGainLife'; who: Ref };
+  | { e: 'cantGainLife'; who: Ref }
+  /** 直到回合結束，永久物（通常是地）成為生物 */
+  | { e: 'animate'; what: Ref; p: number; t: number; kw?: Keyword[]; subtypes?: string[]; colors?: Color[] };
 
 export type TriggerOn =
   | 'etb'
@@ -344,6 +346,8 @@ export interface CardDef {
   etbTapped?: boolean;
   /** 產生法術力時要犧牲自己（珍寶） */
   sacOnMana?: boolean;
+  /** 過濾地：{T}：加{C}；{1}，{T}：加一點任意顏色的法術力 */
+  filterMana?: boolean;
   etbTappedUnless?: Cond;
   etbCounters?: number;
   ward?: number;
@@ -378,6 +382,8 @@ export type Zone = 'library' | 'hand' | 'battlefield' | 'graveyard' | 'exile' | 
 export interface Card {
   id: number;
   def: CardDef;
+  /** 暫時變成生物前的原始定義（回合結束時還原） */
+  baseDef?: CardDef;
   owner: PID;
   controller: PID;
   zone: Zone;

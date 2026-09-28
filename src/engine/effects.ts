@@ -289,6 +289,24 @@ function* runEffect(g: GameState, ctx: Ctx, ef: Effect): SubFlow {
       }
       g.version++;
       break;
+    case 'animate': {
+      for (const c of resolveRef(g, ctx, ef.what).cards) {
+        if (c.zone !== 'battlefield' || c.baseDef) continue;
+        c.baseDef = c.def;
+        c.def = {
+          ...c.def,
+          types: [...new Set([...c.def.types, 'Creature' as const])],
+          power: ef.p,
+          toughness: ef.t,
+          keywords: [...new Set([...(c.def.keywords ?? []), ...(ef.kw ?? [])])],
+          subtypes: [...(c.def.subtypes ?? []), ...(ef.subtypes ?? [])],
+          colors: ef.colors ?? c.def.colors,
+        };
+        log(g, `${cardName(c)} 成為 ${ef.p}/${ef.t} 的生物直到回合結束`, c.controller);
+      }
+      g.version++;
+      break;
+    }
     case 'pump': {
       const p = amount(g, ctx, ef.p);
       const t = amount(g, ctx, ef.t);
