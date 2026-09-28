@@ -8,7 +8,7 @@ import { Collection } from './ui/Collection';
 import { DeckBuilder } from './ui/DeckBuilder';
 import { Help } from './ui/Help';
 import { Home } from './ui/Home';
-import { prefetchImages } from './ui/images';
+import { prefetchImages, prefetchZh, setLanguage, useImageVersion } from './ui/images';
 import { Setup } from './ui/Setup';
 import { Shop } from './ui/Shop';
 
@@ -40,6 +40,14 @@ export default function App() {
       return next;
     });
   }, []);
+
+  // 語言要在渲染子元件前設定好；中文資料載入後重新渲染整個畫面
+  const zh = profile.settings.cardLang === 'zh';
+  setLanguage(zh);
+  useImageVersion();
+  useEffect(() => {
+    if (zh) void prefetchZh(CARDS.filter((c) => !c.token && !c.supertypes?.includes('Basic')).map((c) => c.name));
+  }, [zh]);
 
   useEffect(() => {
     if (profile.settings.realImages) void prefetchImages(CARDS.map((c) => c.imageName ?? c.name));

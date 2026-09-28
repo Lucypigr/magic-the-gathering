@@ -54,11 +54,11 @@ export function Permanent({ g, c, marks, onCard, onHover }: { g: GameState; c: C
       role="button"
       tabIndex={0}
       onKeyDown={(e) => (e.key === 'Enter' || e.key === ' ') && onCard(c.id)}
-      aria-label={c.def.name}
+      aria-label={cardName(c)}
     >
       <div className="perm-rot">
         <Art def={c.def} />
-        <div className="perm-name">{c.def.name}</div>
+        <div className="perm-name">{cardName(c)}</div>
         {kws.length > 0 && (
           <div className="perm-kw">
             {kws.map((k) => (
@@ -94,7 +94,7 @@ function LandGroup({ g, cards, marks, onCard, onHover }: { g: GameState; cards: 
       onClick={() => onCard(c.id)}
       onMouseEnter={() => onHover(c.id)}
       onMouseLeave={() => onHover(null)}
-      title={`${c.def.name}${c.tapped ? '（已橫置）' : ''}`}
+      title={`${cardName(c)}${c.tapped ? '（已橫置）' : ''}`}
       role="button"
       tabIndex={0}
     >
@@ -103,7 +103,7 @@ function LandGroup({ g, cards, marks, onCard, onHover }: { g: GameState; cards: 
           <ManaSymbol key={m} sym={m} size={16} />
         ))}
       </span>
-      <span className="land-name">{c.def.supertypes?.includes('Basic') ? zh : c.def.name}</span>
+      <span className="land-name">{c.def.supertypes?.includes('Basic') ? zh : cardName(c)}</span>
       {cards.length > 1 && <span className="land-count">×{cards.length}</span>}
     </div>
   );
@@ -258,7 +258,7 @@ export function StackView({ g, marks, onCard, onHover }: { g: GameState; marks: 
               <div className="stack-desc">
                 <div className="stack-name">
                   {s.kind === 'spell' ? '' : '能力：'}
-                  {c.def.name}
+                  {cardName(c)}
                 </div>
                 <div className="stack-who">{s.controller === 0 ? '你' : '對手'}{tnames ? ` → ${tnames}` : ''}</div>
               </div>

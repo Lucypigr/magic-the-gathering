@@ -4,7 +4,7 @@ import { AI_DECKS, COLLECTIBLE } from '../data';
 import { resetProfile, type Profile } from '../meta/profile';
 import { ColorPips, Gold } from './common';
 import { LEVEL_ZH } from './i18n';
-import { hasLocalImages, imagesUnavailable, useImageVersion } from './images';
+import { hasLocalImages, imagesUnavailable, useImageVersion, zhStatus } from './images';
 
 export function TopBar({ profile, go, title }: { profile: Profile; go: (s: Screen) => void; title: string }) {
   return (
@@ -137,6 +137,31 @@ export function Home({ profile, go, update }: { profile: Profile; go: (s: Screen
         {profile.settings.realImages && imagesUnavailable() && (
           <p className="muted small">目前無法連線到 Scryfall，已改用內建卡框。在專案資料夾執行 npm run fetch-images 可以把卡圖下載到本機。</p>
         )}
+        <div className="lang-row" role="radiogroup" aria-label="卡牌語言">
+          <span>卡牌語言</span>
+          {(
+            [
+              ['zh', '中文'],
+              ['en', '英文'],
+            ] as const
+          ).map(([v, label]) => (
+            <label key={v} className="check">
+              <input
+                type="radio"
+                name="card-lang"
+                value={v}
+                checked={profile.settings.cardLang === v}
+                onChange={() =>
+                  update((p) => {
+                    p.settings.cardLang = v;
+                  })
+                }
+              />
+              {label}
+            </label>
+          ))}
+        </div>
+        {profile.settings.cardLang === 'zh' && <p className="muted small">{zhText()}</p>}
         <div className="reset-row">
           {confirmReset ? (
             <>
@@ -164,4 +189,12 @@ export function Home({ profile, go, update }: { profile: Profile; go: (s: Screen
       </section>
     </div>
   );
+}
+
+function zhText(): string {
+  const s = zhStatus();
+  if (s.loading) return '正在向 Scryfall 查詢中文版卡牌…';
+  const base = '卡名與完整卡面優先使用繁體中文版，其次簡體中文版（卡名轉為繁體字），沒有中文版的卡維持英文。';
+  if (s.failed && !s.named) return `目前無法連線到 Scryfall，暫時顯示英文卡名。${base}`;
+  return `${base}已取得 ${s.named} 張卡的中文名。`;
 }

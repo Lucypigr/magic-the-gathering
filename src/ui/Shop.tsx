@@ -1,3 +1,4 @@
+import { displayName } from '../data/names';
 import { useState } from 'react';
 import type { Screen, UpdateProfile } from '../App';
 import { SET_INFO } from '../data';
@@ -121,7 +122,7 @@ function PackOpening({ product, packs, onDone }: { product: Product; packs: Pack
         })}
       </div>
       {detail && (
-        <Modal title={getDef(detail).name} onClose={() => setDetail(null)} wide>
+        <Modal title={displayName(getDef(detail))} onClose={() => setDetail(null)} wide>
           <CardDetail def={getDef(detail)} />
         </Modal>
       )}

@@ -288,12 +288,12 @@ function* mulligans(g: GameState): SubFlow {
       const r: Response = yield {
         type: 'yesno',
         player: pid,
-        prompt: `要讓 ${c.def.name} 在遊戲開始時就在戰場上嗎？`,
+        prompt: `要讓 ${cardName(c)} 在遊戲開始時就在戰場上嗎？`,
         source: id,
         purpose: 'leyline',
       };
       if (r.type === 'yesno' && r.yes) {
-        log(g, `${c.def.name} 以開局方式進入戰場`, pid);
+        log(g, `${cardName(c)} 以開局方式進入戰場`, pid);
         enterBattlefield(g, c, pid);
       }
     }

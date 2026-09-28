@@ -16,6 +16,7 @@
     "build:offline": "npm run build:single && node scripts/embed-images.mjs"
   },
   "dependencies": {
+    "opencc-js": "^1.4.2",
     "react": "^19.3.0",
     "react-dom": "^19.3.0"
   },

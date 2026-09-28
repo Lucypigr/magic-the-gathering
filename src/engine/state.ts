@@ -1,3 +1,4 @@
+import { displayName } from '../data/names';
 import { colorsOf, manaValue } from './mana';
 import { getDef } from './registry';
 import type {
@@ -175,7 +176,7 @@ export function log(g: GameState, text: string, player?: PID, kind: LogEntry['ki
 }
 
 export function cardName(c: Card | undefined): string {
-  return c ? c.def.name : '?';
+  return c ? displayName(c.def) : '?';
 }
 
 // ------------------------------------------------------------

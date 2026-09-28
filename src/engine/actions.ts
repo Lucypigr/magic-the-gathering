@@ -1,3 +1,4 @@
+import { displayName } from '../data/names';
 import { costToString, findPayment, parseCost, reduceCost, type ManaCost, type ManaSource } from './mana';
 import {
   cardName,
@@ -192,7 +193,7 @@ export function castOptionsFor(g: GameState, pid: PID, c: Card): PlayOption[] {
   const def = c.def;
   const out: PlayOption[] = [];
   if (isLand(c)) {
-    if (canPlayLand(g, pid)) out.push({ kind: 'play', card: c.id, specs: [], label: `打出 ${def.name}` });
+    if (canPlayLand(g, pid)) out.push({ kind: 'play', card: c.id, specs: [], label: `打出 ${displayName(def)}` });
     return out;
   }
   if (!instantSpeed(def) && !sorceryTiming(g, pid)) return out;
@@ -212,7 +213,7 @@ export function castOptionsFor(g: GameState, pid: PID, c: Card): PlayOption[] {
       mode,
       specs,
       sacFilter: def.addCost?.sac,
-      label: def.spell?.modes ? def.spell.modes[m].text : `施放 ${def.name}`,
+      label: def.spell?.modes ? def.spell.modes[m].text : `施放 ${displayName(def)}`,
     });
   }
   return out;
@@ -320,7 +321,7 @@ function doCast(g: GameState, pid: PID, a: Extract<PriorityAction, { type: 'cast
   if (sacCard) sacrifice(g, sacCard);
   p.spellsThisTurn++;
   if (def.types.includes('Instant') || def.types.includes('Sorcery')) p.instSorcThisTurn++;
-  log(g, `施放 ${def.name}${modeText}${describeTargets(g, targets)}`, pid, 'cast');
+  log(g, `施放 ${displayName(def)}${modeText}${describeTargets(g, targets)}`, pid, 'cast');
   emit(g, { type: 'cast', card: c.id, player: pid, opponentTurn: g.active !== pid });
   for (const t of targets) if (t && 'c' in t && g.cards[t.c].zone === 'battlefield') emit(g, { type: 'targeted', card: t.c, by: pid, spell: true });
   return null;
@@ -362,7 +363,7 @@ function doActivate(g: GameState, pid: PID, a: Extract<PriorityAction, { type: '
     text: ab.label,
     lkiPower: lki,
   });
-  log(g, `起動 ${c.def.name}：${ab.label}${describeTargets(g, targets)}`, pid, 'cast');
+  log(g, `起動 ${cardName(c)}：${ab.label}${describeTargets(g, targets)}`, pid, 'cast');
   if (sacCard) sacrifice(g, sacCard);
   if (ab.cost.sacSelf) sacrifice(g, c);
   for (const t of targets) if (t && 'c' in t && g.cards[t.c].zone === 'battlefield') emit(g, { type: 'targeted', card: t.c, by: pid, spell: false });
