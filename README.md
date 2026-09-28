@@ -36,6 +36,16 @@ npm test             # 規則單元測試 + AI 自動對戰測試
 BALANCE=1 npx vitest run tests/balance.test.ts   # 各難度 AI 互打勝率
 ```
 
+## 部署到 GitHub Pages
+
+專案已附上自動部署設定（`.github/workflows/deploy.yml`），每次推送到 `main` 都會自動測試、建置並發佈。
+
+1. GitHub 上的 repo → **Settings → Pages → Build and deployment → Source** 選 **GitHub Actions**。
+2. 把程式合併到 `main`（或到 **Actions** 頁面手動執行「部署到 GitHub Pages」）。
+3. 完成後網址是 `https://<你的帳號>.github.io/magic-the-gathering/`。
+
+部署後卡圖會在瀏覽器裡直接向 Scryfall 取得，不需要先下載。注意：免費帳號的 GitHub Pages 網址任何人都能打開，只是不會主動出現在任何地方；卡圖不會放進 repo。
+
 ## 卡牌與系列
 
 目前收錄約 170 張卡，分成三個補充包：
