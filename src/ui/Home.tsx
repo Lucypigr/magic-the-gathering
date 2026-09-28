@@ -4,7 +4,7 @@ import { AI_DECKS, COLLECTIBLE } from '../data';
 import { resetProfile, type Profile } from '../meta/profile';
 import { ColorPips, Gold } from './common';
 import { LEVEL_ZH } from './i18n';
-import { imagesUnavailable, useImageVersion } from './images';
+import { hasLocalImages, imagesUnavailable, useImageVersion } from './images';
 
 export function TopBar({ profile, go, title }: { profile: Profile; go: (s: Screen) => void; title: string }) {
   return (
@@ -133,7 +133,10 @@ export function Home({ profile, go, update }: { profile: Profile; go: (s: Screen
           />
           顯示真實卡圖（從 Scryfall 載入；無法連線時使用內建卡框）
         </label>
-        {profile.settings.realImages && imagesUnavailable() && <p className="muted small">目前無法連線到 Scryfall，已改用內建卡框。</p>}
+        {profile.settings.realImages && hasLocalImages() && <p className="muted small">正在使用本機下載的卡圖。</p>}
+        {profile.settings.realImages && imagesUnavailable() && (
+          <p className="muted small">目前無法連線到 Scryfall，已改用內建卡框。在專案資料夾執行 npm run fetch-images 可以把卡圖下載到本機。</p>
+        )}
         <div className="reset-row">
           {confirmReset ? (
             <>

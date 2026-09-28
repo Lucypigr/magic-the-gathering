@@ -8,6 +8,8 @@ export default defineConfig(({ mode }) => ({
   plugins: mode === 'single' ? [react(), viteSingleFile()] : [react()],
   build: {
     outDir: mode === 'single' ? 'dist-single' : 'dist',
+    // 單檔版不複製 public/（卡圖改用 build:offline 內嵌）
+    copyPublicDir: mode !== 'single',
   },
   test: {
     environment: 'node',

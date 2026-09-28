@@ -18,11 +18,20 @@ npm install
 npm run dev          # 開發模式，打開終端機顯示的網址
 ```
 
+### 真實卡圖（建議先做一次）
+
+```bash
+npm run fetch-images   # 從 Scryfall 下載全部卡圖到 public/cards/（約 170 張，只需執行一次）
+```
+
+下載後網站會直接讀取本機圖片，不必每次連線；還沒下載時遊戲會即時向 Scryfall 取圖，連不上則使用內建卡框。卡圖版權屬於 Wizards of the Coast，本專案只供私人使用，`public/cards/` 預設不會提交到 git；若你的 repo 是私人的、想一起保存，把 `.gitignore` 裡那一行刪掉即可。
+
 其他指令：
 
 ```bash
 npm run build        # 產生靜態網站到 dist/，可放到任何靜態主機（例如 GitHub Pages）
-npm run build:single # 產生單一 HTML 檔 dist-single/index.html，雙擊即可遊玩
+npm run build:single # 產生單一 HTML 檔 dist-single/index.html，雙擊即可遊玩（卡圖即時向 Scryfall 取得）
+npm run build:offline # 同上，並把已下載的卡圖內嵌進檔案，完全離線也有卡圖（需先 fetch-images）
 npm test             # 規則單元測試 + AI 自動對戰測試
 BALANCE=1 npx vitest run tests/balance.test.ts   # 各難度 AI 互打勝率
 ```

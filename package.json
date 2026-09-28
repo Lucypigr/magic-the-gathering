@@ -11,7 +11,9 @@
     "preview": "vite preview",
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
-    "build:artifact": "npm run build:single && node scripts/make-artifact.mjs"
+    "build:artifact": "npm run build:single && node scripts/make-artifact.mjs",
+    "fetch-images": "node scripts/fetch-images.mjs",
+    "build:offline": "npm run build:single && node scripts/embed-images.mjs"
   },
   "dependencies": {
     "react": "^19.3.0",
