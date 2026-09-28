@@ -1,0 +1,7 @@
+node_modules
+dist
+dist-single
+*.log
+.DS_Store
+# npm run fetch-images 下載的卡圖（私人使用，預設不提交）
+public/cards/

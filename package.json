@@ -1,0 +1,32 @@
+{
+  "name": "mtg-duel-arena",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "description": "萬智牌對戰遊戲：與 AI 對戰、開卡包、自由組牌",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "build:single": "tsc --noEmit && vite build --mode single",
+    "preview": "vite preview",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit",
+    "build:artifact": "npm run build:single && node scripts/make-artifact.mjs",
+    "fetch-images": "node scripts/fetch-images.mjs",
+    "build:offline": "npm run build:single && node scripts/embed-images.mjs"
+  },
+  "dependencies": {
+    "react": "^19.3.0",
+    "react-dom": "^19.3.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.20.4",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "@vitejs/plugin-react": "^6.1.1",
+    "typescript": "^6.0.3",
+    "vite": "^8.3.1",
+    "vite-plugin-singlefile": "^2.3.3",
+    "vitest": "^5.0.2"
+  }
+}
