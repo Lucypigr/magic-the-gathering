@@ -14,7 +14,7 @@ export interface DeckList {
   meta?: string;
 }
 
-function deck(id: string, name: string, desc: string, colors: Color[], list: [number, string][], extra: Partial<DeckList> = {}): DeckList {
+export function deck(id: string, name: string, desc: string, colors: Color[], list: [number, string][], extra: Partial<DeckList> = {}): DeckList {
   const cards: Record<string, number> = {};
   for (const [n, nm] of list) cards[slug(nm)] = (cards[slug(nm)] ?? 0) + n;
   return { id, name, desc, colors, cards, ...extra };

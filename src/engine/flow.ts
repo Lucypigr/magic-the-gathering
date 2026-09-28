@@ -354,6 +354,7 @@ function* turn(g: GameState): SubFlow {
     p.spellsThisTurn = 0;
     p.instSorcThisTurn = 0;
     p.lifeGainedThisTurn = 0;
+    p.drawsThisTurn = 0;
     p.lifeLostThisTurn = 0;
   }
   g.attackedThisTurn = false;

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import type { Level } from './ai/combatAI';
-import { AI_DECKS, CARDS } from './data';
+import { ALL_AI_DECKS, CARDS, aiDecksFor, type Format } from './data';
 import { loadProfile, REWARDS, saveProfile, type Profile, type Settings } from './meta/profile';
 import { Battle, type BattleResult } from './ui/battle/Battle';
 import { ImagesEnabled } from './ui/CardView';
@@ -15,7 +15,7 @@ import { Shop } from './ui/Shop';
 export type Screen =
   | { name: 'home' }
   | { name: 'setup' }
-  | { name: 'battle'; deckId: string; aiDeckId: string; level: Level; key: number; random: boolean }
+  | { name: 'battle'; deckId: string; aiDeckId: string; level: Level; key: number; random: boolean; format: Format }
   | { name: 'decks' }
   | { name: 'collection' }
   | { name: 'shop' }
@@ -23,8 +23,9 @@ export type Screen =
 
 export type UpdateProfile = (fn: (p: Profile) => void) => void;
 
-export function randomAiDeck(): string {
-  return AI_DECKS[Math.floor(Math.random() * AI_DECKS.length)].id;
+export function randomAiDeck(format: Format): string {
+  const list = aiDecksFor(format);
+  return list[Math.floor(Math.random() * list.length)].id;
 }
 
 export default function App() {
@@ -58,13 +59,14 @@ export default function App() {
     window.scrollTo?.(0, 0);
   };
 
-  const startBattle = (deckId: string, level: Level, aiDeckId: string | null) => {
+  const startBattle = (deckId: string, level: Level, aiDeckId: string | null, format: Format) => {
     setReward(null);
     update((p) => {
       p.lastDeckId = deckId;
       p.lastLevel = level;
+      p.lastFormat = format;
     });
-    go({ name: 'battle', deckId, level, aiDeckId: aiDeckId ?? randomAiDeck(), random: aiDeckId == null, key: Date.now() });
+    go({ name: 'battle', deckId, level, aiDeckId: aiDeckId ?? randomAiDeck(format), random: aiDeckId == null, key: Date.now(), format });
   };
 
   const setSettings = (s: Settings) =>
@@ -82,7 +84,7 @@ export default function App() {
       break;
     case 'battle': {
       const deck = profile.decks.find((d) => d.id === screen.deckId);
-      const aiDeck = AI_DECKS.find((d) => d.id === screen.aiDeckId)!;
+      const aiDeck = ALL_AI_DECKS.find((d) => d.id === screen.aiDeckId)!;
       if (!deck) {
         body = <Home profile={profile} go={go} update={update} />;
         break;
@@ -118,7 +120,7 @@ export default function App() {
             });
           }}
           onExit={() => go({ name: 'home' })}
-          onRematch={() => startBattle(s.deckId, s.level, s.random ? null : s.aiDeckId)}
+          onRematch={() => startBattle(s.deckId, s.level, s.random ? null : s.aiDeckId, s.format)}
         />
       );
       break;

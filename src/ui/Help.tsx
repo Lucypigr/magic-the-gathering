@@ -1,7 +1,7 @@
 import type { Screen } from '../App';
 import { SET_INFO } from '../data';
-import type { Keyword } from '../engine/types';
-import { REWARDS } from '../meta/profile';
+import { STANDARD_SETS, type Keyword } from '../engine/types';
+import { MIN_DECK, MIN_DECK_STANDARD, REWARDS } from '../meta/profile';
 import { KW_DESC, KW_ZH } from './i18n';
 
 export function Help({ go }: { go: (s: Screen) => void }) {
@@ -51,7 +51,10 @@ export function Help({ go }: { go: (s: Screen) => void }) {
 
         <h3>卡包與收藏</h3>
         <ul>
-          {(['FDN', 'CORE', 'META'] as const).map((s) => (
+          <li>
+            <b>標準賽系列</b>：{STANDARD_SETS.length} 個現行標準賽系列各有自己的補充包（{STANDARD_SETS.map((s) => SET_INFO[s].short).join('、')}），每包 100 金幣。
+          </li>
+          {(['CORE', 'META'] as const).map((s) => (
             <li key={s}>
               <b>{SET_INFO[s].name}</b>：{SET_INFO[s].desc}
             </li>
@@ -60,9 +63,20 @@ export function Help({ go }: { go: (s: Screen) => void }) {
           <li>在「我的收藏」可以出售卡牌換金幣。</li>
         </ul>
 
+        <h3>賽制</h3>
+        <ul>
+          <li>
+            <b>自由模式</b>：收藏中的卡都能用，套牌至少 {MIN_DECK} 張。對手使用經典卡組成的 7 套環境套牌。
+          </li>
+          <li>
+            <b>標準模式</b>：只能用目前標準賽合法的卡（{STANDARD_SETS.length} 個現行系列，加上仍在標準賽中的經典卡，禁卡除外），套牌至少 {MIN_DECK_STANDARD} 張。對手使用 2026 年 9 月標準賽的 7 套熱門套牌。
+          </li>
+          <li>一開始就有兩套自由模式與兩套標準模式的入門套牌。卡牌的詳細資訊會標示是否能用於標準賽。</li>
+        </ul>
+
         <h3>組牌規則</h3>
         <ul>
-          <li>套牌至少 40 張（建議 60 張，約 24 張地）。</li>
+          <li>自由模式至少 {MIN_DECK} 張，標準模式至少 {MIN_DECK_STANDARD} 張（約 24 張地）。</li>
           <li>同名的卡最多 4 張，基本地不限數量，而且不需要收集。</li>
           <li>只能使用收藏中擁有的卡。「自動補地」會依照咒語的顏色比例補足基本地。</li>
         </ul>
@@ -95,11 +109,79 @@ export function Help({ go }: { go: (s: Screen) => void }) {
             <dt>守護 N</dt>
             <dd>對手的咒語或異能以它為目標時，需要額外支付 {'{N}'}。</dd>
           </div>
+          <div>
+            <dt>大地彎折 N</dt>
+            <dd>（簡化）派出一個 0/0 具敏捷的大地元素，並放上 N 個 +1/+1 指示物。</dd>
+          </div>
+          <div>
+            <dt>枯萎 N</dt>
+            <dd>在一個由你操控的生物上放置 N 個 -1/-1 指示物。</dd>
+          </div>
+          <div>
+            <dt>繽紛</dt>
+            <dd>X 等於由你操控的永久物中的顏色數量。</dd>
+          </div>
+          <div>
+            <dt>集結鬼怪 N</dt>
+            <dd>在你的軍隊上放置 N 個 +1/+1 指示物；沒有軍隊就先派出 0/0 鬼怪軍隊。</dd>
+          </div>
+          <div>
+            <dt>招募</dt>
+            <dd>抓一張牌再棄一張牌；棄掉的不是地時，派出 1/1 人類士兵。</dd>
+          </div>
+          <div>
+            <dt>密謀</dt>
+            <dd>抓一張牌再棄一張牌；棄掉的不是地時，該生物得到一個 +1/+1 指示物。</dd>
+          </div>
+          <div>
+            <dt>樂章</dt>
+            <dd>每當你施放瞬間或法術咒語時觸發；法術力值 5 以上的咒語效果更強。</dd>
+          </div>
+          <div>
+            <dt>疾風</dt>
+            <dd>每當你施放本回合的第二個咒語時觸發。</dd>
+          </div>
+          <div>
+            <dt>灌注</dt>
+            <dd>若你本回合獲得過生命，效果會增強或改變。</dd>
+          </div>
+          <div>
+            <dt>詭異</dt>
+            <dd>每當一個結界在你的操控下進戰場時觸發。</dd>
+          </div>
+          <div>
+            <dt>生存</dt>
+            <dd>（簡化）在你的結束步驟開始時，若此生物已橫置則觸發。</dd>
+          </div>
+          <div>
+            <dt>門檻</dt>
+            <dd>你的墳墓場中有七張或更多牌時生效。</dd>
+          </div>
+          <div>
+            <dt>傳說故事</dt>
+            <dd>你操控三個或更多神器及／或傳奇永久物時生效。</dd>
+          </div>
+          <div>
+            <dt>兇猛</dt>
+            <dd>你操控力量 4 以上的生物時生效。</dd>
+          </div>
+          <div>
+            <dt>強化</dt>
+            <dd>一種每回合只能起動一次的起動式異能。</dd>
+          </div>
+          <div>
+            <dt>結盟</dt>
+            <dd>每當另一個生物在你的操控下進戰場時觸發。</dd>
+          </div>
+          <div>
+            <dt>暈眩指示物</dt>
+            <dd>有暈眩指示物的永久物在重置步驟不會重置，而是移除一個暈眩指示物。</dd>
+          </div>
         </dl>
 
         <h3>關於卡牌與環境</h3>
         <p>
-          卡名使用英文原名，規則文字為本遊戲實際執行的中文敘述，部分卡牌的效果有簡化（例如沒有鵬洛客、寶物與血衍生物）。卡圖來自 Scryfall，無法連線時會使用內建卡框。AI 的 7 套套牌參考 2026 年 9 月標準賽環境的熱門套路（單綠地落、迪米爾中速、伊捷咒術元素、瓊德獻祭、波洛斯快攻、歐佐夫回生、阿佐里斯飛行），以本遊戲收錄的卡重新組成。
+          規則文字為本遊戲實際執行的中文敘述，部分卡牌的效果有簡化（例如沒有鵬洛客、載具、寶物與冒險，某些機制改成遊戲內能處理的形式）。卡圖與中文卡名來自 Scryfall，無法連線時會使用內建卡框與英文卡名。標準模式的 AI 套牌參考 2026 年 9 月標準賽的熱門套路（單綠地落、迪米爾中速、伊捷咒術元素、波洛斯矮人、瓊德獻祭、拉克多斯鬼怪、阿佐里斯控制），以本遊戲收錄的卡重新組成。
         </p>
       </section>
       <div className="setup-go">

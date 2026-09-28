@@ -34,14 +34,14 @@ function triggerMatches(g: GameState, c: Card, ab: TriggeredAbility, ev: GameEve
     case 'combatStart':
       return ev.type === 'step' && ev.step === 'combatStart' && ev.player === pov;
     case 'castNoncreature':
-      return ev.type === 'cast' && ev.player === pov && !isCreature(g.cards[ev.card]);
+      return ev.type === 'cast' && (ev.player === pov || !!ab.anyPlayer) && !isCreature(g.cards[ev.card]);
     case 'castInstSorc': {
       if (ev.type !== 'cast' || ev.player !== pov) return false;
       const t = g.cards[ev.card].def.types;
       return t.includes('Instant') || t.includes('Sorcery');
     }
     case 'castAny':
-      return ev.type === 'cast' && ev.player === pov && matches(g, ab.filter, g.cards[ev.card], pov, c.id);
+      return ev.type === 'cast' && (ev.player === pov || !!ab.anyPlayer) && matches(g, ab.filter, g.cards[ev.card], pov, c.id);
     case 'allyEtb': {
       if (ev.type !== 'etb' || ev.card === c.id || ev.controller !== pov) return false;
       const e = g.cards[ev.card];
@@ -63,7 +63,7 @@ function triggerMatches(g: GameState, c: Card, ab: TriggeredAbility, ev: GameEve
     case 'combatDamagePlayer':
       return ev.type === 'combatDamage' && ev.source === c.id;
     case 'allyCombatDamagePlayer':
-      return ev.type === 'combatDamage' && g.cards[ev.source]?.controller === pov;
+      return ev.type === 'combatDamage' && g.cards[ev.source]?.controller === pov && matches(g, ab.filter, g.cards[ev.source], pov, c.id);
     case 'dealtDamage':
       return ev.type === 'damaged' && ev.card === c.id;
     case 'targeted':
@@ -77,7 +77,20 @@ function triggerMatches(g: GameState, c: Card, ab: TriggeredAbility, ev: GameEve
     case 'oppLifeLoss':
       return ev.type === 'lifeloss' && ev.player !== pov;
     case 'sacrifice':
-      return ev.type === 'sacrifice';
+      return ev.type === 'sacrifice' && matches(g, ab.filter, g.cards[ev.card], pov, c.id);
+    case 'otherDies':
+      return ev.type === 'dies' && ev.card !== c.id && matches(g, ab.filter, g.cards[ev.card], pov, c.id);
+    case 'allyPermEtb':
+      return ev.type === 'etb' && ev.card !== c.id && ev.controller === pov && matches(g, ab.filter, g.cards[ev.card], pov, c.id);
+    case 'allyCounters':
+      return ev.type === 'counterPlaced' && ev.controller === pov && matches(g, ab.filter, g.cards[ev.card], pov, c.id);
+    case 'allyTargeted': {
+      if (ev.type !== 'targeted' || ev.by === pov) return false;
+      const t = g.cards[ev.card];
+      return !!t && t.controller === pov && isCreature(t) && matches(g, ab.filter, t, pov, c.id);
+    }
+    case 'drawSecond':
+      return ev.type === 'drawSecond' && ev.player === pov;
   }
 }
 
@@ -190,6 +203,12 @@ function returnLinked(g: GameState, sourceId: number): void {
 export function enterBattlefield(g: GameState, c: Card, controller: PID, tapped = false): void {
   let t = tapped || !!c.def.etbTapped;
   if (c.def.etbTappedUnless && !checkCond(g, c.def.etbTappedUnless, controller, c.id, [])) t = true;
+  if (c.def.shock && !t) {
+    if (g.players[controller].life > 10) {
+      loseLife(g, controller, 2);
+      log(g, `${cardName(c)}：支付2點生命，未橫置進場`, controller, 'life');
+    } else t = true;
+  }
   if (c.zone !== 'battlefield') removeFromZone(g, c);
   resetPermanentState(c);
   c.zone = 'battlefield';
@@ -237,6 +256,8 @@ export function drawCards(g: GameState, pid: PID, n: number): void {
     const c = g.cards[id];
     c.zone = 'hand';
     p.hand.push(id);
+    p.drawsThisTurn++;
+    if (p.drawsThisTurn === 2) emit(g, { type: 'drawSecond', player: pid });
   }
   g.version++;
 }

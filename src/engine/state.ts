@@ -70,6 +70,7 @@ export function newPlayer(id: PID, s: PlayerSetup): Player {
     instSorcThisTurn: 0,
     lifeGainedThisTurn: 0,
     lifeLostThisTurn: 0,
+    drawsThisTurn: 0,
     drewFromEmpty: false,
     lost: false,
     cantGainLife: false,
@@ -296,7 +297,14 @@ export function matches(g: GameState, f: Filter | undefined, c: Card, pov: PID, 
   if (f.other && c.id === sourceId) return false;
   if (f.token !== undefined && c.token !== f.token) return false;
   if (f.stunned && c.stun <= 0) return false;
-  if (f.hasCounters && c.counters <= 0) return false;
+  if (f.hasCounters !== undefined && (c.counters !== 0) !== f.hasCounters) return false;
+  if (f.or && !f.or.some((x) => matches(g, x, c, pov, sourceId))) return false;
+  if (f.vanilla !== undefined && (d.text.trim() === '' && !d.keywords?.length) !== f.vanilla) return false;
+  if (f.damaged !== undefined && c.damage > 0 !== f.damaged) return false;
+  if (f.equipped !== undefined) {
+    const eq = g.battlefield.some((id) => g.cards[id].attachedTo === c.id && !!g.cards[id].def.equip);
+    if (eq !== f.equipped) return false;
+  }
   if (
     f.kw ||
     f.nonKw ||
@@ -363,6 +371,18 @@ export function checkCond(
       return me.life >= opp.life;
     case 'landsLte':
       return landsOf(g, controller).length <= cond.n;
+    case 'anyLifeLte':
+      return me.life <= cond.n || opp.life <= cond.n;
+    case 'attacked':
+      return g.active === controller && g.attackedThisTurn;
+    case 'drawsGte':
+      return me.drawsThisTurn >= cond.n;
+    case 'selfTapped':
+      return sourceId != null && !!g.cards[sourceId]?.tapped;
+    case 'spellsCast':
+      return me.spellsThisTurn >= cond.n;
+    case 'secondSpell':
+      return me.spellsThisTurn === 2;
     case 'gyCount': {
       let n = 0;
       for (const id of me.graveyard) if (matches(g, cond.filter, g.cards[id], controller, sourceId)) n++;

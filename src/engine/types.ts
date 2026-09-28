@@ -8,7 +8,29 @@ export type Color = 'W' | 'U' | 'B' | 'R' | 'G';
 export type Mana = Color | 'C';
 export type CardType = 'Creature' | 'Instant' | 'Sorcery' | 'Enchantment' | 'Artifact' | 'Land';
 export type Rarity = 'C' | 'U' | 'R' | 'M' | 'L' | 'T'; // L = 基本地, T = 衍生物
-export type SetCode = 'FDN' | 'CORE' | 'META' | 'BAS' | 'TOK';
+/** 標準賽系列（依發售順序） */
+export const STANDARD_SETS = [
+  'WOE',
+  'LCI',
+  'MKM',
+  'OTJ',
+  'BLB',
+  'DSK',
+  'FDN',
+  'DFT',
+  'TDM',
+  'FIN',
+  'EOE',
+  'SPM',
+  'TLA',
+  'ECL',
+  'TMT',
+  'SOS',
+  'MSH',
+  'HOB',
+] as const;
+export type StandardSet = (typeof STANDARD_SETS)[number];
+export type SetCode = StandardSet | 'CORE' | 'META' | 'BAS' | 'TOK';
 
 export type Keyword =
   | 'flying'
@@ -54,6 +76,14 @@ export interface Filter {
   hasCounters?: boolean;
   legendary?: boolean;
   basic?: boolean;
+  /** 符合其中任一條件即可 */
+  or?: Filter[];
+  /** 佩帶著武具 */
+  equipped?: boolean;
+  /** 本回合受到過傷害 */
+  damaged?: boolean;
+  /** 沒有任何異能（白板生物） */
+  vanilla?: boolean;
 }
 
 export type TargetKind = 'creature' | 'player' | 'opponent' | 'any' | 'permanent' | 'spell' | 'gyCard';
@@ -80,6 +110,10 @@ export type Ref =
   | 'trig'
   | 'attached'
   | 'T0ctrl'
+  /** 觸發事件中的玩家（例如施放咒語的玩家） */
+  | 'evPlayer'
+  /** 此效果中最近派出的衍生物 */
+  | 'created'
   | { all: Filter };
 
 export type Amt =
@@ -88,7 +122,13 @@ export type Amt =
   | { gy: Filter }
   | { power: Ref }
   | { ev: true }
-  | { hand: true };
+  | { hand: true }
+  /** 由你操控的永久物中的顏色數量（繽紛） */
+  | { colors: true }
+  /** 來源上的指示物數量 */
+  | { selfCounters: true }
+  /** 你本回合施放過的咒語數量 */
+  | { spellsCast: true };
 
 export interface Grant {
   p?: number;
@@ -111,13 +151,27 @@ export type Cond =
   | { c: 'oppLifeGteYou' }
   | { c: 'youLifeGteOpp' }
   | { c: 'landsLte'; n: number }
-  | { c: 'gyCount'; filter: Filter; n: number };
+  | { c: 'gyCount'; filter: Filter; n: number }
+  /** 你本回合已施放 n 個或更多咒語 */
+  | { c: 'spellsCast'; n: number }
+  /** 你剛施放了本回合的第二個咒語 */
+  | { c: 'secondSpell' }
+  /** 有玩家的生命為 n 點或更少 */
+  | { c: 'anyLifeLte'; n: number }
+  /** 此永久物已橫置 */
+  | { c: 'selfTapped' }
+  /** 你本回合已抓了 n 張或更多牌 */
+  | { c: 'drawsGte'; n: number }
+  /** 你本回合攻擊過 */
+  | { c: 'attacked' };
 
 export interface ExtraCost {
   mana?: string;
   life?: number;
   discard?: number;
   sac?: Filter;
+  /** 枯萎 n：在一個由你操控的生物上放置 n 個 -1/-1 指示物 */
+  blight?: number;
 }
 
 export type Effect =
@@ -137,12 +191,28 @@ export type Effect =
   | { e: 'pump'; what: Ref; p: Amt; t: Amt; kw?: Keyword[] }
   | { e: 'counters'; what: Ref; n: Amt }
   | { e: 'doubleCounters'; what: Ref }
-  | { e: 'token'; token: string; n?: Amt; who?: Ref; tapped?: boolean; attacking?: boolean }
+  | { e: 'token'; token: string; n?: Amt; who?: Ref; tapped?: boolean; attacking?: boolean; attachTo?: Ref }
+  /** 集結鬼怪 n：在你的軍隊上放置 n 個 +1/+1 指示物（沒有軍隊就先派出 0/0 鬼怪軍隊） */
+  | { e: 'amass'; n: number }
+  /** 密謀：抓一張牌，然後棄一張牌；若棄掉的不是地，在該生物上放置一個 +1/+1 指示物 */
+  | { e: 'connive'; what: Ref }
+  /** 將永久物置於其擁有者的牌庫底 */
+  | { e: 'tuck'; what: Ref }
+  /** 展示牌庫頂的牌並置於手上，你失去等同於其法術力值的生命 */
+  | { e: 'revealDraw' }
+  /** 招募：抓一張牌，然後棄一張牌；若棄掉的不是地，派出 1/1 人類士兵 */
+  | { e: 'recruit' }
+  /** 從牌庫中搜尋一張符合條件的牌放到手上 */
+  | { e: 'tutor'; filter: Filter }
+  /** 移除至多 n 個指示物 */
+  | { e: 'removeCounters'; what: Ref; n: number }
+  /** 大地彎折（簡化）：派出一個 0/0 具敏捷的大地元素，並放上 n 個 +1/+1 指示物 */
+  | { e: 'earthbend'; n: Amt }
   | { e: 'mill'; n: Amt; who?: Ref }
   | { e: 'scry'; n: number }
   | { e: 'surveil'; n: number }
   | { e: 'dig'; n: number; take?: number; filter?: Filter; rest: 'bottom' | 'graveyard' }
-  | { e: 'searchLand'; to: 'battlefield' | 'hand'; tapped?: boolean; untapIfLands?: number }
+  | { e: 'searchLand'; to: 'battlefield' | 'hand'; tapped?: boolean; untapIfLands?: number; who?: Ref; may?: boolean }
   | { e: 'counter'; what: Ref }
   | { e: 'counterUnless'; what: Ref; pay: number }
   | { e: 'fight'; a: Ref; b: Ref }
@@ -184,13 +254,25 @@ export type TriggerOn =
   | 'targeted'
   | 'youAttack'
   | 'oppLifeLoss'
-  | 'sacrifice';
+  | 'sacrifice'
+  /** 每當你於一回合中抓第二張牌時 */
+  | 'drawSecond'
+  /** 每當另一個生物（任何玩家的）死去時 */
+  | 'otherDies'
+  /** 每當另一個永久物（不限生物）在你的操控下進戰場時 */
+  | 'allyPermEtb'
+  /** 每當你在由你操控的生物上放置 +1/+1 指示物時 */
+  | 'allyCounters'
+  /** 每當由你操控的生物成為對手的咒語或異能的目標時 */
+  | 'allyTargeted';
 
 export interface TriggeredAbility {
   kind: 'trigger';
   on: TriggerOn;
   /** 觸發物件需要符合的條件（例如 allyEtb 的進場生物、castAny 的咒語） */
   filter?: Filter;
+  /** 施放類觸發：任何玩家施放都會觸發 */
+  anyPlayer?: boolean;
   /** allyDies 是否包含自己 */
   includeSelf?: boolean;
   /** targeted：只計算咒語（不含異能） */
@@ -214,6 +296,8 @@ export interface ActivatedAbility {
   cond?: Cond;
   /** 按鈕上顯示的簡短描述 */
   label: string;
+  /** 裝備異能 */
+  isEquip?: boolean;
 }
 
 export interface StaticAbility {
@@ -270,7 +354,11 @@ export interface CardDef {
   /** 額外費用（例如：犧牲一個生物、支付生命） */
   addCost?: ExtraCost;
   /** 此咒語的費用減免 */
-  costReduce?: { perGy?: Filter; cond?: Cond; mana?: string };
+  costReduce?: { perGy?: Filter; perCount?: Filter; perMaxMv?: Filter; cond?: Cond; mana?: string };
+  /** 以此生物為目標的裝備異能減少 {n} */
+  equipDiscount?: number;
+  /** 震地：生命多於10點時支付2點生命、未橫置進場；否則橫置進場 */
+  shock?: boolean;
   /** 起手時可直接放進戰場 */
   leyline?: boolean;
   /** 中文規則敘述 */
@@ -329,6 +417,7 @@ export interface Player {
   instSorcThisTurn: number;
   lifeGainedThisTurn: number;
   lifeLostThisTurn: number;
+  drawsThisTurn: number;
   drewFromEmpty: boolean;
   lost: boolean;
   cantGainLife: boolean;
@@ -391,7 +480,9 @@ export type GameEvent =
   | { type: 'combatDamage'; source: number; player: PID; amount: number }
   | { type: 'damaged'; card: number; amount: number }
   | { type: 'targeted'; card: number; by: PID; spell: boolean }
-  | { type: 'sacrifice'; card: number; player: PID };
+  | { type: 'sacrifice'; card: number; player: PID }
+  | { type: 'drawSecond'; player: PID }
+  | { type: 'counterPlaced'; card: number; controller: PID; amount: number };
 
 export interface PendingTrigger {
   source: number;
@@ -466,7 +557,9 @@ export type ChoosePurpose =
   | 'dig'
   | 'search'
   | 'opponentDiscard'
-  | 'landFromHand';
+  | 'landFromHand'
+  | 'tutor'
+  | 'blight';
 
 export type PriorityAction =
   | { type: 'pass' }

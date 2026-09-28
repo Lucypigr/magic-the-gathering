@@ -1,8 +1,9 @@
 import { displayName } from '../data/names';
-import { costToString, findPayment, parseCost, reduceCost, type ManaCost, type ManaSource } from './mana';
+import { costToString, findPayment, manaValue, parseCost, reduceCost, type ManaCost, type ManaSource } from './mana';
 import {
   cardName,
   checkCond,
+  countMatching,
   hasKw,
   isCreature,
   isLand,
@@ -88,6 +89,15 @@ export function spellCost(g: GameState, c: Card, pid: PID, mode?: number, target
       for (const id of g.players[pid].graveyard) if (matches(g, cr.perGy, g.cards[id], pid)) n++;
       cost = reduceCost(cost, { ...parseCost(''), generic: n });
     }
+    if (cr.perMaxMv) {
+      let n = 0;
+      for (const id of g.battlefield) {
+        const s = g.cards[id];
+        if (s.controller === pid && matches(g, cr.perMaxMv, s, pid)) n = Math.max(n, manaValue(s.def));
+      }
+      cost = reduceCost(cost, { ...parseCost(''), generic: n });
+    }
+    if (cr.perCount) cost = reduceCost(cost, { ...parseCost(''), generic: countMatching(g, { ...cr.perCount, ctrl: 'you' }, pid) });
     if (cr.cond && cr.mana && checkCond(g, cr.cond, pid, c.id, [])) cost = reduceCost(cost, parseCost(cr.mana));
   }
   for (const id of g.battlefield) {
@@ -132,6 +142,7 @@ export function activatedAbilities(def: CardDef): ActivatedAbility[] {
         targets: [{ kind: 'creature', filter: { ctrl: 'you' }, notSelf: true, prompt: '選擇要裝備的生物' }],
         effects: [{ e: 'attach', what: 'T0' }],
         label: `裝備 ${def.equip.cost}`,
+        isEquip: true,
       },
     ];
   }
@@ -157,7 +168,18 @@ export function canActivate(g: GameState, pid: PID, c: Card, idx: number): boole
   }
   if (ab.cost.life && g.players[pid].life < ab.cost.life) return false;
   if (ab.cost.sacOther && sacCandidates(g, pid, ab.cost.sacOther, c.id).length === 0) return false;
-  if (ab.cost.mana && !canPayCost(g, pid, parseCost(ab.cost.mana), ab.cost.tap ? c.id : undefined)) return false;
+  if (ab.cost.mana) {
+    const cost = parseCost(ab.cost.mana);
+    if (ab.isEquip) {
+      let best = 0;
+      for (const id of g.battlefield) {
+        const t = g.cards[id];
+        if (t.controller === pid && t.id !== c.id && isCreature(t)) best = Math.max(best, t.def.equipDiscount ?? 0);
+      }
+      cost.generic = Math.max(0, cost.generic - best);
+    }
+    if (!canPayCost(g, pid, cost, ab.cost.tap ? c.id : undefined)) return false;
+  }
   if (!hasTargetsAvailable(g, ab.targets ?? [], pid, c.id)) return false;
   return true;
 }
@@ -343,6 +365,11 @@ function doActivate(g: GameState, pid: PID, a: Extract<PriorityAction, { type: '
       return '請選擇要犧牲的永久物';
   }
   const cost = parseCost(ab.cost.mana);
+  if (ab.isEquip) {
+    const t = targets[0];
+    const d = t && 'c' in t ? g.cards[t.c]?.def.equipDiscount ?? 0 : 0;
+    cost.generic = Math.max(0, cost.generic - d);
+  }
   cost.generic += wardTax(g, pid, targets);
   if (!payCost(g, pid, cost, ab.cost.tap ? c.id : undefined)) return '法術力不足';
   const lki = stats(g, c).p;

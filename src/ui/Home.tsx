@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import type { Screen, UpdateProfile } from '../App';
-import { AI_DECKS, COLLECTIBLE } from '../data';
-import { resetProfile, type Profile } from '../meta/profile';
+import { COLLECTIBLE, aiDecksFor, type Format } from '../data';
+import { FORMAT_NAME, resetProfile, type Profile } from '../meta/profile';
 import { ColorPips, Gold } from './common';
 import { LEVEL_ZH } from './i18n';
 import { hasLocalImages, imagesUnavailable, useImageVersion, zhStatus } from './images';
@@ -22,6 +22,8 @@ export function TopBar({ profile, go, title }: { profile: Profile; go: (s: Scree
 export function Home({ profile, go, update }: { profile: Profile; go: (s: Screen) => void; update: UpdateProfile }) {
   useImageVersion();
   const [confirmReset, setConfirmReset] = useState(false);
+  const [fmt, setFmt] = useState<Format>(profile.lastFormat ?? 'standard');
+  const aiDecks = aiDecksFor(fmt);
   const owned = COLLECTIBLE.filter((c) => (profile.collection[c.id] ?? 0) > 0).length;
   const lv = profile.stats.byLevel;
   const wins = lv.easy.w + lv.normal.w + lv.hard.w;
@@ -31,10 +33,10 @@ export function Home({ profile, go, update }: { profile: Profile; go: (s: Screen
       <TopBar profile={profile} go={go} title="主選單" />
       <section className="hero">
         <div className="hero-copy">
-          <p className="eyebrow">單人對戰 · 開包 · 自由組牌</p>
-          <h2 className="hero-title">挑戰 7 套環境套牌</h2>
+          <p className="eyebrow">單人對戰 · 開包 · 自由組牌 · 標準賽</p>
+          <h2 className="hero-title">挑戰環境套牌</h2>
           <p className="hero-sub">
-            用基本套牌出發，贏下對戰賺取金幣，買補充包擴充收藏，組出屬於你的套牌。AI 會從 2026 年 9 月標準賽環境的 7 個熱門套路中隨機選一套。
+            用入門套牌出發，贏下對戰賺取金幣，買補充包擴充收藏，組出屬於你的套牌。標準模式收錄 18 個現行標準賽系列，AI 會使用 2026 年 9 月標準賽的熱門套路。
           </p>
           <div className="hero-actions">
             <button className="btn btn-primary btn-big" onClick={() => go({ name: 'setup' })}>
@@ -89,9 +91,18 @@ export function Home({ profile, go, update }: { profile: Profile; go: (s: Screen
       </nav>
 
       <section className="panel">
-        <h3 className="section-title">AI 的環境套牌</h3>
+        <div className="section-head">
+          <h3 className="section-title">AI 的環境套牌</h3>
+          <div className="seg" role="tablist" aria-label="賽制">
+            {(['standard', 'free'] as const).map((f) => (
+              <button key={f} role="tab" aria-selected={fmt === f} className={fmt === f ? 'on' : ''} onClick={() => setFmt(f)}>
+                {FORMAT_NAME[f]}模式
+              </button>
+            ))}
+          </div>
+        </div>
         <ul className="deck-list-ai">
-          {AI_DECKS.map((d) => {
+          {aiDecks.map((d) => {
             const r = profile.stats.vsDeck[d.id] ?? { w: 0, l: 0 };
             return (
               <li key={d.id}>
@@ -110,7 +121,7 @@ export function Home({ profile, go, update }: { profile: Profile; go: (s: Screen
             );
           })}
           <li className="dl-cta">
-            <div className="dl-desc">每場對戰會從這 7 套中隨機挑一套，也可以在對戰準備時指定對手。</div>
+            <div className="dl-desc">每場對戰會從這 {aiDecks.length} 套中隨機挑一套，也可以在對戰準備時指定對手。</div>
             <button className="btn btn-small" onClick={() => go({ name: 'setup' })}>
               挑選對手
             </button>
