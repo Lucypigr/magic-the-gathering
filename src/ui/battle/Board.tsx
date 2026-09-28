@@ -41,6 +41,7 @@ export function Permanent({ g, c, marks, onCard, onHover }: { g: GameState; c: C
   return (
     <div
       className={cls}
+      data-cid={c.id}
       onClick={() => onCard(c.id)}
       onMouseEnter={() => onHover(c.id)}
       onMouseLeave={() => onHover(null)}
@@ -84,6 +85,7 @@ function LandPile({ cards, marks, onCard, onHover }: { cards: Card[]; marks: Mar
   const layers = Math.min(cards.length, 4);
   return (
     <div
+      data-cids={cards.map((x) => x.id).join(' ')}
       className={`land-pile ${frameClass(c.def)} ${c.tapped ? 'tapped' : ''} ${sel ? 'selectable' : ''} ${marks.focus != null && cards.some((x) => x.id === marks.focus) ? 'focused' : ''} ${cards.some((x) => marks.playable.has(x.id)) ? 'playable' : ''}`}
       style={{ '--layers': layers } as CSSProperties}
       onClick={() => onCard(c.id)}
@@ -205,7 +207,7 @@ export function Avatar({
   }, [p.life]);
   return (
     <div className={`hero-seat ${pid === 0 ? 'me' : 'opp'} ${g.active === pid ? 'active' : ''}`}>
-      <button className={`hero-portrait ${selectable ? 'selectable' : ''} ${flash ?? ''}`} onClick={onPlayer} aria-label={`${p.name}（生命 ${p.life}）`}>
+      <button data-player={pid} className={`hero-portrait ${selectable ? 'selectable' : ''} ${flash ?? ''}`} onClick={onPlayer} aria-label={`${p.name}（生命 ${p.life}）`}>
         {face ? <Art def={face} /> : <span className="hero-glyph">{pid === 0 ? '你' : 'AI'}</span>}
       </button>
       <div className={`hero-life ${p.life <= 5 ? 'low' : ''}`}>{p.life}</div>
@@ -313,6 +315,8 @@ export function StackView({ g, marks, onCard, onHover }: { g: GameState; marks: 
           return (
             <div
               key={s.sid}
+              data-sid={s.sid}
+              data-scid={s.cardId}
               className={`stack-item ${s.controller === 0 ? 'mine' : 'theirs'} ${i === 0 ? 'top' : ''} ${marks.selectable.has(s.cardId) ? 'selectable' : ''}`}
               onClick={() => onCard(s.cardId)}
               onMouseEnter={() => onHover(s.cardId)}

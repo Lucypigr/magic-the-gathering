@@ -500,6 +500,18 @@ export interface LogEntry {
   kind?: 'info' | 'cast' | 'combat' | 'damage' | 'life' | 'turn' | 'result';
 }
 
+/** 給畫面顯示用的事件（施放、起動、觸發、攻擊、阻擋） */
+export interface Show {
+  seq: number;
+  kind: 'spell' | 'activated' | 'trigger' | 'attack' | 'block';
+  player: PID;
+  card?: number;
+  targets?: (TargetRef | null)[];
+  /** 攻擊：[攻擊者, -1]；阻擋：[阻擋者, 被阻擋的攻擊者] */
+  pairs?: [number, number][];
+  text?: string;
+}
+
 export interface GameState {
   cards: Record<number, Card>;
   nextId: number;
@@ -523,6 +535,9 @@ export interface GameState {
   /** 本回合是否已經有生物宣告攻擊 */
   attackedThisTurn: boolean;
   maxTurns: number;
+  /** 最近的畫面事件（模擬用的複本不記錄） */
+  shows: Show[];
+  showSeq: number;
 }
 
 // ------------------------------------------------------------

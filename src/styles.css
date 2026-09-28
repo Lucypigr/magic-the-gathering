@@ -928,7 +928,8 @@ button {
   border-radius: 14px;
   width: 100%;
   max-width: 520px;
-  max-height: calc(100% - 16px);
+  max-height: calc(100vh - 32px);
+  max-height: calc(100dvh - 32px);
   display: flex;
   flex-direction: column;
   box-shadow: 0 20px 60px rgba(0, 0, 0, 0.6);
@@ -951,6 +952,7 @@ button {
 }
 .modal-body {
   overflow: auto;
+  min-height: 0;
   padding: 16px;
 }
 .modal-foot {
@@ -3016,6 +3018,181 @@ button {
   }
   .inspect-detail .card-detail-img {
     max-width: 130px;
+  }
+}
+
+/* ============================================================
+   對戰特效
+   ============================================================ */
+.arrow-layer {
+  position: absolute;
+  top: 0;
+  left: 0;
+  pointer-events: none;
+  z-index: 4;
+  overflow: visible;
+}
+.arrow {
+  --ac: #e0453a;
+}
+.arrow-block {
+  --ac: #5aa9ff;
+}
+.arrow-target-theirs {
+  --ac: #f0a340;
+}
+.arrow-target-mine {
+  --ac: #7ad3ff;
+}
+.arrow-line {
+  fill: none;
+  stroke: var(--ac);
+  stroke-width: 5;
+  stroke-linecap: round;
+  stroke-dasharray: 14 9;
+  animation: arrowFlow 0.7s linear infinite;
+}
+.arrow-glow {
+  fill: none;
+  stroke: var(--ac);
+  stroke-width: 13;
+  stroke-linecap: round;
+  opacity: 0.22;
+}
+.arrow-dot {
+  fill: var(--ac);
+  stroke: #fff;
+  stroke-width: 2;
+}
+.ah-attack {
+  fill: #e0453a;
+}
+.ah-block {
+  fill: #5aa9ff;
+}
+.ah-target-theirs {
+  fill: #f0a340;
+}
+.ah-target-mine {
+  fill: #7ad3ff;
+}
+@keyframes arrowFlow {
+  to {
+    stroke-dashoffset: -23;
+  }
+}
+
+.spotlight {
+  position: fixed;
+  right: 40px;
+  top: 50%;
+  z-index: 90;
+  transform: translateY(-50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 14px 14px;
+  border-radius: 16px;
+  background: rgba(12, 15, 20, 0.9);
+  border: 2px solid #f0a340;
+  box-shadow:
+    0 0 30px rgba(240, 163, 64, 0.45),
+    0 20px 50px rgba(0, 0, 0, 0.6);
+  pointer-events: none;
+  animation: spotIn 0.3s ease-out;
+  max-width: 260px;
+}
+.spotlight.mine {
+  border-color: #7ad3ff;
+  box-shadow:
+    0 0 30px rgba(122, 211, 255, 0.4),
+    0 20px 50px rgba(0, 0, 0, 0.6);
+}
+.sp-label {
+  font-weight: 700;
+  font-size: 15px;
+  color: #f0c080;
+  text-align: center;
+}
+.spotlight.mine .sp-label {
+  color: #a8e2ff;
+}
+.sp-card {
+  --cw: 200px !important;
+}
+.sp-ability,
+.sp-target {
+  font-size: 13px;
+  text-align: center;
+  color: var(--text);
+}
+.sp-target {
+  font-weight: 700;
+  color: #ffd79a;
+}
+@keyframes spotIn {
+  from {
+    opacity: 0;
+    transform: translate(40px, -50%) scale(0.85);
+  }
+}
+.combat-banner {
+  position: fixed;
+  left: 50%;
+  top: 38%;
+  z-index: 90;
+  transform: translate(-50%, -50%);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  max-width: calc(100% - 32px);
+  padding: 10px 22px;
+  border-radius: 999px;
+  font-weight: 700;
+  font-size: 17px;
+  color: #fff;
+  background: linear-gradient(90deg, rgba(150, 30, 24, 0.95), rgba(210, 70, 50, 0.95));
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.55);
+  pointer-events: none;
+  animation: bannerIn 0.3s ease-out;
+}
+.combat-banner.block {
+  background: linear-gradient(90deg, rgba(24, 70, 150, 0.95), rgba(60, 130, 210, 0.95));
+}
+.cb-icon {
+  font-size: 22px;
+}
+@keyframes bannerIn {
+  from {
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(0.7);
+  }
+}
+@media (max-width: 700px) {
+  .spotlight {
+    left: 50%;
+    right: auto;
+    top: 30%;
+    transform: translate(-50%, -50%);
+    padding: 8px 10px 10px;
+  }
+  @keyframes spotIn {
+    from {
+      opacity: 0;
+      transform: translate(-50%, -50%) scale(0.8);
+    }
+  }
+  .sp-card {
+    --cw: 140px !important;
+  }
+  .combat-banner {
+    font-size: 14px;
+    padding: 8px 16px;
+    border-radius: 14px;
+  }
+  .arrow-line {
+    stroke-width: 4;
   }
 }
 

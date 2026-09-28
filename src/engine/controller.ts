@@ -113,15 +113,60 @@ export class MatchController {
     else if (this.decision?.type === 'attackers') this.submit({ type: 'attackers', ids: [] });
   }
 
+  /** 施放、攻擊等畫面事件之後暫停的毫秒數（0 = 不暫停，測試用） */
+  presentDelay = 0;
+  private shownSeq = 0;
+
+  /** 有新的畫面事件時，回傳要暫停多久讓玩家看清楚 */
+  private presentPause(): number {
+    const shows = this.g.shows;
+    if (!this.presentDelay || !shows.length) return 0;
+    const fresh = shows.filter((s) => s.seq > this.shownSeq);
+    this.shownSeq = this.g.showSeq;
+    let t = 0;
+    for (const s of fresh) {
+      const mine = s.player === 0;
+      const base = s.kind === 'trigger' ? 0.55 : s.kind === 'attack' || s.kind === 'block' ? 0.9 : 1;
+      t = Math.max(t, this.presentDelay * base * (mine ? 0.45 : 1));
+    }
+    return t;
+  }
+
   private advance(resp: Response | undefined): void {
-    let r;
     try {
-      r = this.gen.next(resp as Response);
+      this.run(this.gen.next(resp as Response));
+    } catch (e) {
+      this.fail(e);
+    }
+  }
+
+  private fail(e: unknown): void {
+    console.error(e);
+    this.error = e instanceof Error ? e.message : String(e);
+    this.finished = true;
+    this.decision = null;
+    this.notify();
+  }
+
+  private run(start: IteratorResult<Decision, void>): void {
+    let r = start;
+    try {
       for (let guard = 0; guard < 100000; guard++) {
         if (r.done) {
           this.finished = true;
           this.decision = null;
           this.notify();
+          return;
+        }
+        const pause = this.presentPause();
+        if (pause > 0) {
+          const held = r;
+          this.decision = null;
+          this.notify();
+          this.timer = setTimeout(() => {
+            this.timer = null;
+            this.run(held);
+          }, pause);
           return;
         }
         const d = r.value;
@@ -156,11 +201,7 @@ export class MatchController {
         return;
       }
     } catch (e) {
-      console.error(e);
-      this.error = e instanceof Error ? e.message : String(e);
-      this.finished = true;
-      this.decision = null;
-      this.notify();
+      this.fail(e);
     }
   }
 

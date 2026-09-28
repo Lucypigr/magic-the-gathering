@@ -1,4 +1,4 @@
-import { cardName, creaturesOf, isCreature, log, other, stats } from './state';
+import { cardName, creaturesOf, isCreature, log, other, show, stats } from './state';
 import type { Card, GameState, PID } from './types';
 import { dealDamage, emit } from './zones';
 
@@ -50,6 +50,7 @@ export function declareAttackers(g: GameState, pid: PID, ids: number[]): Card[] 
     log(g, `攻擊：${list.map(cardName).join('、')}`, pid, 'combat');
     for (const c of list) emit(g, { type: 'attacks', card: c.id });
     emit(g, { type: 'youAttack', player: pid, attackers: list.map((c) => c.id) });
+    show(g, { kind: 'attack', player: pid, pairs: list.map((c) => [c.id, -1] as [number, number]) });
   }
   g.version++;
   return list;
@@ -85,6 +86,7 @@ export function declareBlockers(g: GameState, pid: PID, blocks: [number, number]
       'combat',
     );
     for (const [b] of valid) emit(g, { type: 'blocks', card: b });
+    show(g, { kind: 'block', player: pid, pairs: valid });
   }
   g.version++;
   return valid;

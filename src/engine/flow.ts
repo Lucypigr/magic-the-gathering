@@ -18,6 +18,7 @@ import {
   log,
   other,
   randInt,
+  show,
   shuffleArr,
   stats,
 } from './state';
@@ -139,6 +140,7 @@ function* flushTriggers(g: GameState): SubFlow {
       ev: t.ev,
       lkiPower: t.lkiPower,
     });
+    show(g, { kind: 'trigger', player: t.controller, card: t.source, targets });
     for (const tg of targets) {
       if (tg && 'c' in tg && g.cards[tg.c]?.zone === 'battlefield') emit(g, { type: 'targeted', card: tg.c, by: t.controller, spell: false });
     }
