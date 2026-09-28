@@ -154,6 +154,10 @@ function resetPermanentState(c: Card): void {
   c.sick = false;
   c.attachedTo = null;
   c.usedThisTurn = [];
+  if (c.baseDef) {
+    c.def = c.baseDef;
+    c.baseDef = undefined;
+  }
 }
 
 export function moveCard(g: GameState, c: Card, to: Zone, bottom = false): void {

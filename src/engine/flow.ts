@@ -421,6 +421,11 @@ function* turn(g: GameState): SubFlow {
     const c = g.cards[id];
     c.damage = 0;
     c.dtDamage = false;
+    // 暫時成為生物的地恢復原狀
+    if (c.baseDef) {
+      c.def = c.baseDef;
+      c.baseDef = undefined;
+    }
   }
   g.eot = [];
   // 清除階段若有觸發，再給一次優先權

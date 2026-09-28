@@ -101,6 +101,8 @@ export interface ManaSource {
   isCreature: boolean;
   /** 用完就要犧牲（珍寶）：最後才使用 */
   sac?: boolean;
+  /** 過濾地：多付一點法術力（由另一個來源）就能產生任意顏色 */
+  filter?: boolean;
 }
 
 /**
@@ -127,16 +129,25 @@ export function findPayment(cost: ManaCost, sources: ManaSource[]): { id: number
   const used = new Set<number>();
   const assign: { id: number; mana: Mana }[] = [];
 
+  // 過濾地變出顏色時，要多用一個來源支付 {1}
+  let extra = 0;
   const dfs = (i: number): boolean => {
-    if (i === need.length) return true;
+    if (i === need.length) return sources.length - used.size >= cost.generic + extra;
     const opts = need[i];
     for (const s of ordered) {
       if (used.has(s.id)) continue;
-      const m = opts.find((x) => s.produces.includes(x));
+      let m = opts.find((x) => s.produces.includes(x));
+      let filtered = false;
+      if (!m && s.filter) {
+        m = opts.find((x) => x !== 'C');
+        filtered = !!m;
+      }
       if (!m) continue;
       used.add(s.id);
       assign.push({ id: s.id, mana: m });
+      if (filtered) extra++;
       if (dfs(i + 1)) return true;
+      if (filtered) extra--;
       used.delete(s.id);
       assign.pop();
     }
@@ -144,9 +155,9 @@ export function findPayment(cost: ManaCost, sources: ManaSource[]): { id: number
   };
   if (!dfs(0)) return null;
 
-  // 通用費用：挑剩下的來源，保留顏色最多的來源到最後
+  // 通用費用（含過濾地的額外 {1}）：挑剩下的來源，保留顏色最多的來源到最後
   const rest = ordered.filter((s) => !used.has(s.id));
-  if (rest.length < cost.generic) return null;
-  for (let i = 0; i < cost.generic; i++) assign.push({ id: rest[i].id, mana: rest[i].produces[0] });
+  if (rest.length < cost.generic + extra) return null;
+  for (let i = 0; i < cost.generic + extra; i++) assign.push({ id: rest[i].id, mana: rest[i].produces[0] });
   return assign;
 }

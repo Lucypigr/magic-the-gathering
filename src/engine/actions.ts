@@ -37,7 +37,7 @@ export function manaSources(g: GameState, pid: PID, exclude?: number): ManaSourc
     if (c.controller !== pid || c.tapped || !c.def.produces || id === exclude) continue;
     const cr = isCreature(c);
     if (cr && c.sick && !hasKw(g, c, 'haste')) continue;
-    out.push({ id, produces: c.def.produces, isCreature: cr, sac: c.def.sacOnMana });
+    out.push({ id, produces: c.def.produces, isCreature: cr, sac: c.def.sacOnMana, filter: c.def.filterMana });
   }
   return out;
 }
