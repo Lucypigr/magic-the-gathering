@@ -3,7 +3,8 @@
 // 對手由 AI 扮演，依段位決定強度（難度、套牌、思考速度、個性）。
 // ============================================================
 import type { Level } from '../ai/combatAI';
-import { COLLECTIBLE, STANDARD_STARTERS, STARTER_DECKS, aiDecksFor, type Format } from '../data';
+import { COLLECTIBLE, type DeckList, type Format } from '../data';
+import { buildOpponentDeck, type DeckKind } from './oppDecks';
 import { getDef } from '../engine/registry';
 
 export const TIERS = [
@@ -106,7 +107,8 @@ export interface Opponent {
   tier: number;
   /** 頭像卡牌 id */
   face: string | null;
-  deckId: string;
+  deck: DeckList;
+  deckKind: DeckKind;
   level: Level;
   /** 思考速度倍率（越大越慢） */
   think: number;
@@ -165,11 +167,8 @@ export function findOpponent(points: number, format: Format, recent: string[] = 
     ],
     rnd,
   );
-  // 低段位的玩家常常拿入門套牌
-  const starters = format === 'standard' ? STANDARD_STARTERS : STARTER_DECKS;
-  const starterChance = [0.5, 0.3, 0.12, 0.04, 0, 0][r.tier];
-  const pool = rnd() < starterChance ? starters : aiDecksFor(format);
-  const deck = pick(pool, rnd);
+  // 套牌：高段位多半是完整的環境套牌，低段位常見入門套牌、自組或亂湊的牌
+  const { deck, kind } = buildOpponentDeck(format, r.tier, rnd);
   // 名字：避開最近遇過的
   let name = pick(NAMES, rnd);
   for (let i = 0; i < 5 && recent.includes(name); i++) name = pick(NAMES, rnd);
@@ -193,7 +192,8 @@ export function findOpponent(points: number, format: Format, recent: string[] = 
     rank: r.label,
     tier: r.tier,
     face: faceDef?.id ?? null,
-    deckId: deck.id,
+    deck,
+    deckKind: kind,
     level,
     think: 0.7 + rnd() * 1.1 + (level === 'hard' ? 0.2 : 0),
     chatty: rnd(),
