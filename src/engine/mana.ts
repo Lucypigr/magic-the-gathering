@@ -99,6 +99,8 @@ export interface ManaSource {
   id: number;
   produces: Mana[];
   isCreature: boolean;
+  /** 用完就要犧牲（珍寶）：最後才使用 */
+  sac?: boolean;
 }
 
 /**
@@ -119,7 +121,7 @@ export function findPayment(cost: ManaCost, sources: ManaSource[]): { id: number
   need.sort((a, b) => supply(a) - supply(b));
 
   // 優先使用：非生物、產出顏色少的來源
-  const rank = (s: ManaSource) => (s.isCreature ? 100 : 0) + s.produces.length;
+  const rank = (s: ManaSource) => (s.sac ? 1000 : 0) + (s.isCreature ? 100 : 0) + s.produces.length;
   const ordered = [...sources].sort((a, b) => rank(a) - rank(b));
 
   const used = new Set<number>();

@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import type { Screen, UpdateProfile } from '../App';
 import { COLLECTIBLE, aiDecksFor, type Format } from '../data';
-import { FORMAT_NAME, resetProfile, type Profile } from '../meta/profile';
+import { FORMAT_NAME, listSlots, resetProfile, type Profile } from '../meta/profile';
 import { rankOf } from '../meta/ladder';
 import { ColorPips, Gold } from './common';
 import { LEVEL_ZH } from './i18n';
@@ -25,6 +25,9 @@ export function Home({ profile, go, update }: { profile: Profile; go: (s: Screen
   const [confirmReset, setConfirmReset] = useState(false);
   const [fmt, setFmt] = useState<Format>(profile.lastFormat ?? 'standard');
   const aiDecks = aiDecksFor(fmt);
+  const slotInfo = listSlots();
+  const currentSlot = slotInfo.slots.find((x) => x.id === slotInfo.active)?.name ?? '存檔 1';
+  const slotCount = slotInfo.slots.length;
   const owned = COLLECTIBLE.filter((c) => (profile.collection[c.id] ?? 0) > 0).length;
   const lv = profile.stats.byLevel;
   const wins = lv.easy.w + lv.normal.w + lv.hard.w;
@@ -92,6 +95,12 @@ export function Home({ profile, go, update }: { profile: Profile; go: (s: Screen
         <button className="menu-tile" onClick={() => go({ name: 'collection' })}>
           <span className="mt-title">我的收藏</span>
           <span className="mt-sub">瀏覽全部卡牌、出售多餘的卡</span>
+        </button>
+        <button className="menu-tile" onClick={() => go({ name: 'saves' })}>
+          <span className="mt-title">存檔管理</span>
+          <span className="mt-sub">
+            目前：{currentSlot} · 共 {slotCount} 個存檔，可以開新存檔玩不同套牌
+          </span>
         </button>
       </nav>
 
@@ -181,7 +190,7 @@ export function Home({ profile, go, update }: { profile: Profile; go: (s: Screen
         <div className="reset-row">
           {confirmReset ? (
             <>
-              <span>確定要清除所有進度嗎？金幣、收藏與套牌都會重置。</span>
+              <span>確定要清除這個存檔的所有進度嗎？金幣、收藏與套牌都會重置（其他存檔不受影響）。</span>
               <button
                 className="btn btn-danger"
                 onClick={() => {
@@ -198,7 +207,7 @@ export function Home({ profile, go, update }: { profile: Profile; go: (s: Screen
             </>
           ) : (
             <button className="btn btn-small" onClick={() => setConfirmReset(true)}>
-              重新開始遊戲…
+              重新開始這個存檔…
             </button>
           )}
         </div>

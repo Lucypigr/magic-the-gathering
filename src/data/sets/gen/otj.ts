@@ -1,0 +1,6 @@
+// 由 scripts/gen_cards.py 從 Scryfall 資料自動產生（OTJ）：請勿手動修改
+import { add } from '../../dsl';
+
+add({"set": "OTJ", "rarity": "U", "name": "Treasure Dredger", "cost": "{1}{B}", "types": ["Creature"], "subtypes": ["Human", "Rogue"], "power": 2, "toughness": 2, "abilities": [{"kind": "activated", "cost": {"mana": "{1}", "tap": true, "life": 1}, "effects": [{"e": "token", "token": "tok-treasure"}], "label": "派出一個珍寶衍生物"}], "text": "{1}，{T}，支付1點生命：派出一個珍寶衍生物。"});
+add({"set": "OTJ", "rarity": "C", "name": "Reckless Lackey", "cost": "{R}", "types": ["Creature"], "subtypes": ["Goblin", "Pirate"], "power": 1, "toughness": 2, "keywords": ["first_strike", "haste"], "abilities": [{"kind": "activated", "cost": {"mana": "{2}{R}", "sacSelf": true}, "effects": [{"e": "draw", "n": 1}, {"e": "token", "token": "tok-treasure"}], "label": "抓一張牌，並派出一個珍寶衍生物"}], "text": "先攻，敏捷\n{2}{R}，犧牲此生物：抓一張牌，並派出一個珍寶衍生物。"});
+add({"set": "OTJ", "rarity": "C", "name": "Gold Pan", "cost": "{2}", "types": ["Artifact"], "subtypes": ["Equipment"], "equip": {"cost": "{1}", "grant": {"p": 1, "t": 1}}, "abilities": [{"kind": "trigger", "on": "etb", "effects": [{"e": "token", "token": "tok-treasure"}]}], "text": "當此武具進戰場時，派出一個珍寶衍生物。\n佩帶此武具的生物得+1/+1。\n裝備{1}"});

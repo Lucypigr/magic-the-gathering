@@ -101,9 +101,150 @@ function storage(): Storage | null {
   }
 }
 
-export function loadProfile(): Profile {
+// ------------------------------------------------------------
+// 多個存檔
+// ------------------------------------------------------------
+const SLOTS_KEY = 'mtg-duel-arena-slots-v1';
+
+export interface SlotInfo {
+  id: string;
+  name: string;
+  created: number;
+  updated: number;
+  /** 存檔摘要（列表顯示用） */
+  gold: number;
+  cards: number;
+  decks: number;
+  wins: number;
+}
+
+interface SlotIndex {
+  active: string;
+  slots: SlotInfo[];
+}
+
+/** 第一個存檔沿用舊的儲存位置，舊玩家的進度不會消失 */
+function slotKey(id: string): string {
+  return id === 'main' ? KEY : `${KEY}:${id}`;
+}
+
+function summary(p: Profile): Pick<SlotInfo, 'gold' | 'cards' | 'decks' | 'wins'> {
+  const lv = p.stats.byLevel;
+  return {
+    gold: p.gold,
+    cards: Object.values(p.collection).reduce((a, b) => a + b, 0),
+    decks: p.decks.length,
+    wins: lv.easy.w + lv.normal.w + lv.hard.w + p.ladder.standard.w + p.ladder.free.w,
+  };
+}
+
+function readIndex(): SlotIndex {
+  try {
+    const raw = storage()?.getItem(SLOTS_KEY);
+    if (raw) {
+      const idx = JSON.parse(raw) as SlotIndex;
+      if (idx && Array.isArray(idx.slots) && idx.slots.length) {
+        if (!idx.slots.some((x) => x.id === idx.active)) idx.active = idx.slots[0].id;
+        return idx;
+      }
+    }
+  } catch {
+    // 讀取失敗就重建
+  }
+  // 第一次使用存檔功能：把原本的進度當成第一個存檔
+  const now = Date.now();
+  let info = { gold: START_GOLD, cards: 0, decks: 0, wins: 0 };
   try {
     const raw = storage()?.getItem(KEY);
+    info = summary(raw ? sanitize(JSON.parse(raw) as Profile) : newProfile());
+  } catch {
+    // 用預設值
+  }
+  const idx = { active: 'main', slots: [{ id: 'main', name: '存檔 1', created: now, updated: now, ...info }] };
+  writeIndex(idx);
+  return idx;
+}
+
+function writeIndex(idx: SlotIndex): void {
+  try {
+    storage()?.setItem(SLOTS_KEY, JSON.stringify(idx));
+  } catch {
+    // 無法儲存：忽略
+  }
+}
+
+export function listSlots(): { active: string; slots: SlotInfo[] } {
+  const idx = readIndex();
+  return { active: idx.active, slots: [...idx.slots] };
+}
+
+/** 建立新存檔（全新的進度），並切換過去 */
+export function createSlot(name: string): Profile {
+  const idx = readIndex();
+  const id = uid();
+  const p = newProfile();
+  const now = Date.now();
+  idx.slots.push({ id, name: name.trim() || `存檔 ${idx.slots.length + 1}`, created: now, updated: now, ...summary(p) });
+  idx.active = id;
+  writeIndex(idx);
+  saveProfile(p);
+  return p;
+}
+
+export function switchSlot(id: string): Profile {
+  const idx = readIndex();
+  if (idx.slots.some((x) => x.id === id)) {
+    idx.active = id;
+    writeIndex(idx);
+  }
+  return loadProfile();
+}
+
+export function renameSlot(id: string, name: string): void {
+  const idx = readIndex();
+  const s = idx.slots.find((x) => x.id === id);
+  if (s && name.trim()) s.name = name.trim().slice(0, 24);
+  writeIndex(idx);
+}
+
+/** 刪除存檔（不能刪掉最後一個）；回傳刪除後正在使用的存檔 */
+export function deleteSlot(id: string): Profile | null {
+  const idx = readIndex();
+  if (idx.slots.length <= 1) return null;
+  idx.slots = idx.slots.filter((x) => x.id !== id);
+  try {
+    storage()?.removeItem(slotKey(id));
+  } catch {
+    // 忽略
+  }
+  const switched = idx.active === id;
+  if (switched) idx.active = idx.slots[0].id;
+  writeIndex(idx);
+  return switched ? loadProfile() : null;
+}
+
+/** 複製存檔（例如想試另一條路線） */
+export function copySlot(id: string, name: string): void {
+  const idx = readIndex();
+  const src = idx.slots.find((x) => x.id === id);
+  if (!src) return;
+  try {
+    const raw = storage()?.getItem(slotKey(id));
+    if (!raw) return;
+    const nid = uid();
+    storage()?.setItem(slotKey(nid), raw);
+    const now = Date.now();
+    idx.slots.push({ ...src, id: nid, name: name.trim() || `${src.name}（複製）`, created: now, updated: now });
+    writeIndex(idx);
+  } catch {
+    // 忽略
+  }
+}
+
+export function loadProfile(): Profile {
+  const key = slotKey(readIndex().active);
+  try {
+    const raw = storage()?.getItem(key);
     if (raw) {
       const p = JSON.parse(raw) as Profile;
       if (p && p.version === 1) {
@@ -153,10 +294,16 @@ function sanitize(p: Profile): Profile {
 }
 
 export function saveProfile(p: Profile): void {
+  const idx = readIndex();
   try {
-    storage()?.setItem(KEY, JSON.stringify(p));
+    storage()?.setItem(slotKey(idx.active), JSON.stringify(p));
   } catch {
     // 無法儲存（例如私密瀏覽）：忽略
+  }
+  const s = idx.slots.find((x) => x.id === idx.active);
+  if (s) {
+    Object.assign(s, summary(p), { updated: Date.now() });
+    writeIndex(idx);
   }
 }
 

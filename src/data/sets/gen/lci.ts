@@ -1,0 +1,9 @@
+// 由 scripts/gen_cards.py 從 Scryfall 資料自動產生（LCI）：請勿手動修改
+import { add } from '../../dsl';
+
+add({"set": "LCI", "rarity": "C", "name": "Deathcap Marionette", "cost": "{1}{B}", "types": ["Creature"], "subtypes": ["Fungus"], "power": 1, "toughness": 1, "keywords": ["deathtouch"], "abilities": [{"kind": "trigger", "on": "etb", "effects": [{"e": "mill", "n": 2}], "may": "磨兩張牌？"}], "text": "死觸\n當此生物進戰場時，你可以磨兩張牌。"});
+add({"set": "LCI", "rarity": "C", "name": "Greedy Freebooter", "cost": "{B}", "types": ["Creature"], "subtypes": ["Human", "Pirate"], "power": 1, "toughness": 1, "abilities": [{"kind": "trigger", "on": "dies", "effects": [{"e": "scry", "n": 1}, {"e": "token", "token": "tok-treasure"}]}], "text": "當此生物死去時，占卜1，並派出一個珍寶衍生物。"});
+add({"set": "LCI", "rarity": "C", "name": "Screaming Phantom", "cost": "{2}{B}", "types": ["Creature"], "subtypes": ["Spirit"], "power": 2, "toughness": 2, "keywords": ["flying"], "abilities": [{"kind": "trigger", "on": "attacks", "effects": [{"e": "mill", "n": 1}]}], "text": "飛行\n每當此生物攻擊時，磨一張牌。"});
+add({"set": "LCI", "rarity": "C", "name": "Ancestors' Aid", "cost": "{1}{R}", "types": ["Instant"], "spell": {"effects": [{"e": "pump", "what": "T0", "p": 2, "t": 0, "kw": ["first_strike"]}, {"e": "token", "token": "tok-treasure"}], "targets": [{"kind": "creature"}]}, "text": "目標生物得+2/+0並獲得先攻異能直到回合結束。派出一個珍寶衍生物。"});
+add({"set": "LCI", "rarity": "C", "name": "Plundering Pirate", "cost": "{2}{R}", "types": ["Creature"], "subtypes": ["Orc", "Pirate"], "power": 3, "toughness": 2, "abilities": [{"kind": "trigger", "on": "etb", "effects": [{"e": "token", "token": "tok-treasure"}]}], "text": "當此生物進戰場時，派出一個珍寶衍生物。"});
+add({"set": "LCI", "rarity": "C", "name": "Mineshaft Spider", "cost": "{3}{G}", "types": ["Creature"], "subtypes": ["Spider"], "power": 3, "toughness": 4, "keywords": ["reach"], "abilities": [{"kind": "trigger", "on": "etb", "effects": [{"e": "mill", "n": 2}], "may": "磨兩張牌？"}], "text": "延勢\n當此生物進戰場時，你可以磨兩張牌。"});

@@ -342,6 +342,8 @@ export interface CardDef {
   /** {T}：加一點列出的任一種法術力 */
   produces?: Mana[];
   etbTapped?: boolean;
+  /** 產生法術力時要犧牲自己（珍寶） */
+  sacOnMana?: boolean;
   etbTappedUnless?: Cond;
   etbCounters?: number;
   ward?: number;

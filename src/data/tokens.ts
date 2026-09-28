@@ -1,9 +1,21 @@
 import type { CardDef } from '../engine/types';
+import { GEN_TOKENS } from './sets/gen/tokens';
 
 // 衍生物定義（不會出現在補充包）
 const T = (d: Omit<CardDef, 'set' | 'rarity' | 'token'>): CardDef => ({ ...d, set: 'TOK', rarity: 'T', token: true });
 
 export const TOKENS: CardDef[] = [
+  T({
+    id: 'tok-treasure',
+    name: 'Treasure',
+    zh: '珍寶',
+    colors: [],
+    types: ['Artifact'],
+    subtypes: ['Treasure'],
+    produces: ['W', 'U', 'B', 'R', 'G'],
+    sacOnMana: true,
+    text: '{T}，犧牲此神器：加一點任意顏色的法術力。',
+  }),
   T({ id: 'tok-soldier', name: 'Soldier', zh: '士兵', colors: ['W'], types: ['Creature'], subtypes: ['Soldier'], power: 1, toughness: 1, text: '' }),
   T({ id: 'tok-human', name: 'Human', zh: '人類', colors: ['W'], types: ['Creature'], subtypes: ['Human'], power: 1, toughness: 1, text: '' }),
   T({ id: 'tok-goblin', name: 'Goblin', zh: '鬼怪', colors: ['R'], types: ['Creature'], subtypes: ['Goblin'], power: 1, toughness: 1, text: '' }),
@@ -430,4 +442,5 @@ export const TOKENS: CardDef[] = [
     abilities: [{ kind: 'static', self: { grant: { cantBlock: true } } }],
     text: '此衍生物不能阻擋。',
   }),
+  ...GEN_TOKENS,
 ];

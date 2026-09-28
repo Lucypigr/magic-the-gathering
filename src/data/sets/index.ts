@@ -16,3 +16,4 @@ import './otj';
 import './mkm';
 import './lci';
 import './woe';
+import './gen';

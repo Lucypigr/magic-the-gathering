@@ -3,6 +3,7 @@ import type { Level } from './ai/combatAI';
 import { ALL_AI_DECKS, CARDS, aiDecksFor, type Format } from './data';
 import { TIERS, ladderReward, pointsDelta, rankOf, type Opponent } from './meta/ladder';
 import { Ladder } from './ui/Ladder';
+import { Saves } from './ui/Saves';
 import { loadProfile, REWARDS, saveProfile, type Profile, type Settings } from './meta/profile';
 import { Battle, type BattleResult } from './ui/battle/Battle';
 import { ImagesEnabled } from './ui/CardView';
@@ -19,6 +20,7 @@ export type Screen =
   | { name: 'setup' }
   | { name: 'battle'; deckId: string; aiDeckId: string; level: Level; key: number; random: boolean; format: Format; opponent?: Opponent }
   | { name: 'ladder'; auto?: boolean }
+  | { name: 'saves' }
   | { name: 'decks' }
   | { name: 'collection' }
   | { name: 'shop' }
@@ -189,6 +191,9 @@ export default function App() {
     }
     case 'ladder':
       body = <Ladder key={String(screen.auto)} profile={profile} go={go} auto={screen.auto} onStart={startLadder} />;
+      break;
+    case 'saves':
+      body = <Saves profile={profile} go={go} onLoad={(p) => setProfile(p)} />;
       break;
     case 'decks':
       body = <DeckBuilder profile={profile} go={go} update={update} />;
