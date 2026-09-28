@@ -51,6 +51,20 @@ export class MatchController {
     this.gen = runGame(this.g, opts.firstPlayer);
   }
 
+  /** 真人般的思考時間：主要階段比較久，偶爾會想很久 */
+  private humanDelay(d: Decision): number {
+    const main = d.type === 'priority' && g1Main(this.g);
+    let t = this.aiDelay * (0.55 + Math.random() * (main ? 1.4 : 0.8));
+    if (main && Math.random() < 0.05) {
+      t += 2500 + Math.random() * 3500;
+      this.onLongThink?.();
+    }
+    return t;
+  }
+
+  /** AI 準備想很久時通知畫面（可用來顯示「讓我想想…」） */
+  onLongThink: (() => void) | null = null;
+
   subscribe(fn: () => void): () => void {
     this.listeners.add(fn);
     return () => this.listeners.delete(fn);
@@ -126,7 +140,7 @@ export class MatchController {
               this.timer = null;
               this.aiThinking = false;
               this.advance(a);
-            }, this.humanize ? this.aiDelay * (0.55 + Math.random() * (d.type === 'priority' && g1Main(this.g) ? 1.4 : 0.8)) : this.aiDelay);
+            }, this.humanize ? this.humanDelay(d) : this.aiDelay);
             return;
           }
           r = this.gen.next(a);

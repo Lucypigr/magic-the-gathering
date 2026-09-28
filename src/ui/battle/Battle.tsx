@@ -182,6 +182,15 @@ export function Battle(props: Props) {
     else if (e === '打得好！' && r < (opponent.polite ? 0.6 : 0.2)) oppSay('謝謝', 1200);
     else if (e === '謝謝' && r < 0.2) oppSay('打得好！', 1400);
   };
+  useEffect(() => {
+    if (!ctl || !opponent) return;
+    ctl.onLongThink = () => {
+      if (opponent.chatty > 0.4 && Math.random() < 0.5) oppSay('讓我想想…', 300);
+    };
+    return () => {
+      ctl.onLongThink = null;
+    };
+  }, [ctl, opponent, oppSay]);
   const greeted = useRef(false);
   const oppLife = useRef<number | null>(null);
   const concedeCheckedTurn = useRef(0);

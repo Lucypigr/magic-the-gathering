@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState, type ReactNode } from 'react';
 import type { Level } from './ai/combatAI';
-import { ALL_AI_DECKS, CARDS, STANDARD_STARTERS, STARTER_DECKS, aiDecksFor, type Format } from './data';
+import { ALL_AI_DECKS, CARDS, aiDecksFor, type Format } from './data';
 import { TIERS, ladderReward, pointsDelta, rankOf, type Opponent } from './meta/ladder';
 import { Ladder } from './ui/Ladder';
 import { loadProfile, REWARDS, saveProfile, type Profile, type Settings } from './meta/profile';
@@ -80,7 +80,7 @@ export default function App() {
       p.lastDeckId = deckId;
       p.lastFormat = format;
     });
-    go({ name: 'battle', deckId, level: opp.level, aiDeckId: opp.deckId, random: true, key: Date.now(), format, opponent: opp });
+    go({ name: 'battle', deckId, level: opp.level, aiDeckId: opp.deck.id, random: true, key: Date.now(), format, opponent: opp });
   };
 
   const setSettings = (s: Settings) =>
@@ -98,7 +98,7 @@ export default function App() {
       break;
     case 'battle': {
       const deck = profile.decks.find((d) => d.id === screen.deckId);
-      const aiDeck = [...ALL_AI_DECKS, ...STARTER_DECKS, ...STANDARD_STARTERS].find((d) => d.id === screen.aiDeckId)!;
+      const aiDeck = screen.opponent?.deck ?? ALL_AI_DECKS.find((d) => d.id === screen.aiDeckId)!;
       if (!deck) {
         body = <Home profile={profile} go={go} update={update} />;
         break;
