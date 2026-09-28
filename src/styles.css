@@ -1021,68 +1021,13 @@ button {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 330px;
 }
-.table {
-  min-height: 0;
-  overflow: auto;
-  padding: 8px 16px 12px;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  background:
-    radial-gradient(ellipse 80% 60% at 50% 50%, rgba(201, 164, 92, 0.07), transparent 70%),
-    linear-gradient(180deg, #151d27, #111820 50%, #151d27);
-}
-.field {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-.row {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  align-items: center;
-  min-height: 34px;
-}
-.row-creatures {
-  min-height: calc(var(--pw) + 14px);
-  padding-block: 4px;
-}
 .row-empty {
   color: var(--muted);
   font-size: 12px;
   opacity: 0.55;
 }
-.row-sep {
-  width: 1px;
-  align-self: stretch;
-  background: var(--line);
-  margin: 0 4px;
-}
 
 /* 永久物 */
-.perm {
-  width: var(--pw);
-  height: var(--pw);
-  position: relative;
-  flex: none;
-  cursor: pointer;
-  transition: transform 0.18s;
-  color: #fff;
-}
-.perm-rot {
-  position: absolute;
-  inset: 0;
-  border-radius: 9px;
-  overflow: hidden;
-  border: 2px solid #56606b;
-  background: #222;
-  transition:
-    transform 0.2s,
-    filter 0.2s,
-    box-shadow 0.2s;
-  box-shadow: 0 3px 8px rgba(0, 0, 0, 0.5);
-}
 .perm .art {
   position: absolute;
   inset: 0;
@@ -1122,10 +1067,6 @@ button {
 .perm.fr-art,
 .perm.fr-land {
   --edge: #56606b;
-}
-.perm.tapped .perm-rot {
-  transform: rotate(90deg);
-  filter: brightness(0.62) saturate(0.7);
 }
 .perm-name {
   position: absolute;
@@ -1216,12 +1157,6 @@ button {
 .b-att {
   color: var(--brass-hi);
 }
-.perm.attacking.mine {
-  transform: translateY(-10px);
-}
-.perm.attacking.theirs {
-  transform: translateY(10px);
-}
 .perm.attacking .perm-rot {
   box-shadow:
     0 0 0 2px #e0645a,
@@ -1236,8 +1171,8 @@ button {
   box-shadow: 0 0 0 2px var(--good);
 }
 .perm.selectable .perm-rot,
-.land-chip.selectable,
-.avatar.selectable,
+.land-pile.selectable .lp-top,
+.hero-portrait.selectable,
 .stack-item.selectable,
 .hand-card.selectable {
   box-shadow:
@@ -1280,118 +1215,10 @@ button {
 }
 
 /* 地 */
-.land-chip {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  padding: 3px 9px 3px 5px;
-  border-radius: 999px;
-  background: var(--raised);
-  border: 1px solid var(--line);
-  font-size: 12px;
-  cursor: pointer;
-  transition: opacity 0.2s;
-}
-.land-chip.tapped {
-  opacity: 0.45;
-  border-style: dashed;
-}
-.land-chip.focused {
-  border-color: #fff;
-}
-.land-syms {
-  display: inline-flex;
-}
-.land-count {
-  color: var(--brass-hi);
-  font-variant-numeric: tabular-nums;
-}
 
 /* 玩家資訊 */
-.pinfo {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  min-height: 60px;
-}
-.avatar {
-  width: 58px;
-  height: 58px;
-  border-radius: 50%;
-  border: 2px solid var(--line);
-  background: radial-gradient(circle at 35% 30%, #34425a, #1b2330);
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  color: var(--text);
-  flex: none;
-  cursor: default;
-  padding: 0;
-}
-.avatar.selectable {
-  cursor: pointer;
-}
-.pinfo.active .avatar {
-  border-color: var(--brass);
-}
-.life {
-  font-family: var(--font-display);
-  font-size: 24px;
-  line-height: 1;
-  font-variant-numeric: tabular-nums;
-}
-.life-label {
-  font-size: 9px;
-  color: var(--muted);
-}
-.pinfo-main {
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-.pname {
-  font-weight: 700;
-}
-.pdeck {
-  color: var(--muted);
-  font-weight: 400;
-  margin-left: 8px;
-  font-size: 12px;
-}
-.pstats {
-  display: flex;
-  gap: 10px;
-  font-size: 12px;
-  color: var(--muted);
-  font-variant-numeric: tabular-nums;
-  flex-wrap: wrap;
-}
-.pmana {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 1px;
-  font-size: 12px;
-}
-.opp-hand {
-  display: flex;
-  margin-left: auto;
-  padding-left: 30px;
-}
-.opp-hand .card {
-  margin-left: -28px;
-}
 
 /* 中線 */
-.midline {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  padding-block: 8px;
-  border-top: 1px solid rgba(201, 164, 92, 0.25);
-  border-bottom: 1px solid rgba(201, 164, 92, 0.25);
-}
 .phase-track {
   display: flex;
   align-items: center;
@@ -1500,33 +1327,6 @@ button {
 }
 
 /* 手牌 */
-.hand {
-  display: flex;
-  gap: 8px;
-  overflow-x: auto;
-  padding: 14px 4px 6px;
-  min-height: 190px;
-  align-items: flex-end;
-}
-.hand-card {
-  transition:
-    transform 0.15s,
-    box-shadow 0.15s;
-}
-.hand-card:hover {
-  transform: translateY(-8px);
-}
-.hand-card.playable {
-  box-shadow:
-    0 0 0 2px var(--good),
-    0 0 14px rgba(111, 191, 115, 0.55);
-}
-.hand-card.focused {
-  transform: translateY(-12px);
-  box-shadow:
-    0 0 0 3px #fff,
-    0 0 16px rgba(255, 255, 255, 0.35);
-}
 .exile-tag {
   position: absolute;
   top: -10px;
@@ -2177,6 +1977,533 @@ button {
   }
 }
 
+/* ============================================================
+   對戰桌面（競技場風格）
+   ============================================================ */
+.arena {
+  --ph: calc(var(--pw) * 1.3);
+  --lw: calc(var(--pw) * 0.82);
+  position: relative;
+  min-height: 0;
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+  padding: 10px 16px 0;
+  background:
+    radial-gradient(ellipse 70% 55% at 50% 50%, rgba(232, 196, 140, 0.16), transparent 70%),
+    radial-gradient(ellipse 120% 90% at 50% 50%, transparent 55%, rgba(0, 0, 0, 0.55)),
+    repeating-radial-gradient(circle at 30% 40%, rgba(255, 255, 255, 0.012) 0 2px, transparent 2px 7px),
+    linear-gradient(180deg, #2b2a33 0%, #4a3d32 30%, #5a4a38 50%, #4a3d32 70%, #2b2a33 100%);
+}
+.half {
+  flex: 1 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.half-opp {
+  justify-content: flex-start;
+}
+.half-me {
+  justify-content: flex-end;
+}
+.strip {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  align-items: center;
+  gap: 12px;
+}
+.strip-l,
+.strip-r {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  min-width: 0;
+}
+.strip-r {
+  justify-content: flex-end;
+}
+.battle-row {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 18px;
+  min-height: calc(var(--ph) + 20px);
+  flex-wrap: wrap;
+}
+.zone-creatures,
+.zone-others {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  justify-content: center;
+  align-items: center;
+  padding: 6px 0;
+}
+.zone-others {
+  padding-left: 14px;
+  border-left: 1px dashed rgba(255, 255, 255, 0.18);
+}
+.zone-lands {
+  display: flex;
+  gap: 14px;
+  flex-wrap: wrap;
+  align-items: center;
+  padding: 10px 0 4px 8px;
+}
+
+/* 永久物（直式卡片） */
+.perm {
+  width: var(--pw);
+  height: var(--ph);
+  position: relative;
+  flex: none;
+  cursor: pointer;
+  transition:
+    transform 0.18s,
+    width 0.2s,
+    height 0.2s;
+  color: #fff;
+}
+.perm-rot {
+  position: absolute;
+  width: var(--pw);
+  height: var(--ph);
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  border-radius: 10px 10px 7px 7px;
+  overflow: hidden;
+  border: 2px solid #56606b;
+  background: #222;
+  transition:
+    transform 0.2s,
+    filter 0.2s,
+    box-shadow 0.2s;
+  box-shadow: 0 6px 14px rgba(0, 0, 0, 0.6);
+}
+.perm.tapped {
+  width: var(--ph);
+  height: var(--pw);
+}
+.perm.tapped .perm-rot {
+  transform: translate(-50%, -50%) rotate(90deg);
+  filter: brightness(0.65) saturate(0.75);
+}
+.perm.attacking.mine {
+  transform: translateY(-16px);
+}
+.perm.attacking.theirs {
+  transform: translateY(16px);
+}
+.perm-name {
+  top: auto;
+  bottom: 0;
+  padding: 8px 4px 3px;
+  background: linear-gradient(rgba(0, 0, 0, 0), rgba(0, 0, 0, 0.85) 45%);
+  padding-right: 40px;
+}
+.perm:not(:has(.perm-pt)) .perm-name {
+  padding-right: 4px;
+}
+.perm-kw {
+  bottom: auto;
+  top: 3px;
+  left: auto;
+  right: 3px;
+  justify-content: flex-end;
+}
+.perm-badges {
+  top: 3px;
+  right: auto;
+  max-width: 62%;
+}
+.perm-pt {
+  font-size: 15px;
+  padding: 1px 6px;
+  border-radius: 6px;
+  background: linear-gradient(#2a3140, #11151c);
+  border-color: rgba(227, 196, 125, 0.7);
+}
+
+/* 地（疊放） */
+.land-pile {
+  position: relative;
+  width: var(--lw);
+  height: calc(var(--lw) * 1.2 + (var(--layers) - 1) * 4px);
+  flex: none;
+  cursor: pointer;
+  transition:
+    width 0.2s,
+    height 0.2s;
+}
+.land-pile.tapped {
+  width: calc(var(--lw) * 1.2 + (var(--layers) - 1) * 4px);
+  height: var(--lw);
+}
+.lp-rot {
+  position: absolute;
+  width: var(--lw);
+  height: calc(var(--lw) * 1.2);
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, calc(-50% + (var(--layers) - 1) * 2px));
+  transition:
+    transform 0.2s,
+    filter 0.2s;
+}
+.land-pile.tapped .lp-rot {
+  transform: translate(-50%, -50%) rotate(90deg);
+  filter: brightness(0.6) saturate(0.7);
+}
+.lp-under,
+.lp-top {
+  position: absolute;
+  inset: 0;
+  border-radius: 7px;
+  border: 2px solid #9a7a52;
+  overflow: hidden;
+}
+.lp-under {
+  background: #3a3226;
+  transform: translateY(calc(var(--k) * -4px));
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.5);
+}
+.lp-top {
+  background: #222;
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.55);
+  color: #fff;
+}
+.lp-top .art {
+  position: absolute;
+  inset: 0;
+  margin: 0;
+  border: 0;
+}
+.lp-name {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  font-size: 9px;
+  padding: 2px 4px 6px;
+  background: linear-gradient(rgba(0, 0, 0, 0.8), rgba(0, 0, 0, 0));
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.lp-syms {
+  position: absolute;
+  bottom: 3px;
+  left: 0;
+  right: 0;
+  display: flex;
+  justify-content: center;
+}
+.lp-count {
+  position: absolute;
+  top: -8px;
+  left: -8px;
+  z-index: 2;
+  font-size: 12px;
+  font-weight: 700;
+  padding: 0 5px;
+  border-radius: 5px;
+  background: #0c0f14;
+  color: #fff;
+  border: 1px solid rgba(255, 255, 255, 0.5);
+  font-variant-numeric: tabular-nums;
+}
+.land-pile.playable .lp-top {
+  box-shadow: 0 0 0 2px var(--good);
+}
+.land-pile.focused .lp-top {
+  outline: 2px solid #fff;
+}
+
+/* 玩家頭像 */
+.hero-seat {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: 128px;
+}
+.hero-seat.opp {
+  flex-direction: column-reverse;
+}
+.hero-portrait {
+  width: 92px;
+  height: 92px;
+  border-radius: 50%;
+  padding: 0;
+  overflow: hidden;
+  position: relative;
+  border: 3px solid #8a7446;
+  background: radial-gradient(circle at 35% 30%, #34425a, #1b2330);
+  box-shadow:
+    0 0 0 3px rgba(0, 0, 0, 0.45),
+    0 8px 20px rgba(0, 0, 0, 0.6);
+  cursor: default;
+  transition: box-shadow 0.25s;
+}
+.hero-portrait .art {
+  position: absolute;
+  inset: 0;
+  margin: 0;
+  border: 0;
+  border-radius: 0;
+}
+.hero-portrait .art img {
+  object-position: 50% 25%;
+}
+.hero-glyph {
+  font-family: var(--font-display);
+  font-size: 26px;
+  color: var(--brass-hi);
+}
+.hero-seat.active .hero-portrait {
+  border-color: var(--brass-hi);
+  box-shadow:
+    0 0 0 3px rgba(0, 0, 0, 0.45),
+    0 0 26px rgba(255, 190, 90, 0.75);
+}
+.hero-portrait.selectable {
+  cursor: pointer;
+}
+.hero-portrait.hit {
+  animation: heroHit 0.6s;
+}
+.hero-portrait.heal {
+  animation: heroHeal 0.6s;
+}
+@keyframes heroHit {
+  30% {
+    box-shadow: 0 0 0 4px #e0453a, 0 0 30px #e0453a;
+    transform: scale(0.94);
+  }
+}
+@keyframes heroHeal {
+  30% {
+    box-shadow: 0 0 0 4px #6fbf73, 0 0 30px #6fbf73;
+  }
+}
+.hero-life {
+  position: relative;
+  z-index: 2;
+  margin-top: -18px;
+  min-width: 46px;
+  padding: 2px 8px;
+  text-align: center;
+  font-family: var(--font-display);
+  font-size: 22px;
+  font-weight: 700;
+  line-height: 1.1;
+  color: #fff;
+  background: linear-gradient(#3b4251, #161a22);
+  border: 2px solid #c9a45c;
+  border-radius: 12px 12px 18px 18px;
+  font-variant-numeric: tabular-nums;
+  box-shadow: 0 3px 8px rgba(0, 0, 0, 0.6);
+}
+.hero-seat.opp .hero-life {
+  margin-top: 0;
+  margin-bottom: -18px;
+  border-radius: 18px 18px 12px 12px;
+}
+.hero-life.low {
+  color: #ffb3a8;
+  border-color: #e0645a;
+}
+.hero-meta {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  margin-top: 4px;
+  font-size: 12px;
+}
+.hero-seat.opp .hero-meta {
+  margin: 0 0 4px;
+}
+.hero-name {
+  font-weight: 700;
+  text-shadow: 0 1px 3px #000;
+}
+.hero-mana {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 1px;
+  min-height: 12px;
+  max-width: 140px;
+}
+
+/* 牌庫與墳墓場 */
+.piles {
+  display: flex;
+  gap: 10px;
+  align-items: flex-end;
+}
+.pile {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: 0;
+  background: none;
+  border: 0;
+  color: var(--text);
+  font: inherit;
+}
+.pile-gy {
+  cursor: pointer;
+}
+.pile .card {
+  box-shadow:
+    2px 2px 0 #1b1b1b,
+    4px 4px 0 #111,
+    0 6px 12px rgba(0, 0, 0, 0.6);
+}
+.pile-empty {
+  width: 50px;
+  aspect-ratio: 63 / 88;
+  border-radius: 4px;
+  border: 1px dashed rgba(255, 255, 255, 0.3);
+}
+.pile-empty.exile {
+  background: rgba(91, 63, 122, 0.4);
+}
+.pile-count {
+  position: absolute;
+  top: 22px;
+  left: 50%;
+  transform: translateX(-50%);
+  min-width: 22px;
+  text-align: center;
+  font-size: 12px;
+  font-weight: 700;
+  background: rgba(10, 12, 16, 0.85);
+  border-radius: 999px;
+  padding: 0 5px;
+  font-variant-numeric: tabular-nums;
+}
+.pile-label {
+  font-size: 10px;
+  color: var(--muted);
+  text-shadow: 0 1px 2px #000;
+}
+.opp-hand {
+  display: flex;
+  align-items: center;
+  padding-left: 28px;
+  position: relative;
+}
+.opp-hand .card {
+  margin-left: -30px;
+  box-shadow: 0 3px 6px rgba(0, 0, 0, 0.6);
+}
+.opp-hand-n {
+  position: absolute;
+  bottom: -6px;
+  right: -6px;
+  font-size: 11px;
+  font-weight: 700;
+  background: #0c0f14;
+  border: 1px solid rgba(255, 255, 255, 0.4);
+  border-radius: 999px;
+  padding: 0 6px;
+}
+
+/* 中線：階段、堆疊、主要按鈕 */
+.midline {
+  flex: none;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  align-items: center;
+  gap: 10px;
+  padding: 6px 0;
+  margin: 4px -16px;
+  padding-inline: 16px;
+  background: linear-gradient(90deg, transparent, rgba(0, 0, 0, 0.35) 20%, rgba(0, 0, 0, 0.35) 80%, transparent);
+  border-top: 1px solid rgba(227, 196, 125, 0.25);
+  border-bottom: 1px solid rgba(227, 196, 125, 0.25);
+}
+.midline .phase-track {
+  grid-column: 1;
+}
+.midline .stack {
+  grid-column: 2;
+  align-items: center;
+}
+.midline .prompt-bar {
+  grid-column: 3;
+  justify-self: end;
+  background: rgba(20, 24, 32, 0.85);
+  border-radius: 14px;
+  max-width: 520px;
+}
+.btn.btn-go {
+  min-width: 108px;
+  border-radius: 999px;
+  font-weight: 700;
+  background: linear-gradient(#f0a340, #c9651f);
+  border-color: #ffcf85;
+  color: #1a0e02;
+  box-shadow: 0 0 14px rgba(240, 150, 60, 0.55);
+}
+.btn.btn-go:hover {
+  background: linear-gradient(#f6b458, #d8742a);
+}
+
+/* 手牌（扇形） */
+.hand {
+  position: sticky;
+  bottom: 0;
+  z-index: 5;
+  flex: none;
+  display: flex;
+  justify-content: center;
+  align-items: flex-end;
+  padding: 18px 20px 8px;
+  min-height: 180px;
+  margin: 0 -16px;
+  background: linear-gradient(rgba(0, 0, 0, 0), rgba(0, 0, 0, 0.45) 60%);
+  overflow-x: auto;
+}
+.hand .hand-card {
+  --rot: 0deg;
+  --dy: 0px;
+  margin: 0 -9px;
+  transform: translateY(var(--dy)) rotate(var(--rot));
+  transform-origin: 50% 120%;
+  transition:
+    transform 0.15s,
+    box-shadow 0.15s,
+    margin 0.15s;
+  box-shadow: 0 6px 14px rgba(0, 0, 0, 0.6);
+}
+.hand .hand-card:hover,
+.hand .hand-card.focused {
+  transform: translateY(-26px) rotate(0) scale(1.1);
+  z-index: 50 !important;
+  margin: 0 6px;
+}
+.hand .hand-card.playable {
+  box-shadow:
+    0 0 0 2px #7ad3ff,
+    0 0 16px rgba(122, 211, 255, 0.75);
+}
+.hand .hand-card.focused {
+  box-shadow:
+    0 0 0 3px #fff,
+    0 0 18px rgba(255, 255, 255, 0.45);
+}
+.side {
+  background: rgba(22, 27, 36, 0.97);
+}
+
 /* ---------- 窄螢幕 ---------- */
 @media (max-width: 980px) {
   .deck-list-ai {
@@ -2259,7 +2586,72 @@ button {
 }
 @media (max-width: 700px) {
   :root {
-    --pw: 64px;
+    --pw: 60px;
+  }
+  .arena {
+    padding: 6px 8px 0;
+  }
+  .strip {
+    gap: 6px;
+  }
+  .hero-seat {
+    width: 84px;
+  }
+  .hero-portrait {
+    width: 58px;
+    height: 58px;
+  }
+  .hero-life {
+    font-size: 17px;
+    min-width: 36px;
+    margin-top: -12px;
+  }
+  .hero-seat.opp .hero-life {
+    margin-bottom: -12px;
+  }
+  .hero-mana {
+    display: none;
+  }
+  .zone-lands {
+    gap: 10px;
+    padding-left: 6px;
+  }
+  .opp-hand .card:nth-child(n + 3) {
+    display: none;
+  }
+  .opp-hand .card {
+    margin-left: -38px;
+  }
+  .piles {
+    gap: 4px;
+  }
+  .pile .card-xs,
+  .pile-empty {
+    --cw: 36px;
+    width: 36px;
+  }
+  .pile-count {
+    top: 14px;
+  }
+  .midline {
+    grid-template-columns: minmax(0, 1fr);
+    margin-inline: -8px;
+    padding-inline: 8px;
+  }
+  .midline .phase-track,
+  .midline .stack,
+  .midline .prompt-bar {
+    grid-column: 1;
+    justify-self: stretch;
+  }
+  .hand {
+    position: static;
+    min-height: 130px;
+    margin-inline: -8px;
+    justify-content: flex-start;
+  }
+  .hand .hand-card {
+    margin: 0 -14px;
   }
   .deck-list-ai {
     grid-template-columns: minmax(0, 1fr);
@@ -2285,9 +2677,6 @@ button {
   .pool-meta {
     width: 96px;
   }
-  .hand {
-    min-height: 140px;
-  }
   .perm-name {
     font-size: 8px;
   }
@@ -2301,13 +2690,6 @@ button {
   }
   .perm-badges {
     top: 13px;
-  }
-  .avatar {
-    width: 48px;
-    height: 48px;
-  }
-  .life {
-    font-size: 20px;
   }
   .modal .card-detail {
     grid-template-columns: minmax(0, 1fr);
@@ -2329,9 +2711,6 @@ button {
     flex-direction: column;
   }
   .phase-now {
-    display: none;
-  }
-  .opp-hand .card:nth-child(n + 5) {
     display: none;
   }
 }

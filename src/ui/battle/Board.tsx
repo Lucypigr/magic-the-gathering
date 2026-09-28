@@ -1,6 +1,7 @@
 import { activatedAbilities, manaSources } from '../../engine/actions';
 import { cardName, isCreature, isLand, stats } from '../../engine/state';
-import type { Card, GameState, Keyword, PID } from '../../engine/types';
+import { useEffect, useRef, useState, type CSSProperties } from 'react';
+import type { Card, CardDef, GameState, Keyword, PID } from '../../engine/types';
 import { Art, CardBack, CardFace, frameClass } from '../CardView';
 import { KW_ICON, KW_ZH, PHASE_ZH, SUB_ZH } from '../i18n';
 import { ManaSymbol } from '../Mana';
@@ -14,14 +15,6 @@ export interface Marks {
   labels: Map<number, string>;
   focus: number | null;
   playable: Set<number>;
-}
-
-interface ZoneProps {
-  g: GameState;
-  pid: PID;
-  marks: Marks;
-  onCard: (id: number) => void;
-  onHover: (id: number | null) => void;
 }
 
 const SHOW_KW: Keyword[] = ['flying', 'first_strike', 'double_strike', 'deathtouch', 'trample', 'lifelink', 'vigilance', 'menace', 'reach', 'hexproof', 'indestructible', 'defender', 'haste', 'unblockable'];
@@ -84,122 +77,166 @@ export function Permanent({ g, c, marks, onCard, onHover }: { g: GameState; c: C
   );
 }
 
-function LandGroup({ g, cards, marks, onCard, onHover }: { g: GameState; cards: Card[]; marks: Marks; onCard: (id: number) => void; onHover: (id: number | null) => void }) {
+function LandPile({ cards, marks, onCard, onHover }: { cards: Card[]; marks: Marks; onCard: (id: number) => void; onHover: (id: number | null) => void }) {
   const c = cards[0];
   const zh = c.def.zh ?? SUB_ZH[c.def.subtypes?.[0] ?? ''] ?? c.def.name;
   const sel = cards.some((x) => marks.selectable.has(x.id));
+  const layers = Math.min(cards.length, 4);
   return (
     <div
-      className={`land-chip ${c.tapped ? 'tapped' : ''} ${sel ? 'selectable' : ''} ${marks.focus != null && cards.some((x) => x.id === marks.focus) ? 'focused' : ''}`}
+      className={`land-pile ${frameClass(c.def)} ${c.tapped ? 'tapped' : ''} ${sel ? 'selectable' : ''} ${marks.focus != null && cards.some((x) => x.id === marks.focus) ? 'focused' : ''} ${cards.some((x) => marks.playable.has(x.id)) ? 'playable' : ''}`}
+      style={{ '--layers': layers } as CSSProperties}
       onClick={() => onCard(c.id)}
       onMouseEnter={() => onHover(c.id)}
       onMouseLeave={() => onHover(null)}
-      title={`${cardName(c)}${c.tapped ? '（已橫置）' : ''}`}
+      title={`${cardName(c)}${cards.length > 1 ? ` ×${cards.length}` : ''}${c.tapped ? '（已橫置）' : ''}`}
       role="button"
       tabIndex={0}
+      onKeyDown={(e) => (e.key === 'Enter' || e.key === ' ') && onCard(c.id)}
+      aria-label={`${cardName(c)} ${cards.length} 張`}
     >
-      <span className="land-syms">
-        {(c.def.produces ?? []).map((m) => (
-          <ManaSymbol key={m} sym={m} size={16} />
+      <div className="lp-rot">
+        {Array.from({ length: layers - 1 }, (_, i) => (
+          <div key={i} className="lp-under" style={{ '--k': layers - 1 - i } as CSSProperties} />
         ))}
-      </span>
-      <span className="land-name">{c.def.supertypes?.includes('Basic') ? zh : cardName(c)}</span>
-      {cards.length > 1 && <span className="land-count">×{cards.length}</span>}
+        <div className="lp-top">
+          <Art def={c.def} />
+          <div className="lp-name">{c.def.supertypes?.includes('Basic') ? zh : cardName(c)}</div>
+          <div className="lp-syms">
+            {(c.def.produces ?? []).map((m) => (
+              <ManaSymbol key={m} sym={m} size={13} />
+            ))}
+          </div>
+        </div>
+      </div>
+      {cards.length > 1 && <span className="lp-count">×{cards.length}</span>}
     </div>
   );
 }
 
-export function PlayerField({ g, pid, marks, onCard, onHover }: ZoneProps) {
-  const perms = g.battlefield.map((id) => g.cards[id]).filter((c) => c.controller === pid);
-  const creatures = perms.filter((c) => isCreature(c));
-  const others = perms.filter((c) => !isCreature(c) && !isLand(c) && !c.def.aura);
-  const auras = perms.filter((c) => !isCreature(c) && c.def.aura && !c.token);
-  const lands = perms.filter((c) => isLand(c) && !isCreature(c));
-  // 沒有起動式異能的同名地合併顯示
+function permsOf(g: GameState, pid: PID) {
+  return g.battlefield.map((id) => g.cards[id]).filter((c) => c.controller === pid);
+}
+
+interface PartProps {
+  g: GameState;
+  pid: PID;
+  marks: Marks;
+  onCard: (id: number) => void;
+  onHover: (id: number | null) => void;
+}
+
+/** 生物區（戰場中央） */
+export function CreatureZone({ g, pid, marks, onCard, onHover }: PartProps) {
+  const creatures = permsOf(g, pid).filter((c) => isCreature(c));
+  return (
+    <div className={`zone-creatures ${pid === 0 ? 'me' : 'opp'}`}>
+      {creatures.map((c) => (
+        <Permanent key={c.id} g={g} c={c} marks={marks} onCard={onCard} onHover={onHover} />
+      ))}
+    </div>
+  );
+}
+
+/** 地：同名地疊成一疊並標示數量 */
+export function LandZone({ g, pid, marks, onCard, onHover }: PartProps) {
+  const lands = permsOf(g, pid).filter((c) => isLand(c) && !isCreature(c));
   const groups: Card[][] = [];
-  const singles: Card[] = [];
   for (const l of lands) {
-    if (activatedAbilities(l.def).length > 0) {
-      singles.push(l);
-      continue;
-    }
-    const grp = groups.find((gr) => gr[0].def.id === l.def.id && gr[0].tapped === l.tapped);
+    const grp = activatedAbilities(l.def).length > 0 ? undefined : groups.find((gr) => gr[0].def.id === l.def.id && gr[0].tapped === l.tapped);
     if (grp) grp.push(l);
     else groups.push([l]);
   }
   groups.sort((a, b) => a[0].def.name.localeCompare(b[0].def.name) || Number(a[0].tapped) - Number(b[0].tapped));
-  const creatureRow = (
-    <div className="row row-creatures">
-      {creatures.length === 0 && others.length === 0 && auras.length === 0 && <div className="row-empty">沒有生物</div>}
-      {creatures.map((c) => (
-        <Permanent key={c.id} g={g} c={c} marks={marks} onCard={onCard} onHover={onHover} />
-      ))}
-      {others.length + auras.length > 0 && <div className="row-sep" />}
-      {[...others, ...auras].map((c) => (
-        <Permanent key={c.id} g={g} c={c} marks={marks} onCard={onCard} onHover={onHover} />
-      ))}
-    </div>
-  );
-  const landRow = (
-    <div className="row row-lands">
-      {lands.length === 0 && <div className="row-empty">沒有地</div>}
+  return (
+    <div className="zone-lands">
       {groups.map((gr) => (
-        <LandGroup key={gr[0].id} g={g} cards={gr} marks={marks} onCard={onCard} onHover={onHover} />
-      ))}
-      {singles.map((c) => (
-        <LandGroup key={c.id} g={g} cards={[c]} marks={marks} onCard={onCard} onHover={onHover} />
+        <LandPile key={gr[0].id} cards={gr} marks={marks} onCard={onCard} onHover={onHover} />
       ))}
     </div>
   );
-  return <div className={`field field-${pid === 0 ? 'me' : 'opp'}`}>{pid === 0 ? [creatureRow, landRow].map((r, i) => <div key={i}>{r}</div>) : [landRow, creatureRow].map((r, i) => <div key={i}>{r}</div>)}</div>;
 }
 
-export function PlayerInfo({
-  g,
-  pid,
-  selectable,
-  onPlayer,
-  onGraveyard,
-}: {
-  g: GameState;
-  pid: PID;
-  selectable: boolean;
-  onPlayer: () => void;
-  onGraveyard: () => void;
-}) {
+/** 神器、結界等非生物非地的永久物 */
+export function OtherZone({ g, pid, marks, onCard, onHover }: PartProps) {
+  const others = permsOf(g, pid).filter((c) => !isCreature(c) && !isLand(c) && !(c.def.aura && c.token));
+  if (!others.length) return null;
+  return (
+    <div className="zone-others">
+      {others.map((c) => (
+        <Permanent key={c.id} g={g} c={c} marks={marks} onCard={onCard} onHover={onHover} />
+      ))}
+    </div>
+  );
+}
+
+/** 玩家頭像與生命值 */
+export function Avatar({ g, pid, face, selectable, onPlayer }: { g: GameState; pid: PID; face: CardDef | null; selectable: boolean; onPlayer: () => void }) {
   const p = g.players[pid];
   const mana = manaSources(g, pid);
-  const active = g.active === pid;
+  const prev = useRef(p.life);
+  const [flash, setFlash] = useState<'hit' | 'heal' | null>(null);
+  useEffect(() => {
+    if (p.life === prev.current) return;
+    setFlash(p.life < prev.current ? 'hit' : 'heal');
+    prev.current = p.life;
+    const t = setTimeout(() => setFlash(null), 700);
+    return () => clearTimeout(t);
+  }, [p.life]);
   return (
-    <div className={`pinfo ${pid === 0 ? 'pinfo-me' : 'pinfo-opp'} ${active ? 'active' : ''}`}>
-      <button className={`avatar ${selectable ? 'selectable' : ''}`} onClick={onPlayer} aria-label={`${p.name}（生命 ${p.life}）`}>
-        <span className="life">{p.life}</span>
-        <span className="life-label">生命</span>
+    <div className={`hero-seat ${pid === 0 ? 'me' : 'opp'} ${g.active === pid ? 'active' : ''}`}>
+      <button className={`hero-portrait ${selectable ? 'selectable' : ''} ${flash ?? ''}`} onClick={onPlayer} aria-label={`${p.name}（生命 ${p.life}）`}>
+        {face ? <Art def={face} /> : <span className="hero-glyph">{pid === 0 ? '你' : 'AI'}</span>}
       </button>
-      <div className="pinfo-main">
-        <div className="pname">
-          {p.name}
-          <span className="pdeck">{p.deckName}</span>
-        </div>
-        <div className="pstats">
-          <span>手牌 {p.hand.length}</span>
-          <span>牌庫 {p.library.length}</span>
-          <button className="linkish" onClick={onGraveyard}>
-            墳墓場 {p.graveyard.length}
-          </button>
-          {p.exile.length > 0 && <span>放逐 {p.exile.length}</span>}
-        </div>
-        <div className="pmana" title="目前可用的法術力來源">
-          {mana.length === 0 ? <span className="dim">無可用法術力</span> : mana.map((m) => <ManaSymbol key={m.id} sym={m.produces.length === 1 ? m.produces[0] : 'C'} size={15} />)}
-        </div>
-      </div>
-      {pid === 1 && (
-        <div className="opp-hand" aria-label={`對手手牌 ${p.hand.length} 張`}>
-          {p.hand.slice(0, 8).map((id) => (
-            <CardBack key={id} size="xs" />
+      <div className={`hero-life ${p.life <= 5 ? 'low' : ''}`}>{p.life}</div>
+      <div className="hero-meta">
+        <span className="hero-name">{p.name}</span>
+        <span className="hero-mana" title="目前可用的法術力來源">
+          {mana.map((m) => (
+            <ManaSymbol key={m.id} sym={m.produces.length === 1 ? m.produces[0] : 'C'} size={12} />
           ))}
+        </span>
+      </div>
+    </div>
+  );
+}
+
+/** 牌庫、墳墓場、放逐區 */
+export function Piles({ g, pid, onGraveyard, onHover }: { g: GameState; pid: PID; onGraveyard: () => void; onHover: (id: number | null) => void }) {
+  const p = g.players[pid];
+  const top = p.graveyard.length ? g.cards[p.graveyard[p.graveyard.length - 1]] : null;
+  return (
+    <div className={`piles ${pid === 0 ? 'me' : 'opp'}`}>
+      <div className="pile" title={`牌庫 ${p.library.length} 張`}>
+        <CardBack size="xs" />
+        <span className="pile-count">{p.library.length}</span>
+        <span className="pile-label">牌庫</span>
+      </div>
+      <button className="pile pile-gy" onClick={onGraveyard} onMouseEnter={() => top && onHover(top.id)} onMouseLeave={() => onHover(null)} title={`墳墓場 ${p.graveyard.length} 張`}>
+        {top ? <CardFace def={top.def} size="xs" /> : <div className="pile-empty" />}
+        <span className="pile-count">{p.graveyard.length}</span>
+        <span className="pile-label">墳墓場</span>
+      </button>
+      {p.exile.length > 0 && (
+        <div className="pile" title={`放逐區 ${p.exile.length} 張`}>
+          <div className="pile-empty exile" />
+          <span className="pile-count">{p.exile.length}</span>
+          <span className="pile-label">放逐</span>
         </div>
       )}
+    </div>
+  );
+}
+
+/** 對手的手牌（牌背） */
+export function OppHand({ g }: { g: GameState }) {
+  const n = g.players[1].hand.length;
+  return (
+    <div className="opp-hand" aria-label={`對手手牌 ${n} 張`} title={`對手手牌 ${n} 張`}>
+      {Array.from({ length: Math.min(n, 8) }, (_, i) => (
+        <CardBack key={i} size="xs" />
+      ))}
+      <span className="opp-hand-n">{n}</span>
     </div>
   );
 }

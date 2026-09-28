@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, type MouseEvent, type ReactNode } from 'react';
+import { createContext, useContext, useState, type CSSProperties, type MouseEvent, type ReactNode } from 'react';
 import { displayName, zhName } from '../data/names';
 import { SET_INFO, isStandardBanned, isStandardLegal } from '../data';
 import { colorsOf } from '../engine/mana';
@@ -59,9 +59,10 @@ export interface CardFaceProps {
   onMouseEnter?: () => void;
   children?: ReactNode;
   title?: string;
+  style?: CSSProperties;
 }
 
-export function CardFace({ def, size = 'md', pt, showText, className = '', onClick, onDoubleClick, onMouseEnter, children, title }: CardFaceProps) {
+export function CardFace({ def, size = 'md', pt, showText, className = '', onClick, onDoubleClick, onMouseEnter, children, title, style }: CardFaceProps) {
   const isCr = def.types.includes('Creature');
   const p = pt?.p ?? def.power ?? 0;
   const t = pt?.t ?? def.toughness ?? 0;
@@ -73,6 +74,7 @@ export function CardFace({ def, size = 'md', pt, showText, className = '', onCli
       onDoubleClick={onDoubleClick}
       onMouseEnter={onMouseEnter}
       title={title}
+      style={style}
       role={onClick ? 'button' : undefined}
       tabIndex={onClick ? 0 : undefined}
       onKeyDown={onClick ? (e) => (e.key === 'Enter' || e.key === ' ') && onClick(e as unknown as MouseEvent) : undefined}
