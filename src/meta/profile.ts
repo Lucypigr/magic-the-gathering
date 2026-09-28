@@ -13,6 +13,8 @@ export interface Settings {
   realImages: boolean;
   aiSpeed: 'slow' | 'normal' | 'fast';
   stopMode: 'smart' | 'all';
+  /** 卡名與卡面的語言 */
+  cardLang: 'zh' | 'en';
 }
 
 export interface Record_ {
@@ -71,7 +73,7 @@ export function newProfile(): Profile {
       vsDeck: Object.fromEntries(AI_DECKS.map((d) => [d.id, { w: 0, l: 0 }])),
       streak: 0,
     },
-    settings: { realImages: true, aiSpeed: 'normal', stopMode: 'smart' },
+    settings: { realImages: true, aiSpeed: 'normal', stopMode: 'smart', cardLang: 'zh' },
     packsOpened: 0,
     created: Date.now(),
   };

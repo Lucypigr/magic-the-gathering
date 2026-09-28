@@ -1,3 +1,4 @@
+import { displayName, zhName } from '../data/names';
 import { useMemo, useState } from 'react';
 import type { Screen, UpdateProfile } from '../App';
 import { BASIC_LANDS, COLLECTIBLE, SET_INFO, deckSize } from '../data';
@@ -23,7 +24,7 @@ export interface PoolFilter {
 export function matchFilter(d: CardDef, f: PoolFilter): boolean {
   if (f.q) {
     const q = f.q.toLowerCase();
-    if (!d.name.toLowerCase().includes(q) && !d.text.includes(f.q) && !(d.zh ?? '').includes(f.q)) return false;
+    if (!d.name.toLowerCase().includes(q) && !d.text.includes(f.q) && !(zhName(d) ?? '').includes(f.q)) return false;
   }
   if (f.color) {
     const cols = colorsOf(d);
@@ -320,7 +321,7 @@ export function DeckBuilder({ profile, go, update }: { profile: Profile; go: (s:
                   <div key={def.id} className="deck-row">
                     <span className="dr-n">{n}</span>
                     <button className="dr-name linkish" onClick={() => setDetail(def)}>
-                      {def.zh && isBasic(def.id) ? def.zh : def.name}
+                      {def.zh && isBasic(def.id) ? def.zh : displayName(def)}
                     </button>
                     <ManaCost cost={def.cost} size={14} />
                     <button className="icon-btn" onClick={() => remove(def.id)} aria-label="減少">

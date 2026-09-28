@@ -1,3 +1,4 @@
+import { displayName } from '../data/names';
 import { useMemo, useState } from 'react';
 import type { Screen, UpdateProfile } from '../App';
 import { COLLECTIBLE, SET_INFO } from '../data';
@@ -75,7 +76,7 @@ export function Collection({ profile, go, update }: { profile: Profile; go: (s: 
         })}
       </div>
       {detail && (
-        <Modal title={detail.name} onClose={() => setDetail(null)} wide>
+        <Modal title={displayName(detail)} onClose={() => setDetail(null)} wide>
           <CardDetail
             def={detail}
             extra={

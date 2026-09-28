@@ -10,6 +10,8 @@ export default defineConfig(({ mode }) => ({
     outDir: mode === 'single' ? 'dist-single' : 'dist',
     // 單檔版不複製 public/（卡圖改用 build:offline 內嵌）
     copyPublicDir: mode !== 'single',
+    // 簡轉繁字典（opencc）是只在需要時才載入的獨立檔案
+    chunkSizeWarningLimit: 1200,
   },
   test: {
     environment: 'node',

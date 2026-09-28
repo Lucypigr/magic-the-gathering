@@ -689,6 +689,12 @@ button {
   flex-direction: column;
   gap: 10px;
 }
+.lang-row {
+  display: flex;
+  gap: 16px;
+  align-items: center;
+  flex-wrap: wrap;
+}
 .reset-row {
   display: flex;
   gap: 8px;

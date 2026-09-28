@@ -1,4 +1,5 @@
-import { createContext, useContext, type MouseEvent, type ReactNode } from 'react';
+import { createContext, useContext, useState, type MouseEvent, type ReactNode } from 'react';
+import { displayName, zhName } from '../data/names';
 import { colorsOf } from '../engine/mana';
 import type { CardDef, Keyword } from '../engine/types';
 import { KW_DESC, KW_ZH, RARITY_ZH, typeLine } from './i18n';
@@ -77,7 +78,7 @@ export function CardFace({ def, size = 'md', pt, showText, className = '', onCli
     >
       <div className="card-inner">
         <div className="card-title">
-          <span className="card-name">{def.name}</span>
+          <span className="card-name">{displayName(def)}</span>
           <ManaCost cost={def.cost} />
         </div>
         <Art def={def} />
@@ -108,21 +109,25 @@ export function CardBack({ size = 'sm' }: { size?: 'xs' | 'sm' | 'md' }) {
 /** 卡牌詳細資訊（檢視器 / 收藏） */
 export function CardDetail({ def, extra }: { def: CardDef; extra?: ReactNode }) {
   const img = useCardImage(def);
+  const [broken, setBroken] = useState<string | null>(null);
+  const name = displayName(def);
+  // 中文模式顯示英文原名、英文模式顯示中文名，方便對照
+  const alt = name === def.name ? zhName(def) : def.name;
   const kws = new Set<Keyword>(def.keywords ?? []);
   for (const k of Object.keys(KW_ZH) as Keyword[]) if (def.text.includes(KW_ZH[k])) kws.add(k);
   return (
     <div className="card-detail">
-      {img?.full ? (
-        <img className="card-detail-img" src={img.full} alt={def.name} draggable={false} />
+      {img?.full && broken !== img.full ? (
+        <img className="card-detail-img" src={img.full} alt={name} draggable={false} onError={() => setBroken(img.full!)} />
       ) : (
         <CardFace def={def} size="lg" showText />
       )}
       <div className="card-detail-info">
         <div className="cd-head">
-          <h3 className="cd-name">{def.name}</h3>
+          <h3 className="cd-name">{name}</h3>
           <ManaCost cost={def.cost} size={18} />
         </div>
-        {def.zh && <div className="cd-zh">{def.zh}</div>}
+        {alt && <div className="cd-zh">{alt}</div>}
         <div className="cd-type">
           {typeLine(def)}
           <span className={`rarity-tag r-${def.rarity}`}>{RARITY_ZH[def.rarity]}</span>
