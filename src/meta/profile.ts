@@ -4,6 +4,7 @@ import { getDef } from '../engine/registry';
 import { displayName } from '../data/names';
 import { hasDef } from '../engine/registry';
 import type { Rarity } from '../engine/types';
+import { newLadder, type LadderState } from './ladder';
 
 export interface SavedDeck {
   id: string;
@@ -39,6 +40,8 @@ export interface Profile {
   settings: Settings;
   packsOpened: number;
   created: number;
+  /** 天梯配對 */
+  ladder: LadderState;
 }
 
 const KEY = 'mtg-duel-arena-profile-v1';
@@ -86,6 +89,7 @@ export function newProfile(): Profile {
     settings: { realImages: true, aiSpeed: 'normal', stopMode: 'smart', cardLang: 'zh' },
     packsOpened: 0,
     created: Date.now(),
+    ladder: newLadder(),
   };
 }
 
@@ -125,6 +129,11 @@ function sanitize(p: Profile): Profile {
       byLevel: { ...base.stats.byLevel, ...p.stats?.byLevel },
       vsDeck: { ...base.stats.vsDeck, ...p.stats?.vsDeck },
       streak: p.stats?.streak ?? 0,
+    },
+    ladder: {
+      standard: { ...base.ladder.standard, ...p.ladder?.standard },
+      free: { ...base.ladder.free, ...p.ladder?.free },
+      history: p.ladder?.history ?? [],
     },
   };
   // 舊存檔：補發兩套標準入門套牌
