@@ -2854,6 +2854,65 @@ button {
   }
 }
 
+/* 換牌、選牌時的放大檢視 */
+.inspect-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 440px);
+  gap: 16px;
+  align-items: start;
+}
+.inspect-layout .card-grid {
+  justify-content: flex-start;
+}
+.inspect-detail {
+  position: sticky;
+  top: 0;
+  padding: 12px;
+  border-radius: 12px;
+  background: var(--raised);
+  border: 1px solid var(--line);
+}
+.modal .inspect-detail .card-detail {
+  grid-template-columns: 200px minmax(0, 1fr);
+}
+.inspect-detail .card-lg {
+  --cw: 200px;
+}
+.inspect-detail .card-detail-img {
+  max-width: 200px;
+}
+.card.inspecting {
+  outline: 3px solid #fff;
+  outline-offset: 2px;
+}
+.inspect-hint {
+  display: block;
+  font-size: 12px;
+  margin-top: 4px;
+}
+@media (max-width: 860px) {
+  .inspect-layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .inspect-layout .card-grid {
+    justify-content: center;
+  }
+  .inspect-detail {
+    position: static;
+    order: -1;
+    padding: 8px;
+  }
+  .modal .inspect-detail .card-detail {
+    grid-template-columns: 130px minmax(0, 1fr);
+  }
+  .inspect-detail .card-lg {
+    --cw: 130px;
+  }
+  .inspect-detail .card-detail-img {
+    max-width: 130px;
+  }
+}
+
 /* ---------- 窄螢幕 ---------- */
 @media (max-width: 980px) {
   .deck-list-ai {
