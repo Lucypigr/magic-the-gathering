@@ -2,7 +2,7 @@ import { registerCards } from '../engine/registry';
 import type { CardDef, SetCode } from '../engine/types';
 import { CARDS } from './cards';
 import { TOKENS } from './tokens';
-import { STANDARD_BANNED, STANDARD_LEGAL_CLASSICS } from './reprints';
+import { REPRINTS, STANDARD_BANNED, STANDARD_LEGAL_CLASSICS } from './reprints';
 import { AI_DECKS, type DeckList } from './decks';
 import { STANDARD_AI_DECKS } from './standardDecks';
 import { STANDARD_SETS } from '../engine/types';
@@ -60,7 +60,8 @@ export function cardsInSet(set: SetCode): CardDef[] {
 export type Format = 'free' | 'standard';
 
 const STD_SET_CODES = new Set<string>(STANDARD_SETS);
-const STD_CLASSICS = new Set(STANDARD_LEGAL_CLASSICS);
+// 在現行標準賽系列中重印過的卡也是標準賽合法
+const STD_CLASSICS = new Set([...STANDARD_LEGAL_CLASSICS, ...Object.values(REPRINTS).flatMap((l) => (l ?? []).map(([id]) => id))]);
 const STD_BANNED = new Set(STANDARD_BANNED);
 
 /** 此卡在標準賽中是否可以使用 */

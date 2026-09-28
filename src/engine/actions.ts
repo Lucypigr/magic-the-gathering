@@ -37,7 +37,7 @@ export function manaSources(g: GameState, pid: PID, exclude?: number): ManaSourc
     if (c.controller !== pid || c.tapped || !c.def.produces || id === exclude) continue;
     const cr = isCreature(c);
     if (cr && c.sick && !hasKw(g, c, 'haste')) continue;
-    out.push({ id, produces: c.def.produces, isCreature: cr });
+    out.push({ id, produces: c.def.produces, isCreature: cr, sac: c.def.sacOnMana });
   }
   return out;
 }
@@ -50,6 +50,7 @@ export function payCost(g: GameState, pid: PID, cost: ManaCost, exclude?: number
   const pay = findPayment(cost, manaSources(g, pid, exclude));
   if (!pay) return false;
   for (const p of pay) g.cards[p.id].tapped = true;
+  for (const p of pay) if (g.cards[p.id].def.sacOnMana) sacrifice(g, g.cards[p.id]);
   g.version++;
   return true;
 }

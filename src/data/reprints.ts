@@ -1,5 +1,6 @@
 // 由 Scryfall 資料產生：其他系列也有印刷的卡牌（會出現在該系列的補充包中）與標準賽合法的經典卡牌。
 import type { Rarity, StandardSet } from '../engine/types';
+import { GEN_REPRINTS } from './sets/gen/reprints';
 
 /** 各標準賽系列補充包中額外收錄的卡（卡牌 id 與在該系列的稀有度） */
 export const REPRINTS: Partial<Record<StandardSet, [string, Rarity][]>> = {
@@ -183,3 +184,9 @@ export const STANDARD_BANNED: string[] = [
   'monstrous-rage',
   'up-the-beanstalk',
 ];
+
+// 自動產生的卡牌在其他系列的重印
+for (const [set, list] of Object.entries(GEN_REPRINTS) as [StandardSet, [string, Rarity][]][]) {
+  const cur = (REPRINTS[set] ??= []);
+  for (const [id, r] of list) if (!cur.some(([x]) => x === id)) cur.push([id, r]);
+}
