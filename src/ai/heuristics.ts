@@ -50,6 +50,11 @@ export function polarity(effects: Effect[], idx: number): Polarity {
         case 'counters':
           if (refIs(ef.what, key)) set(typeof ef.n === 'number' && ef.n < 0 ? 'harm' : 'help');
           break;
+        case 'removeCounters':
+        case 'tuck':
+          if (refIs(ef.what, key)) set('harm');
+          break;
+        case 'connive':
         case 'untap':
         case 'attach':
         case 'role':
@@ -273,6 +278,14 @@ export function heuristicChoose(g: GameState, d: Extract<Decision, { type: 'choo
       return take(byDesc((c) => defValue(c.def)), 1);
     case 'landFromHand':
       return opts.length ? [opts[0]] : [];
+    case 'tutor':
+      return take(byDesc((c) => handCardValue(g, pid, c)), 1);
+    case 'blight': {
+      // 優先放在不重要或防禦力高的生物上；沒有合適的就不支付
+      const ok = opts.filter((id) => stats(g, card(id)).t > 1 || card(id).token);
+      const sorted = ok.sort((a, b) => creatureValue(g, card(a)) - creatureValue(g, card(b)));
+      return sorted.length ? [sorted[0]] : d.min > 0 ? opts.slice(0, d.min) : [];
+    }
   }
   return opts.slice(0, d.min);
 }

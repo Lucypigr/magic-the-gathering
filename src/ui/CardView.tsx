@@ -1,5 +1,6 @@
 import { createContext, useContext, useState, type MouseEvent, type ReactNode } from 'react';
 import { displayName, zhName } from '../data/names';
+import { SET_INFO, isStandardBanned, isStandardLegal } from '../data';
 import { colorsOf } from '../engine/mana';
 import type { CardDef, Keyword } from '../engine/types';
 import { KW_DESC, KW_ZH, RARITY_ZH, typeLine } from './i18n';
@@ -132,6 +133,15 @@ export function CardDetail({ def, extra }: { def: CardDef; extra?: ReactNode }) 
           {typeLine(def)}
           <span className={`rarity-tag r-${def.rarity}`}>{RARITY_ZH[def.rarity]}</span>
         </div>
+        {!def.token && def.set !== 'BAS' && (
+          <div className="cd-set">
+            {SET_INFO[def.set as 'FDN'].name}
+            {SET_INFO[def.set as 'FDN'].released ? `（${SET_INFO[def.set as 'FDN'].released}）` : ''}
+            <span className={`std-tag ${isStandardLegal(def) ? 'ok' : isStandardBanned(def) ? 'ban' : ''}`}>
+              {isStandardLegal(def) ? '標準賽合法' : isStandardBanned(def) ? '標準賽禁卡' : '非標準賽'}
+            </span>
+          </div>
+        )}
         {def.text && (
           <div className="cd-text">
             <RulesText text={def.text} size={16} />

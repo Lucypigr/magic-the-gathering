@@ -3,7 +3,8 @@ import { useState } from 'react';
 import type { Screen, UpdateProfile } from '../App';
 import { SET_INFO } from '../data';
 import { getDef } from '../engine/registry';
-import { addToCollection, openPack, PRODUCTS, type PackResult, type Product } from '../meta/booster';
+import { addToCollection, CLASSIC_PRODUCTS, openPack, poolSize, STANDARD_PRODUCTS, type PackResult, type Product } from '../meta/booster';
+import { STANDARD_SETS } from '../engine/types';
 import { DUPLICATE_GOLD, type Profile } from '../meta/profile';
 import { CardBack, CardDetail, CardFace } from './CardView';
 import { Gold, Modal } from './common';
@@ -37,8 +38,39 @@ export function Shop({ profile, go, update }: { profile: Profile; go: (s: Screen
         每包 12 張：7 普通、3 非普通、1 張稀有或秘稀，外加 1 張隨機稀有度。已經有 4 張的卡再開到會自動換成金幣（普通 {DUPLICATE_GOLD.C}、非普通 {DUPLICATE_GOLD.U}、稀有 {DUPLICATE_GOLD.R}、秘稀 {DUPLICATE_GOLD.M}）。
       </p>
       {msg && <p className="notice">{msg}</p>}
+      <h3 className="section-title">標準賽系列</h3>
+      <p className="muted small">開到的卡都能用在標準模式。最新的系列排在最前面。</p>
+      <div className="set-shop">
+        {[...STANDARD_SETS].reverse().map((s) => {
+          const [one, five] = STANDARD_PRODUCTS.filter((p) => p.set === s);
+          return (
+            <div key={s} className={`set-tile set-${s}`}>
+              <div className="set-tile-head">
+                <span className="set-code">{s}</span>
+                <div>
+                  <div className="set-tile-name">{SET_INFO[s].short}</div>
+                  <div className="muted small">
+                    {SET_INFO[s].name} · {SET_INFO[s].released} · {poolSize(s)} 種卡
+                  </div>
+                </div>
+              </div>
+              <p className="small set-tile-desc">{SET_INFO[s].desc}</p>
+              <div className="set-tile-buy">
+                <button className="btn btn-primary btn-small" disabled={profile.gold < one.price} onClick={() => buy(one)}>
+                  1 包 · {one.price}
+                </button>
+                <button className="btn btn-small" disabled={profile.gold < five.price} onClick={() => buy(five)}>
+                  5 包 · {five.price}
+                </button>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+      <h3 className="section-title">經典補充包</h3>
+      <p className="muted small">收錄歷年核心系列與過去環境的強卡，適合自由模式。</p>
       <div className="shop-grid">
-        {PRODUCTS.map((p) => (
+        {CLASSIC_PRODUCTS.map((p) => (
           <div key={p.id} className={`product set-${p.set}`}>
             <div className="pack-art" aria-hidden="true">
               <span className="pack-set">{SET_INFO[p.set as 'FDN'].short}</span>

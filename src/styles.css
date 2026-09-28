@@ -171,6 +171,23 @@ button {
   background: #97d3a4;
   color: #123f1f;
 }
+.mana-hyb {
+  position: relative;
+  color: #231c25;
+}
+.mana-hyb > span {
+  position: absolute;
+  font-size: 0.6em;
+  line-height: 1;
+}
+.mana-hyb .hyb-a {
+  top: 8%;
+  left: 12%;
+}
+.mana-hyb .hyb-b {
+  bottom: 8%;
+  right: 12%;
+}
 .mana-N,
 .mana-C,
 .mana-T {
@@ -1790,6 +1807,28 @@ button {
   color: #f0a39a;
   font-size: 12px;
 }
+.deck-status .err-soft {
+  color: var(--muted);
+}
+.fmt-row {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin: 4px 0;
+}
+.fmt-badge {
+  font-size: 12px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+}
+.fmt-badge.ok {
+  color: var(--good);
+  border-color: color-mix(in srgb, var(--good) 50%, transparent);
+}
+.fmt-badge.bad {
+  color: var(--muted);
+}
 .curve {
   display: grid;
   grid-template-columns: repeat(7, 1fr);
@@ -1861,17 +1900,24 @@ button {
 }
 .set-progress {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
-  gap: 10px;
+  grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
+  gap: 8px;
 }
 .sp {
   background: var(--panel);
   border: 1px solid var(--line);
   border-radius: 10px;
-  padding: 10px 12px;
+  padding: 8px 10px;
   display: grid;
   grid-template-columns: 1fr auto;
-  gap: 6px 10px;
+  gap: 4px 8px;
+  text-align: left;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+.sp.on {
+  border-color: var(--brass);
 }
 .sp-name {
   font-size: 13px;
@@ -1894,7 +1940,107 @@ button {
   font-variant-numeric: tabular-nums;
 }
 
+.cd-set {
+  font-size: 13px;
+  color: var(--muted);
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+.std-tag {
+  font-size: 12px;
+  padding: 1px 8px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+}
+.std-tag.ok {
+  color: var(--good);
+}
+.std-tag.ban {
+  color: #f0a39a;
+}
+
+.section-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-bottom: 8px;
+}
+.section-head .section-title {
+  margin: 0;
+}
+.seg {
+  display: inline-flex;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  overflow: hidden;
+}
+.seg button {
+  background: transparent;
+  color: var(--muted);
+  border: 0;
+  padding: 5px 12px;
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+.seg button.on {
+  background: var(--raised);
+  color: var(--text, #e8e2d6);
+}
+
 /* ---------- 商店 ---------- */
+.set-shop {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+  gap: 10px;
+  margin-bottom: 18px;
+}
+.set-tile {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.set-tile-head {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+.set-code {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 46px;
+  height: 46px;
+  border-radius: 10px;
+  background: linear-gradient(145deg, var(--raised), var(--panel));
+  border: 1px solid var(--brass);
+  color: var(--brass);
+  font-weight: 700;
+  font-size: 13px;
+  letter-spacing: 0.04em;
+}
+.set-tile-name {
+  font-weight: 700;
+}
+.set-tile-desc {
+  margin: 0;
+  flex: 1;
+}
+.set-tile-buy {
+  display: flex;
+  gap: 8px;
+}
+.set-tile-buy .btn {
+  flex: 1;
+}
 .shop-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));

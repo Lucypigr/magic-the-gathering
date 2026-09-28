@@ -1,12 +1,13 @@
 # 萬智牌決鬥場
 
-單人的萬智牌（Magic: The Gathering）對戰遊戲：和三種難度的 AI 對戰、贏金幣買補充包、開包收集卡牌，並用收藏自由組牌。
+單人的萬智牌（Magic: The Gathering）對戰遊戲：和三種難度的 AI 對戰、贏金幣買補充包、開包收集卡牌，並用收藏自由組牌。支援「自由模式」與「標準模式」兩種賽制。
 
 - **對戰**：完整的回合流程（重置、維持、抓牌、主要階段、戰鬥、結束）、堆疊與優先權、觸發式與起動式異能、先攻／連擊／死觸／踐踏／繫命等關鍵字。
-- **AI**：簡單、普通、困難三種難度。AI 從 7 套參考 2026 年 9 月標準賽環境的套牌中隨機挑一套。
-- **玩家**：一開始有兩套基本套牌（紅白「烈焰軍團」、綠藍「森海巨獸」）。
+- **賽制**：自由模式可以用任何收藏中的卡（至少 40 張）；標準模式只能用 2026 年 9 月標準賽合法的卡（至少 60 張，禁卡除外）。
+- **AI**：簡單、普通、困難三種難度。每種賽制各有 7 套 AI 環境套牌，對戰時隨機挑一套或自己指定。
+- **玩家**：一開始有四套入門套牌：自由模式的紅白「烈焰軍團」、綠藍「森海巨獸」，標準模式的白藍「晨光飛翼」、黑綠「林地獵群」。
 - **經濟**：勝利或落敗都會得到金幣，在商店購買補充包；每包 12 張、隨機掉落，至少 1 張稀有或秘稀。
-- **組牌**：只要是收藏中的卡都能自由搭配（至少 40 張、同名最多 4 張、基本地無限）。
+- **組牌**：收藏中的卡都能自由搭配（同名最多 4 張、基本地無限），組牌畫面會同時顯示兩種賽制是否合法。
 - **存檔**：自動保存在瀏覽器（localStorage）。
 
 ## 開始遊玩
@@ -21,7 +22,7 @@ npm run dev          # 開發模式，打開終端機顯示的網址
 ### 真實卡圖（建議先做一次）
 
 ```bash
-npm run fetch-images   # 從 Scryfall 下載全部卡圖到 public/cards/（約 170 張，只需執行一次）
+npm run fetch-images   # 從 Scryfall 下載全部卡圖到 public/cards/（約 1,400 張，只需執行一次）
 ```
 
 下載後網站會直接讀取本機圖片，不必每次連線；還沒下載時遊戲會即時向 Scryfall 取圖，連不上則使用內建卡框。卡圖版權屬於 Wizards of the Coast，本專案只供私人使用，`public/cards/` 預設不會提交到 git；若你的 repo 是私人的、想一起保存，把 `.gitignore` 裡那一行刪掉即可。
@@ -48,31 +49,67 @@ BALANCE=1 npx vitest run tests/balance.test.ts   # 各難度 AI 互打勝率
 
 ## 卡牌與系列
 
-目前收錄約 170 張卡，分成三個補充包：
+目前收錄約 1,400 張卡。
+
+### 標準賽系列（標準模式可用）
+
+2026 年 9 月的標準賽包含以下 18 個系列，每個系列都有自己的補充包（100 金幣，五包 450 金幣）：
+
+| 代碼 | 系列 | 發售 |
+| --- | --- | --- |
+| WOE | Wilds of Eldraine | 2023/09 |
+| LCI | The Lost Caverns of Ixalan | 2023/11 |
+| MKM | Murders at Karlov Manor | 2024/02 |
+| OTJ | Outlaws of Thunder Junction | 2024/04 |
+| BLB | Bloomburrow | 2024/08 |
+| DSK | Duskmourn: House of Horror | 2024/09 |
+| FDN | Foundations | 2024/11 |
+| DFT | Aetherdrift | 2025/02 |
+| TDM | Tarkir: Dragonstorm | 2025/04 |
+| FIN | Final Fantasy | 2025/06 |
+| EOE | Edge of Eternities | 2025/08 |
+| SPM | Marvel's Spider-Man | 2025/09 |
+| TLA | Avatar: The Last Airbender | 2025/11 |
+| ECL | Lorwyn Eclipsed | 2026/01 |
+| TMT | Teenage Mutant Ninja Turtles | 2026/03 |
+| SOS | Secrets of Strixhaven | 2026/04 |
+| MSH | Marvel Super Heroes | 2026/06 |
+| HOB | The Hobbit | 2026/08 |
+
+每個系列收錄 55–95 張能在遊戲裡運作的卡（不是整個系列），包含環境常用的卡、各系列的雙色地與震地。卡牌資料（名稱、費用、類別、力量／防禦力、稀有度、標準賽合法性與禁卡）取自 [Scryfall](https://scryfall.com/)。下一次輪替在 2027 年 2 月，屆時 WOE 到 DSK 會離開標準賽。
+
+### 經典補充包（自由模式用）
 
 | 補充包 | 內容 | 價格 |
 | --- | --- | --- |
-| 基本系列：基石（Foundations） | 最新基本系列的經典卡 | 100 金幣 |
 | 經典核心系列（M10–M21） | 歷年核心系列的卡 | 100 金幣 |
-| 競技環境精選 | 出現在競技環境套牌中的強卡，稀有度較高 | 180 金幣 |
+| 競技環境精選 | 過去環境中的強卡，稀有度較高 | 180 金幣 |
 
-規則文字是本遊戲實際執行的中文敘述。卡名預設顯示中文：遊戲會向 Scryfall 查詢每張卡的中文版，優先用繁體中文版的卡名與卡面，其次簡體中文版（卡名自動轉成繁體字），兩者都沒有的卡維持英文原名；在主選單的「設定」可以切換成英文。卡牌詳細資訊會同時列出中英文卡名。部分卡牌做了簡化，例如沒有鵬洛客、寶物與血衍生物，「英勇」和「增幅」等機制改成遊戲內能處理的形式。卡圖會從 [Scryfall](https://scryfall.com/) 載入（只取圖片網址並快取在瀏覽器），無法連線時改用內建卡框。
+經典卡中仍在標準賽合法的（例如在現行系列重印過的卡）也能用於標準模式；卡牌詳細資訊會標示「標準賽合法／非標準賽／標準賽禁卡」。
 
-## AI 的 7 套環境套牌
+### 卡牌效果
 
-參考 2026 年 9 月標準賽的熱門套路，用本遊戲收錄的卡重新組成：
+規則文字是本遊戲實際執行的中文敘述。部分卡牌做了簡化：沒有鵬洛客、載具、冒險、雙面牌與寶物；大地彎折改成派出帶指示物的大地元素、生存改在結束步驟檢查等。卡名預設顯示中文（從 Scryfall 取得繁中或簡中版卡名），在設定中可以切換成英文。
+
+## AI 的環境套牌
+
+### 標準模式（2026 年 9 月標準賽）
 
 | 套牌 | 參考套路 | 風格 |
 | --- | --- | --- |
-| 單綠地落 | Mono-Green Landfall | 林奧那精靈加速，苔生九頭龍、刺毛比爾靠地落成長 |
-| 迪米爾中速 | Dimir Midrange | 閃現生物、大量除去與反擊 |
-| 伊捷咒術元素 | Izzet Spellementals | 廉價咒語過濾，低費放出渦旋泥蟹、風暴翼實體 |
-| 瓊德獻祭 | Jund Sacrifice | 犧牲生物換價值，惡魔騷亂把死亡變成傷害 |
-| 波洛斯快攻 | Boros Aggro／Boros Burn | 英勇老鼠、戰鬥技巧、燒傷咒語 |
-| 歐佐夫回生 | Orzhov Lifegain | 獲得生命就讓生物成長、讓對手流血 |
-| 阿佐里斯飛行 | Azorius Fliers | 飛行生物從空中進攻，反擊保護優勢 |
+| 單綠地落 | Mono-Green Landfall | 精靈加速，蒂法與地落生物靠每個地變大 |
+| 迪米爾中速 | Dimir Midrange | 閃現生物、報應咒法等便宜除去 |
+| 伊捷咒術元素 | Izzet Spellementals | 大量廉價咒語觸發樂章與勇行，渦旋泥蟹、碎群者收尾 |
+| 波洛斯矮人 | Boros Dwarves | 矮人搭配武具，連擊的斧頭一擊致命 |
+| 瓊德獻祭 | Jund Sacrifice | 犧牲小生物換價值，每次死亡都讓對手流血 |
+| 拉克多斯鬼怪 | Rakdos Goblins | 大鬼怪領軍，集結鬼怪軍隊造成傷害 |
+| 阿佐里斯控制 | Azorius Control | 除去與反擊拖到後期，再用飛行大生物收尾 |
 
-環境資料來源：[MTGDecks Standard](https://mtgdecks.net/Standard)、[Metagame Mentor（magic.gg）](https://magic.gg/news/metagame-mentor-hottest-standard-decks-winning-september-2026-rcqs)、[MTGGoldfish 套牌庫](https://www.mtggoldfish.com/archetype/standard-mono-green-landfall-woe)。
+環境資料來源：[Metagame Mentor（magic.gg）](https://magic.gg/news/metagame-mentor-the-top-standard-decks-for-september-2026s-rcqs)、[MTGDecks Standard](https://mtgdecks.net/Standard)、[Draftsim：2026 與 2027 年標準賽輪替](https://draftsim.com/mtg-standard-rotation/)。
+
+### 自由模式
+
+使用經典卡組成的 7 套套牌：單綠地落、迪米爾中速、伊捷咒術元素、瓊德獻祭、波洛斯快攻、歐佐夫回生、阿佐里斯飛行。
 
 ## 難度
 
@@ -90,7 +127,7 @@ BALANCE=1 npx vitest run tests/balance.test.ts   # 各難度 AI 互打勝率
 src/
   engine/   規則引擎：型別（卡牌 DSL）、法術力、區域、效果、戰鬥、回合流程、對戰控制器
   ai/       AI：盤面評估、模擬推演、攻擊與阻擋、難度參數
-  data/     卡牌資料、衍生物、玩家與 AI 套牌
+  data/     卡牌資料（sets/ 為標準賽各系列）、衍生物、玩家與 AI 套牌
   meta/     存檔、補充包、金幣經濟
   ui/       React 介面：對戰、套牌組建、收藏、商店、說明
 tests/      規則測試、AI 對戰測試、平衡測試
@@ -108,6 +145,6 @@ cr('FDN', 'R', 'Mossborn Hydra', '{2}{G}', 'Elemental Hydra', 0, 0,
   });
 ```
 
-新增卡牌時在 `src/data/cards.ts` 加一筆資料即可；新增 AI 套牌則在 `src/data/decks.ts` 的 `AI_DECKS` 加入清單。
+經典卡在 `src/data/cards.ts`，標準賽各系列的卡在 `src/data/sets/`（每個系列一個檔案）。重印與禁卡清單在 `src/data/reprints.ts`；自由模式的套牌在 `src/data/decks.ts`，標準模式的套牌在 `src/data/standardDecks.ts`。
 
 本專案為非官方的愛好者作品，與 Wizards of the Coast 無關。

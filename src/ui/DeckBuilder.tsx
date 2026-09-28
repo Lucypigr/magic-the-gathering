@@ -1,7 +1,8 @@
 import { displayName, zhName } from '../data/names';
 import { useMemo, useState } from 'react';
 import type { Screen, UpdateProfile } from '../App';
-import { BASIC_LANDS, COLLECTIBLE, SET_INFO, deckSize } from '../data';
+import { BASIC_LANDS, COLLECTIBLE, SET_INFO, deckSize, isStandardLegal } from '../data';
+import { STANDARD_SETS } from '../engine/types';
 import { colorsOf } from '../engine/mana';
 import { getDef } from '../engine/registry';
 import type { CardDef, Color } from '../engine/types';
@@ -33,7 +34,9 @@ export function matchFilter(d: CardDef, f: PoolFilter): boolean {
     if (f.color !== 'C' && f.color !== 'M' && !cols.includes(f.color)) return false;
   }
   if (f.type && !d.types.includes(f.type as CardDef['types'][number])) return false;
-  if (f.set && d.set !== f.set) return false;
+  if (f.set === 'STD') {
+    if (!isStandardLegal(d)) return false;
+  } else if (f.set && d.set !== f.set) return false;
   if (f.rarity && d.rarity !== f.rarity) return false;
   return true;
 }
@@ -65,11 +68,21 @@ export function FilterBar({ f, setF, extra }: { f: PoolFilter; setF: (f: PoolFil
       </select>
       <select id="set-filter" value={f.set} onChange={(e) => setF({ ...f, set: e.target.value })} aria-label="系列">
         <option value="">全部系列</option>
-        {(['FDN', 'CORE', 'META'] as const).map((s) => (
-          <option key={s} value={s}>
-            {SET_INFO[s].short}
-          </option>
-        ))}
+        <option value="STD">標準賽合法的卡</option>
+        <optgroup label="標準賽系列">
+          {[...STANDARD_SETS].reverse().map((s) => (
+            <option key={s} value={s}>
+              {SET_INFO[s].short}（{s}）
+            </option>
+          ))}
+        </optgroup>
+        <optgroup label="經典">
+          {(['CORE', 'META'] as const).map((s) => (
+            <option key={s} value={s}>
+              {SET_INFO[s].short}
+            </option>
+          ))}
+        </optgroup>
       </select>
       {extra}
     </div>
@@ -167,6 +180,7 @@ export function DeckBuilder({ profile, go, update }: { profile: Profile; go: (s:
   }
 
   const chk = checkDeck(profile, deck);
+  const chkStd = checkDeck(profile, deck, 'standard');
   const cv = curve(deck.cards);
   const maxCv = Math.max(1, ...cv);
   const entries = Object.entries(deck.cards)
@@ -282,12 +296,22 @@ export function DeckBuilder({ profile, go, update }: { profile: Profile; go: (s:
           </div>
           <div className={`deck-status ${chk.ok ? 'ok' : 'bad'}`}>
             <b>{chk.size}</b> 張
-            {chk.ok ? '，可以出戰' : ''}
+            <div className="fmt-row">
+              <span className={`fmt-badge ${chk.ok ? 'ok' : 'bad'}`}>自由模式{chk.ok ? '：可以出戰' : '：不符合'}</span>
+              <span className={`fmt-badge ${chkStd.ok ? 'ok' : 'bad'}`}>標準模式{chkStd.ok ? '：可以出戰' : '：不符合'}</span>
+            </div>
             {chk.errors.map((e) => (
               <div key={e} className="err">
                 {e}
               </div>
             ))}
+            {chk.ok &&
+              !chkStd.ok &&
+              chkStd.errors.slice(0, 3).map((e) => (
+                <div key={e} className="err err-soft">
+                  標準：{e}
+                </div>
+              ))}
           </div>
           <div className="curve" aria-label="法術力曲線">
             {cv.map((n, i) => (

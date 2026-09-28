@@ -1,5 +1,5 @@
 import { canPayCost, manaSources, payCost } from './actions';
-import { findPayment, parseCost } from './mana';
+import { colorsOf, findPayment, manaValue, parseCost } from './mana';
 import {
   cardName,
   checkCond,
@@ -20,6 +20,7 @@ import {
   destroyCards,
   discard,
   drawCards,
+  emit,
   enterBattlefield,
   gainLife,
   loseLife,
@@ -30,6 +31,8 @@ import {
 export interface Ctx {
   controller: PID;
   source: number;
+  /** 此效果中最近派出的衍生物 */
+  created?: number;
   targets: (TargetRef | null)[];
   ev?: GameEvent;
   lkiPower?: number;
@@ -93,6 +96,16 @@ export function resolveRef(g: GameState, ctx: Ctx, ref: Ref): Resolved {
       if (s && s.attachedTo != null && g.cards[s.attachedTo]?.zone === 'battlefield') out.cards.push(g.cards[s.attachedTo]);
       break;
     }
+    case 'created': {
+      const c = ctx.created != null ? g.cards[ctx.created] : undefined;
+      if (c && c.zone === 'battlefield') out.cards.push(c);
+      break;
+    }
+    case 'evPlayer': {
+      const ev = ctx.ev;
+      if (ev && 'player' in ev) out.players.push(ev.player);
+      break;
+    }
     case 'T0ctrl': {
       const t = ctx.targets[0];
       if (t && 'c' in t && g.cards[t.c]) out.players.push(g.cards[t.c].controller);
@@ -126,6 +139,16 @@ export function amount(g: GameState, ctx: Ctx, a: Amt): number {
     return 0;
   }
   if ('hand' in a) return g.players[ctx.controller].hand.length;
+  if ('spellsCast' in a) return g.players[ctx.controller].spellsThisTurn;
+  if ('selfCounters' in a) return Math.max(0, g.cards[ctx.source]?.counters ?? 0);
+  if ('colors' in a) {
+    const cols = new Set<string>();
+    for (const id of g.battlefield) {
+      const c = g.cards[id];
+      if (c.controller === ctx.controller) for (const k of colorsOf(c.def)) cols.add(k);
+    }
+    return cols.size;
+  }
   return 0;
 }
 
@@ -281,8 +304,87 @@ function* runEffect(g: GameState, ctx: Ctx, ef: Effect): SubFlow {
       for (const c of resolveRef(g, ctx, ef.what).cards) {
         if (c.zone !== 'battlefield' || !isCreature(c)) continue;
         c.counters += n;
-        log(g, `${cardName(c)} 得到 ${n} 個 +1/+1 指示物`, c.controller);
+        if (n > 0) emit(g, { type: 'counterPlaced', card: c.id, controller: c.controller, amount: n });
+        log(g, n >= 0 ? `${cardName(c)} 得到 ${n} 個 +1/+1 指示物` : `${cardName(c)} 得到 ${-n} 個 -1/-1 指示物`, c.controller);
       }
+      break;
+    }
+    case 'amass': {
+      let army = g.battlefield.map((id) => g.cards[id]).find((c) => c.controller === me && c.def.subtypes?.includes('Army'));
+      if (!army) army = createToken(g, 'tok-goblin-army', me);
+      army.counters += ef.n;
+      emit(g, { type: 'counterPlaced', card: army.id, controller: me, amount: ef.n });
+      log(g, `集結鬼怪 ${ef.n}`, me);
+      break;
+    }
+    case 'connive': {
+      for (const c of resolveRef(g, ctx, ef.what).cards) {
+        if (c.zone !== 'battlefield') continue;
+        const p = c.controller;
+        drawCards(g, p, 1);
+        const ids = yield* choose(g, p, '密謀：選擇一張牌棄掉', g.players[p].hand.slice(), 1, 1, 'discard');
+        const d = ids.length ? g.cards[ids[0]] : undefined;
+        if (d) {
+          discard(g, d);
+          if (!isLand(d) && c.zone === 'battlefield') {
+            c.counters++;
+            emit(g, { type: 'counterPlaced', card: c.id, controller: p, amount: 1 });
+          }
+        }
+      }
+      break;
+    }
+    case 'tuck':
+      for (const c of resolveRef(g, ctx, ef.what).cards) {
+        if (c.zone !== 'battlefield') continue;
+        log(g, `${cardName(c)} 被置於牌庫底`, c.controller);
+        moveCard(g, c, 'library', true);
+      }
+      break;
+    case 'revealDraw': {
+      const top = g.players[me].library[0];
+      if (top == null) break;
+      const c = g.cards[top];
+      moveCard(g, c, 'hand');
+      const mv = manaValue(c.def);
+      log(g, `展示並抓 ${cardName(c)}，失去 ${mv} 點生命`, me);
+      loseLife(g, me, mv);
+      break;
+    }
+    case 'recruit': {
+      drawCards(g, me, 1);
+      const ids = yield* choose(g, me, '招募：選擇一張牌棄掉', g.players[me].hand.slice(), 1, 1, 'discard');
+      const c = ids.length ? g.cards[ids[0]] : undefined;
+      if (c) {
+        discard(g, c);
+        if (!isLand(c)) createToken(g, 'tok-human-soldier', me);
+      }
+      break;
+    }
+    case 'tutor': {
+      const lib = g.players[me].library;
+      const opts = lib.filter((id) => matches(g, ef.filter, g.cards[id], me));
+      const picked = yield* choose(g, me, '從牌庫中搜尋一張牌', opts, 0, 1, 'tutor', true);
+      for (const id of picked) {
+        moveCard(g, g.cards[id], 'hand');
+        log(g, `搜尋 ${cardName(g.cards[id])} 放到手上`, me);
+      }
+      shuffleArr(g, lib);
+      break;
+    }
+    case 'removeCounters':
+      for (const c of resolveRef(g, ctx, ef.what).cards) {
+        if (c.zone !== 'battlefield' || c.counters === 0) continue;
+        const k = Math.min(ef.n, Math.abs(c.counters));
+        c.counters -= Math.sign(c.counters) * k;
+        log(g, `移除 ${cardName(c)} 上的 ${k} 個指示物`, c.controller);
+      }
+      break;
+    case 'earthbend': {
+      const n = amount(g, ctx, ef.n);
+      const t = createToken(g, 'tok-earth', me);
+      t.counters = n;
+      log(g, `大地彎折 ${n}`, me);
       break;
     }
     case 'doubleCounters':
@@ -295,7 +397,8 @@ function* runEffect(g: GameState, ctx: Ctx, ef: Effect): SubFlow {
     case 'token': {
       const n = amount(g, ctx, ef.n ?? 1);
       for (const p of resolveRef(g, ctx, ef.who ?? 'you').players) {
-        for (let i = 0; i < n; i++) createToken(g, ef.token, p, { tapped: ef.tapped, attacking: ef.attacking });
+        const host = ef.attachTo ? resolveRef(g, ctx, ef.attachTo).cards.find((c) => c.zone === 'battlefield' && isCreature(c)) : undefined;
+        for (let i = 0; i < n; i++) ctx.created = createToken(g, ef.token, p, { tapped: ef.tapped, attacking: ef.attacking, attachTo: host?.id }).id;
         log(g, `派出 ${n} 個衍生物`, p);
       }
       break;
@@ -336,7 +439,9 @@ function* runEffect(g: GameState, ctx: Ctx, ef: Effect): SubFlow {
       break;
     }
     case 'searchLand': {
-      const lib = g.players[me].library;
+      const who = ef.who ? resolveRef(g, ctx, ef.who).players[0] : me;
+      if (who == null) break;
+      const lib = g.players[who].library;
       const opts = lib.filter((id) => {
         const d = g.cards[id].def;
         return d.types.includes('Land') && d.supertypes?.includes('Basic');
@@ -349,19 +454,19 @@ function* runEffect(g: GameState, ctx: Ctx, ef: Effect): SubFlow {
         seen.add(n);
         return true;
       });
-      const picked = yield* choose(g, me, '搜尋一張基本地', uniq, 1, 1, 'search', true);
+      const picked = yield* choose(g, who, '搜尋一張基本地', uniq, ef.may || who !== me ? 0 : 1, 1, 'search', true);
       for (const id of picked) {
         const c = g.cards[id];
         if (ef.to === 'battlefield') {
-          log(g, `搜尋 ${cardName(c)} 放進戰場`, me);
-          enterBattlefield(g, c, me, !!ef.tapped);
-          if (ef.untapIfLands && landsOf(g, me).length >= ef.untapIfLands) c.tapped = false;
+          log(g, `搜尋 ${cardName(c)} 放進戰場`, who);
+          enterBattlefield(g, c, who, !!ef.tapped);
+          if (ef.untapIfLands && landsOf(g, who).length >= ef.untapIfLands) c.tapped = false;
         } else {
           moveCard(g, c, 'hand');
-          log(g, `搜尋 ${cardName(c)} 放到手上`, me);
+          log(g, `搜尋 ${cardName(c)} 放到手上`, who);
         }
       }
-      shuffleArr(g, g.players[me].library);
+      shuffleArr(g, g.players[who].library);
       break;
     }
     case 'counter': {
@@ -476,6 +581,18 @@ function* runEffect(g: GameState, ctx: Ctx, ef: Effect): SubFlow {
         const ids = yield* choose(g, me, ef.prompt, opts, 0, 1, 'sacrifice');
         if (ids.length) {
           sacrifice(g, g.cards[ids[0]]);
+          paid = true;
+        }
+      } else if (cost.blight) {
+        const opts = g.battlefield.filter((id) => {
+          const c = g.cards[id];
+          return c.controller === me && isCreature(c);
+        });
+        const ids = yield* choose(g, me, ef.prompt, opts, 0, 1, 'blight');
+        if (ids.length) {
+          const c = g.cards[ids[0]];
+          c.counters -= cost.blight;
+          log(g, `枯萎 ${cost.blight}：${cardName(c)} 得到 -1/-1 指示物`, me);
           paid = true;
         }
       } else if (cost.discard) {

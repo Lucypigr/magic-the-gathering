@@ -1,4 +1,6 @@
-import { CARDS } from '../data';
+import { CARDS, REPRINTS, SET_INFO } from '../data';
+import { getDef } from '../engine/registry';
+import { STANDARD_SETS, type StandardSet } from '../engine/types';
 import type { CardDef, Rarity, SetCode } from '../engine/types';
 import { DUPLICATE_GOLD, MAX_COPIES, type Profile } from './profile';
 
@@ -11,17 +13,42 @@ export interface Product {
   desc: string;
 }
 
-export const PRODUCTS: Product[] = [
-  { id: 'fdn', set: 'FDN', name: '基本系列：基石 補充包', price: 100, packs: 1, desc: '12 張卡：1 稀有或秘稀、3 非普通、7 普通、1 張隨機' },
+export const PACK_PRICE = 100;
+export const BUNDLE_PRICE = 450;
+
+/** 標準賽系列的補充包（每個系列單包與五包組合） */
+export const STANDARD_PRODUCTS: Product[] = STANDARD_SETS.flatMap((s) => [
+  { id: s.toLowerCase(), set: s, name: `${SET_INFO[s].short} 補充包`, price: PACK_PRICE, packs: 1, desc: SET_INFO[s].desc },
+  { id: `${s.toLowerCase()}-5`, set: s, name: `${SET_INFO[s].short} 補充包 ×5`, price: BUNDLE_PRICE, packs: 5, desc: '一次買五包，省下 50 金幣' },
+]);
+
+/** 經典補充包（自由模式用的卡） */
+export const CLASSIC_PRODUCTS: Product[] = [
   { id: 'core', set: 'CORE', name: '經典核心系列 補充包', price: 100, packs: 1, desc: '12 張卡：1 稀有或秘稀、3 非普通、7 普通、1 張隨機' },
   { id: 'meta', set: 'META', name: '競技環境精選 補充包', price: 180, packs: 1, desc: '環境強卡！12 張卡，稀有機率較高' },
-  { id: 'fdn-5', set: 'FDN', name: '基石 補充包 ×5', price: 450, packs: 5, desc: '一次買五包，省下 50 金幣' },
   { id: 'core-5', set: 'CORE', name: '經典核心 補充包 ×5', price: 450, packs: 5, desc: '一次買五包，省下 50 金幣' },
   { id: 'meta-5', set: 'META', name: '競技環境 補充包 ×5', price: 800, packs: 5, desc: '一次買五包，省下 100 金幣' },
 ];
 
-function pool(set: SetCode, r: Rarity): CardDef[] {
-  return CARDS.filter((c) => c.set === set && c.rarity === r);
+export const PRODUCTS: Product[] = [...STANDARD_PRODUCTS, ...CLASSIC_PRODUCTS];
+
+const poolCache = new Map<string, CardDef[]>();
+
+/** 某系列某稀有度的卡池（含在該系列重印的卡） */
+export function pool(set: SetCode, r: Rarity): CardDef[] {
+  const key = `${set}:${r}`;
+  let list = poolCache.get(key);
+  if (!list) {
+    list = CARDS.filter((c) => c.set === set && c.rarity === r);
+    for (const [id, rr] of REPRINTS[set as StandardSet] ?? []) if (rr === r) list.push(getDef(id));
+    poolCache.set(key, list);
+  }
+  return list;
+}
+
+/** 補充包中可能出現的卡數量 */
+export function poolSize(set: SetCode): number {
+  return (['C', 'U', 'R', 'M'] as const).reduce((s, r) => s + pool(set, r).length, 0);
 }
 
 function pick<T>(arr: T[], rng: () => number, avoid: Set<T>): T {

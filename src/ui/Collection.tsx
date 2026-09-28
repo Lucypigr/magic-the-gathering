@@ -2,6 +2,7 @@ import { displayName } from '../data/names';
 import { useMemo, useState } from 'react';
 import type { Screen, UpdateProfile } from '../App';
 import { COLLECTIBLE, SET_INFO } from '../data';
+import { STANDARD_SETS } from '../engine/types';
 import type { CardDef } from '../engine/types';
 import { SELL_PRICE, type Profile } from '../meta/profile';
 import { CardDetail, CardFace } from './CardView';
@@ -19,7 +20,7 @@ export function Collection({ profile, go, update }: { profile: Profile; go: (s: 
     () => COLLECTIBLE.filter((d) => matchFilter(d, f) && (!ownedOnly || (profile.collection[d.id] ?? 0) > 0)).sort(sortDefs),
     [f, ownedOnly, profile.collection],
   );
-  const sets = (['FDN', 'CORE', 'META'] as const).map((s) => {
+  const sets = ([...[...STANDARD_SETS].reverse(), 'CORE', 'META'] as const).map((s) => {
     const all = COLLECTIBLE.filter((c) => c.set === s);
     const own = all.filter((c) => (profile.collection[c.id] ?? 0) > 0).length;
     return { s, own, total: all.length };
@@ -30,15 +31,15 @@ export function Collection({ profile, go, update }: { profile: Profile; go: (s: 
       <TopBar profile={profile} go={go} title="我的收藏" />
       <div className="set-progress">
         {sets.map(({ s, own, total }) => (
-          <div key={s} className="sp">
-            <div className="sp-name">{SET_INFO[s].name}</div>
+          <button key={s} className={`sp ${f.set === s ? 'on' : ''}`} onClick={() => setF({ ...f, set: f.set === s ? '' : s })} title={SET_INFO[s].name}>
+            <div className="sp-name">{SET_INFO[s].short}</div>
             <div className="sp-bar">
               <div style={{ width: `${(own / total) * 100}%` }} />
             </div>
             <div className="sp-n">
               {own}／{total}
             </div>
-          </div>
+          </button>
         ))}
       </div>
       <FilterBar
@@ -82,7 +83,7 @@ export function Collection({ profile, go, update }: { profile: Profile; go: (s: 
             extra={
               <div className="detail-actions">
                 <span className="muted">
-                  {SET_INFO[detail.set as 'FDN'].short} · 持有 {profile.collection[detail.id] ?? 0} 張
+                  持有 {profile.collection[detail.id] ?? 0} 張
                   {usedInDecks(detail.id) > 0 && ` · 套牌最多使用 ${usedInDecks(detail.id)} 張`}
                 </span>
                 <button

@@ -1,75 +1,13 @@
-import type {
-  Ability,
-  ActivatedAbility,
-  CardDef,
-  Effect,
-  Mana,
-  SetCode,
-  Rarity,
-  SpellSpec,
-  TargetSpec,
-  TriggeredAbility,
-  TriggerOn,
-} from '../engine/types';
-
 // ============================================================
-// 卡牌資料庫
+// 卡牌資料庫：經典卡牌
 // 系列：FDN = 基本系列（Foundations）、CORE = 經典核心系列、META = 競技環境精選
-// 規則敘述為本遊戲引擎實際執行的效果（部分卡牌做了簡化）。
+// 標準賽各系列的卡牌在 sets/ 資料夾。
 // ============================================================
+import type { CardDef, Mana } from '../engine/types';
+import { ANY, CR, MY_CR, OPP, OPP_CR, OUTLAWS, PLAYER, act, arti, cr, defs, destroyT0, dmg, ench, etb, inst, land, sorc, trig } from './dsl';
+import './sets';
 
-type X = Partial<CardDef>;
-const defs: CardDef[] = [];
-
-export const slug = (n: string) =>
-  n
-    .toLowerCase()
-    .replace(/['’,]/g, '')
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-|-$/g, '');
-
-function add(d: Omit<CardDef, 'id'>) {
-  defs.push({ id: slug(d.name), ...d });
-}
-
-function cr(set: SetCode, r: Rarity, name: string, cost: string, subs: string, p: number, t: number, text: string, x: X = {}) {
-  add({ set, rarity: r, name, cost, types: ['Creature'], subtypes: subs.split(' ').filter(Boolean), power: p, toughness: t, text, ...x });
-}
-function inst(set: SetCode, r: Rarity, name: string, cost: string, text: string, spell: SpellSpec, x: X = {}) {
-  add({ set, rarity: r, name, cost, types: ['Instant'], spell, text, ...x });
-}
-function sorc(set: SetCode, r: Rarity, name: string, cost: string, text: string, spell: SpellSpec, x: X = {}) {
-  add({ set, rarity: r, name, cost, types: ['Sorcery'], spell, text, ...x });
-}
-function ench(set: SetCode, r: Rarity, name: string, cost: string, text: string, x: X = {}) {
-  add({ set, rarity: r, name, cost, types: ['Enchantment'], text, ...x });
-}
-function arti(set: SetCode, r: Rarity, name: string, cost: string, text: string, x: X = {}) {
-  add({ set, rarity: r, name, cost, types: ['Artifact'], text, ...x });
-}
-function land(set: SetCode, r: Rarity, name: string, produces: Mana[], text: string, x: X = {}) {
-  add({ set, rarity: r, name, types: ['Land'], produces, text, ...x });
-}
-
-const trig = (on: TriggerOn, effects: Effect[], x: Partial<TriggeredAbility> = {}): Ability => ({ kind: 'trigger', on, effects, ...x });
-const etb = (effects: Effect[], x: Partial<TriggeredAbility> = {}) => trig('etb', effects, x);
-const act = (cost: ActivatedAbility['cost'], effects: Effect[], label: string, x: Partial<ActivatedAbility> = {}): Ability => ({
-  kind: 'activated',
-  cost,
-  effects,
-  label,
-  ...x,
-});
-
-const ANY: TargetSpec = { kind: 'any' };
-const CR: TargetSpec = { kind: 'creature' };
-const OPP_CR: TargetSpec = { kind: 'creature', filter: { ctrl: 'opp' }, prompt: '選擇對手的生物' };
-const MY_CR: TargetSpec = { kind: 'creature', filter: { ctrl: 'you' }, prompt: '選擇你的生物' };
-const OPP: TargetSpec = { kind: 'opponent' };
-const PLAYER: TargetSpec = { kind: 'player' };
-const dmg = (n: number, to: 'T0' | 'opp' = 'T0'): Effect => ({ e: 'damage', n, to });
-const destroyT0: Effect = { e: 'destroy', what: 'T0' };
-const OUTLAWS = ['Assassin', 'Mercenary', 'Pirate', 'Rogue', 'Warlock'];
+export { slug } from './dsl';
 
 // ============================================================
 // 基本地
@@ -160,7 +98,7 @@ ench('CORE', 'C', 'Pacifism', '{1}{W}', '結附於生物\n所結附的生物不�
 ench('FDN', 'U', 'Banishing Light', '{2}{W}', '當此結界進戰場時，放逐目標由對手操控的非地永久物，直到此結界離開戰場為止。', {
   abilities: [etb([{ e: 'exileLinked', what: 'T0' }], { targets: [{ kind: 'permanent', filter: { ctrl: 'opp', nonType: 'Land' } }] })],
 });
-ench('FDN', 'R', 'Glorious Anthem', '{1}{W}{W}', '由你操控的生物得+1/+1。', {
+ench('CORE', 'R', 'Glorious Anthem', '{1}{W}{W}', '由你操控的生物得+1/+1。', {
   abilities: [{ kind: 'static', anthem: { filter: { type: 'Creature', ctrl: 'you' }, grant: { p: 1, t: 1 } } }],
 });
 ench('CORE', 'U', "Ajani's Welcome", '{W}', '每當一個生物在你的操控下進戰場時，你獲得1點生命。', {
@@ -370,7 +308,7 @@ cr('META', 'R', 'Preacher of the Schism', '{2}{B}', 'Vampire Cleric', 2, 4,
       ]),
     ],
   });
-cr('FDN', 'U', 'Gravedigger', '{3}{B}', 'Zombie', 2, 2, '當此生物進戰場時，你可以將目標生物牌從你的墳墓場移回你手上。', {
+cr('CORE', 'U', 'Gravedigger', '{3}{B}', 'Zombie', 2, 2, '當此生物進戰場時，你可以將目標生物牌從你的墳墓場移回你手上。', {
   abilities: [
     etb([{ e: 'toHand', what: 'T0' }], {
       targets: [{ kind: 'gyCard', filter: { ctrl: 'you', type: 'Creature' }, optional: true, prompt: '選擇墳墓場中的生物牌' }],
@@ -510,7 +448,7 @@ cr('CORE', 'U', 'Beetleback Chief', '{2}{R}{R}', 'Goblin Warrior', 2, 2, '當此
 cr('CORE', 'C', 'Keldon Raider', '{2}{R}{R}', 'Human Warrior', 4, 3, '當此生物進戰場時，你可以棄一張牌。若你如此作，抓一張牌。', {
   abilities: [etb([{ e: 'costThen', prompt: '你可以棄一張牌，然後抓一張牌', cost: { discard: 1 }, then: [{ e: 'draw', n: 1 }] }])],
 });
-cr('FDN', 'R', 'Goblin Chieftain', '{1}{R}{R}', 'Goblin', 2, 2, '敏捷\n由你操控的其他鬼怪生物得+1/+1且具有敏捷異能。', {
+cr('CORE', 'R', 'Goblin Chieftain', '{1}{R}{R}', 'Goblin', 2, 2, '敏捷\n由你操控的其他鬼怪生物得+1/+1且具有敏捷異能。', {
   keywords: ['haste'],
   abilities: [
     { kind: 'static', anthem: { filter: { type: 'Creature', sub: 'Goblin', ctrl: 'you', other: true }, grant: { p: 1, t: 1, kw: ['haste'] } } },
@@ -538,7 +476,7 @@ inst('CORE', 'C', 'Sure Strike', '{1}{R}', '目標生物得+3/+0並獲得先攻�
   targets: [CR],
   effects: [{ e: 'pump', what: 'T0', p: 3, t: 0, kw: ['first_strike'] }],
 });
-sorc('FDN', 'C', "Krenko's Command", '{1}{R}', '派出兩個1/1紅色鬼怪衍生生物。', { effects: [{ e: 'token', token: 'tok-goblin', n: 2 }] });
+sorc('CORE', 'C', "Krenko's Command", '{1}{R}', '派出兩個1/1紅色鬼怪衍生生物。', { effects: [{ e: 'token', token: 'tok-goblin', n: 2 }] });
 inst('META', 'U', 'Monstrous Rage', '{R}', '目標生物得+2/+0直到回合結束。派出一個怪物角色衍生物結附於它。（所結附的生物得+1/+1且具有踐踏異能。）', {
   targets: [CR],
   effects: [{ e: 'pump', what: 'T0', p: 2, t: 0 }, { e: 'role', what: 'T0', token: 'tok-monster-role' }],
