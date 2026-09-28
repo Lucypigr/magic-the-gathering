@@ -1,6 +1,7 @@
 import type { Screen } from '../App';
 import { SET_INFO } from '../data';
 import { STANDARD_SETS, type Keyword } from '../engine/types';
+import { MYTHIC_PTS, PIPS, ladderReward } from '../meta/ladder';
 import { MIN_DECK, MIN_DECK_STANDARD, REWARDS } from '../meta/profile';
 import { KW_DESC, KW_ZH } from './i18n';
 
@@ -47,6 +48,14 @@ export function Help({ go }: { go: (s: Screen) => void }) {
           <li>普通：AI 會評估每個動作的價值，但不會在你的回合主動出手，偶爾選錯。勝利 {REWARDS.normal.win}，落敗 {REWARDS.normal.loss}。</li>
           <li>困難：AI 會回應你的咒語、在你攻擊時使用除去、保留戰鬥技巧與閃現生物，並推演整個戰鬥。勝利 {REWARDS.hard.win}，落敗 {REWARDS.hard.loss}。</li>
           <li>投降不會獲得金幣。</li>
+        </ul>
+
+        <h3>天梯配對</h3>
+        <ul>
+          <li>從主選單的「天梯配對」選擇賽制與套牌後開始配對，系統會找一位段位相近的對手。對手由 AI 扮演：名字、段位、套牌、思考速度與強度各不相同，段位越高越常遇到困難的對手。</li>
+          <li>段位由低到高為青銅、白銀、黃金、白金、鑽石、秘稀；每個大段有 IV 到 I 四個小段，每小段 {PIPS} 顆星。勝利 +1 星，黃金以下連勝 3 場起每勝 +2 星；落敗 -1 星（青銅不掉星，也不會掉出目前的大段）。</li>
+          <li>勝利可得 {ladderReward(0, true)}～{ladderReward(MYTHIC_PTS, true)} 金幣，段位越高越多；投降沒有金幣。標準與自由兩種天梯分開計算。</li>
+          <li>對戰中可以點頭像旁的 💬 發表情，覺得吵可以按「靜音對手」。</li>
         </ul>
 
         <h3>卡包與收藏</h3>

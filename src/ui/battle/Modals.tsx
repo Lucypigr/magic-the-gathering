@@ -149,6 +149,8 @@ export function GameOverModal({
   onRematch,
   onExit,
   error,
+  extra,
+  rematchLabel = '再戰一場',
 }: {
   g: GameState;
   reward: number | null;
@@ -156,6 +158,8 @@ export function GameOverModal({
   onRematch: () => void;
   onExit: () => void;
   error: string | null;
+  extra?: ReactNode;
+  rematchLabel?: string;
 }) {
   const won = g.winner === 0;
   const draw = g.winner === 'draw';
@@ -168,7 +172,7 @@ export function GameOverModal({
             返回主選單
           </button>
           <button className="btn btn-primary" onClick={onRematch}>
-            再戰一場
+            {rematchLabel}
           </button>
         </>
       }
@@ -179,13 +183,14 @@ export function GameOverModal({
         ) : (
           <>
             <p>
-              對手使用「{aiDeck}」。共進行 {Math.max(1, Math.ceil(g.turn / 2))} 輪。
+              {g.players[1].name}使用「{aiDeck}」。共進行 {Math.max(1, Math.ceil(g.turn / 2))} 輪。
             </p>
             <p>
-              你的生命 {g.players[0].life}，對手生命 {g.players[1].life}。
+              你的生命 {g.players[0].life}，{g.players[1].name}生命 {g.players[1].life}。
             </p>
           </>
         )}
+        {extra}
         {reward != null && (
           <p className="reward">
             獲得 <b>{reward}</b> 金幣

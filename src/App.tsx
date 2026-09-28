@@ -1,6 +1,8 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useState, type ReactNode } from 'react';
 import type { Level } from './ai/combatAI';
-import { ALL_AI_DECKS, CARDS, aiDecksFor, type Format } from './data';
+import { ALL_AI_DECKS, CARDS, STANDARD_STARTERS, STARTER_DECKS, aiDecksFor, type Format } from './data';
+import { TIERS, ladderReward, pointsDelta, rankOf, type Opponent } from './meta/ladder';
+import { Ladder } from './ui/Ladder';
 import { loadProfile, REWARDS, saveProfile, type Profile, type Settings } from './meta/profile';
 import { Battle, type BattleResult } from './ui/battle/Battle';
 import { ImagesEnabled } from './ui/CardView';
@@ -15,7 +17,8 @@ import { Shop } from './ui/Shop';
 export type Screen =
   | { name: 'home' }
   | { name: 'setup' }
-  | { name: 'battle'; deckId: string; aiDeckId: string; level: Level; key: number; random: boolean; format: Format }
+  | { name: 'battle'; deckId: string; aiDeckId: string; level: Level; key: number; random: boolean; format: Format; opponent?: Opponent }
+  | { name: 'ladder'; auto?: boolean }
   | { name: 'decks' }
   | { name: 'collection' }
   | { name: 'shop' }
@@ -32,6 +35,7 @@ export default function App() {
   const [profile, setProfile] = useState<Profile>(loadProfile);
   const [screen, setScreen] = useState<Screen>({ name: 'home' });
   const [reward, setReward] = useState<number | null>(null);
+  const [resultExtra, setResultExtra] = useState<ReactNode>(null);
 
   const update: UpdateProfile = useCallback((fn) => {
     setProfile((prev) => {
@@ -69,6 +73,16 @@ export default function App() {
     go({ name: 'battle', deckId, level, aiDeckId: aiDeckId ?? randomAiDeck(format), random: aiDeckId == null, key: Date.now(), format });
   };
 
+  const startLadder = (deckId: string, format: Format, opp: Opponent) => {
+    setReward(null);
+    setResultExtra(null);
+    update((p) => {
+      p.lastDeckId = deckId;
+      p.lastFormat = format;
+    });
+    go({ name: 'battle', deckId, level: opp.level, aiDeckId: opp.deckId, random: true, key: Date.now(), format, opponent: opp });
+  };
+
   const setSettings = (s: Settings) =>
     update((p) => {
       p.settings = s;
@@ -84,7 +98,7 @@ export default function App() {
       break;
     case 'battle': {
       const deck = profile.decks.find((d) => d.id === screen.deckId);
-      const aiDeck = ALL_AI_DECKS.find((d) => d.id === screen.aiDeckId)!;
+      const aiDeck = [...ALL_AI_DECKS, ...STARTER_DECKS, ...STANDARD_STARTERS].find((d) => d.id === screen.aiDeckId)!;
       if (!deck) {
         body = <Home profile={profile} go={go} update={update} />;
         break;
@@ -99,7 +113,55 @@ export default function App() {
           settings={profile.settings}
           reward={reward}
           onSettings={setSettings}
+          opponent={s.opponent}
+          resultExtra={s.opponent ? resultExtra : undefined}
+          rematchLabel={s.opponent ? '繼續配對' : undefined}
           onEnd={(r: BattleResult) => {
+            if (s.opponent) {
+              const opp = s.opponent;
+              const lf = profile.ladder[s.format];
+              const won = r.won && !r.draw;
+              const delta = r.draw ? 0 : pointsDelta(lf, won);
+              const gold = r.draw ? ladderReward(lf.points, false) : r.conceded ? 0 : ladderReward(lf.points, won);
+              const before = rankOf(lf.points);
+              const after = rankOf(lf.points + delta);
+              setReward(gold);
+              setResultExtra(
+                <p className="ladder-result">
+                  {before.label}
+                  {after.label !== before.label ? ` → ${after.label}` : ''}
+                  <span className={delta > 0 ? 'up' : delta < 0 ? 'down' : ''}>{delta > 0 ? `　+${delta} ★` : delta < 0 ? `　${delta} ★` : '　星數不變'}</span>
+                  {after.tier > before.tier && <b style={{ color: TIERS[after.tier].color }}>　升上{TIERS[after.tier].name}！</b>}
+                </p>,
+              );
+              update((p) => {
+                p.gold += gold;
+                const L = p.ladder[s.format];
+                L.points = Math.max(0, L.points + delta);
+                L.best = Math.max(L.best, L.points);
+                if (!r.draw) {
+                  if (won) {
+                    L.w++;
+                    L.streak = Math.max(0, L.streak) + 1;
+                  } else {
+                    L.l++;
+                    L.streak = 0;
+                  }
+                }
+                p.ladder.history.unshift({
+                  at: Date.now(),
+                  format: s.format,
+                  opponent: opp.name,
+                  oppRank: opp.rank,
+                  oppDeck: aiDeck.name,
+                  myDeck: deck.name,
+                  won,
+                  delta,
+                });
+                p.ladder.history = p.ladder.history.slice(0, 40);
+              });
+              return;
+            }
             const gold = r.draw ? REWARDS[s.level].loss : r.won ? REWARDS[s.level].win : r.conceded ? 0 : REWARDS[s.level].loss;
             setReward(gold);
             update((p) => {
@@ -120,11 +182,14 @@ export default function App() {
             });
           }}
           onExit={() => go({ name: 'home' })}
-          onRematch={() => startBattle(s.deckId, s.level, s.random ? null : s.aiDeckId, s.format)}
+          onRematch={() => (s.opponent ? go({ name: 'ladder', auto: true }) : startBattle(s.deckId, s.level, s.random ? null : s.aiDeckId, s.format))}
         />
       );
       break;
     }
+    case 'ladder':
+      body = <Ladder key={String(screen.auto)} profile={profile} go={go} auto={screen.auto} onStart={startLadder} />;
+      break;
     case 'decks':
       body = <DeckBuilder profile={profile} go={go} update={update} />;
       break;

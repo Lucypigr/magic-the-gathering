@@ -1,6 +1,6 @@
 import { activatedAbilities, manaSources } from '../../engine/actions';
 import { cardName, isCreature, isLand, stats } from '../../engine/state';
-import { useEffect, useRef, useState, type CSSProperties } from 'react';
+import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import type { Card, CardDef, GameState, Keyword, PID } from '../../engine/types';
 import { Art, CardBack, CardFace, frameClass } from '../CardView';
 import { KW_ICON, KW_ZH, PHASE_ZH, SUB_ZH } from '../i18n';
@@ -171,7 +171,27 @@ export function OtherZone({ g, pid, marks, onCard, onHover }: PartProps) {
 }
 
 /** 玩家頭像與生命值 */
-export function Avatar({ g, pid, face, selectable, onPlayer }: { g: GameState; pid: PID; face: CardDef | null; selectable: boolean; onPlayer: () => void }) {
+export function Avatar({
+  g,
+  pid,
+  face,
+  selectable,
+  onPlayer,
+  sub,
+  bubble,
+  children,
+}: {
+  g: GameState;
+  pid: PID;
+  face: CardDef | null;
+  selectable: boolean;
+  onPlayer: () => void;
+  /** 名字旁的額外資訊（例如段位） */
+  sub?: ReactNode;
+  /** 表情對話框 */
+  bubble?: string | null;
+  children?: ReactNode;
+}) {
   const p = g.players[pid];
   const mana = manaSources(g, pid);
   const prev = useRef(p.life);
@@ -190,13 +210,22 @@ export function Avatar({ g, pid, face, selectable, onPlayer }: { g: GameState; p
       </button>
       <div className={`hero-life ${p.life <= 5 ? 'low' : ''}`}>{p.life}</div>
       <div className="hero-meta">
-        <span className="hero-name">{p.name}</span>
+        <span className="hero-name">
+          {p.name}
+          {sub}
+        </span>
         <span className="hero-mana" title="目前可用的法術力來源">
           {mana.map((m) => (
             <ManaSymbol key={m.id} sym={m.produces.length === 1 ? m.produces[0] : 'C'} size={12} />
           ))}
         </span>
       </div>
+      {bubble && (
+        <div key={bubble} className="emote-bubble" role="status">
+          {bubble}
+        </div>
+      )}
+      {children}
     </div>
   );
 }

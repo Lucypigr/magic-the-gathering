@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useReducer, useRef, useState, type CSSProperties } from 'react';
+import { useCallback, useEffect, useMemo, useReducer, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import type { Level } from '../../ai/combatAI';
 import { expandDeck, type DeckList } from '../../data';
 import {
@@ -16,6 +16,9 @@ import { cardName, isCreature, stats } from '../../engine/state';
 import { legalTargets, sameTarget } from '../../engine/targets';
 import type { CardDef, Filter, PID, PriorityAction, TargetRef, TargetSpec } from '../../engine/types';
 import type { SavedDeck, Settings } from '../../meta/profile';
+import { EMOTES, type Emote, type Opponent } from '../../meta/ladder';
+import { getDef, hasDef } from '../../engine/registry';
+import { RankBadge } from '../Ladder';
 import { CardDetail, CardFace } from '../CardView';
 import { LEVEL_ZH, PHASE_ZH } from '../i18n';
 import { ManaCost } from '../Mana';
@@ -38,6 +41,11 @@ interface Props {
   onExit: () => void;
   onRematch: () => void;
   onSettings: (s: Settings) => void;
+  /** 天梯配對的對手（由 AI 扮演） */
+  opponent?: Opponent;
+  /** 結算畫面的額外內容（例如段位變化） */
+  resultExtra?: ReactNode;
+  rematchLabel?: string;
 }
 
 interface Draft {
@@ -76,7 +84,7 @@ function specPrompt(spec: TargetSpec): string {
 }
 
 export function Battle(props: Props) {
-  const { playerDeck, aiDeck, level, settings } = props;
+  const { playerDeck, aiDeck, level, settings, opponent } = props;
   const [ctl, setCtl] = useState<MatchController | null>(null);
   const [, force] = useReducer((x: number) => x + 1, 0);
   const [draft, setDraft] = useState<Draft | null>(null);
@@ -96,12 +104,13 @@ export function Battle(props: Props) {
   useEffect(() => {
     const c = new MatchController({
       human: { name: '你', deckName: playerDeck.name, deck: expandDeck(playerDeck), isAI: false },
-      ai: { name: '對手', deckName: aiDeck.name, deck: expandDeck(aiDeck), isAI: true },
+      ai: { name: opponent?.name ?? '對手', deckName: aiDeck.name, deck: expandDeck(aiDeck), isAI: true },
       level,
       aiStyle: aiDeck.style,
-      aiDelay: SPEED_MS[settings.aiSpeed],
+      aiDelay: SPEED_MS[settings.aiSpeed] * (opponent?.think ?? 1),
     });
     c.stopMode = settings.stopMode;
+    c.humanize = !!opponent;
     const un = c.subscribe(force);
     setCtl(c);
     c.start();
@@ -114,7 +123,7 @@ export function Battle(props: Props) {
 
   useEffect(() => {
     if (!ctl) return;
-    ctl.aiDelay = SPEED_MS[settings.aiSpeed];
+    ctl.aiDelay = SPEED_MS[settings.aiSpeed] * (opponent?.think ?? 1);
     ctl.stopMode = settings.stopMode;
   }, [ctl, settings.aiSpeed, settings.stopMode]);
 
@@ -130,8 +139,86 @@ export function Battle(props: Props) {
       defs.sort((x, y) => Number(!!y.supertypes?.includes('Legendary')) - Number(!!x.supertypes?.includes('Legendary')) || manaValue(y) - manaValue(x));
       return defs[0] ?? null;
     };
-    return [pick(0), pick(1)] as const;
-  }, [ctl]);
+    const oppFace = opponent?.face && hasDef(opponent.face) ? getDef(opponent.face) : null;
+    return [pick(0), oppFace ?? pick(1)] as const;
+  }, [ctl, opponent]);
+
+  // ---------- 表情與對手的「真人」反應（只在天梯） ----------
+  const [bubbles, setBubbles] = useState<[string | null, string | null]>([null, null]);
+  const [emoteMenu, setEmoteMenu] = useState(false);
+  const [muted, setMuted] = useState(false);
+  const bubbleTimers = useRef<ReturnType<typeof setTimeout>[]>([]);
+  const lastEmote = useRef(0);
+  const later = useCallback((ms: number, fn: () => void) => {
+    bubbleTimers.current.push(setTimeout(fn, ms));
+  }, []);
+  useEffect(() => () => bubbleTimers.current.forEach(clearTimeout), []);
+  const say = useCallback(
+    (pid: PID, text: string) => {
+      setBubbles((b) => (pid === 0 ? [text, b[1]] : [b[0], text]));
+      later(2600, () => setBubbles((b) => (pid === 0 ? (b[0] === text ? [null, b[1]] : b) : b[1] === text ? [b[0], null] : b)));
+    },
+    [later],
+  );
+  const oppSay = useCallback(
+    (text: string, delay = 900) => {
+      if (!opponent) return;
+      later(delay + Math.random() * 900, () => {
+        if (!mutedRef.current) say(1, text);
+      });
+    },
+    [opponent, later, say],
+  );
+  const mutedRef = useRef(muted);
+  mutedRef.current = muted;
+  const myEmote = (e: Emote) => {
+    setEmoteMenu(false);
+    if (Date.now() - lastEmote.current < 1500) return;
+    lastEmote.current = Date.now();
+    say(0, e);
+    if (!opponent || ctl?.finished) return;
+    const r = Math.random();
+    if (e === '你好！' && r < (opponent.polite ? 0.7 : 0.15)) oppSay('你好！', 1200);
+    else if (e === '打得好！' && r < (opponent.polite ? 0.6 : 0.2)) oppSay('謝謝', 1200);
+    else if (e === '謝謝' && r < 0.2) oppSay('打得好！', 1400);
+  };
+  const greeted = useRef(false);
+  const oppLife = useRef<number | null>(null);
+  const concedeCheckedTurn = useRef(0);
+  const endReacted = useRef(false);
+  useEffect(() => {
+    if (!opponent || !ctl) return;
+    const gs = ctl.g;
+    // 開場打招呼
+    if (!greeted.current && gs.turn >= 1) {
+      greeted.current = true;
+      if (opponent.polite && Math.random() < 0.35 + opponent.chatty * 0.5) oppSay('你好！', 1500);
+    }
+    // 一次掉很多血
+    const life = gs.players[1].life;
+    if (oppLife.current != null && oppLife.current - life >= 5 && opponent.chatty > 0.55 && Math.random() < 0.45) oppSay('哎呀！', 500);
+    oppLife.current = life;
+    // 結束時的禮貌
+    if (ctl.finished && !endReacted.current) {
+      endReacted.current = true;
+      if (!ctl.error && gs.winner === 0 && opponent.polite && Math.random() < 0.6) oppSay(Math.random() < 0.5 ? 'GG' : '打得好！', 300);
+      else if (!ctl.error && gs.winner === 1 && opponent.polite && Math.random() < 0.4) oppSay('GG', 300);
+    }
+    // 局勢無望時投降：輪到你的回合開始時判斷
+    if (!ctl.finished && gs.active === 0 && gs.turn !== concedeCheckedTurn.current && gs.turn > 4) {
+      concedeCheckedTurn.current = gs.turn;
+      const mine = gs.battlefield.map((id) => gs.cards[id]).filter((c) => isCreature(c));
+      const myPower = mine.filter((c) => c.controller === 0).reduce((n, c) => n + Math.max(0, stats(gs, c).p), 0);
+      const theirs = mine.filter((c) => c.controller === 1).length;
+      const hopeless = (life <= myPower && theirs === 0) || (life <= 3 && myPower >= life * 2 && theirs <= 1);
+      if (hopeless && Math.random() < opponent.quitter) {
+        if (opponent.polite) oppSay('GG', 200);
+        later(2400, () => {
+          if (!ctl.finished) ctl.concede(1);
+        });
+      }
+    }
+  });
 
   // 決策改變時重設選擇狀態
   const lastDecision = useRef<unknown>(null);
@@ -424,8 +511,14 @@ export function Battle(props: Props) {
     <div className="battle">
       <header className="battle-top">
         <div className="bt-left">
-          <span className="bt-level">難度：{LEVEL_ZH[level]}</span>
-          <span className="bt-vs">對手套牌：{aiDeck.name}</span>
+          {!opponent && <span className="bt-level">難度：{LEVEL_ZH[level]}</span>}
+          {opponent ? (
+            <span className="bt-vs">
+              天梯對戰 · {opponent.name}（{opponent.rank}）
+            </span>
+          ) : (
+            <span className="bt-vs">對手套牌：{aiDeck.name}</span>
+          )}
         </div>
         <div className="bt-right">
           <label className="mini-select">
@@ -451,6 +544,11 @@ export function Battle(props: Props) {
               <option value="all">全部</option>
             </select>
           </label>
+          {opponent && (
+            <button className="btn btn-small" onClick={() => setMuted((m) => !m)} title="隱藏對手的表情">
+              {muted ? '取消靜音' : '靜音對手'}
+            </button>
+          )}
           <button className="btn btn-small" onClick={() => setShowLog((s) => !s)}>
             紀錄
           </button>
@@ -483,7 +581,15 @@ export function Battle(props: Props) {
               <div className="strip-l">
                 <LandZone g={g} pid={1} marks={marks} onCard={onCard} onHover={setHover} />
               </div>
-              <Avatar g={g} pid={1} face={faces[1]} selectable={legalPlayers.has(1)} onPlayer={() => onPlayer(1)} />
+              <Avatar
+                g={g}
+                pid={1}
+                face={faces[1]}
+                selectable={legalPlayers.has(1)}
+                onPlayer={() => onPlayer(1)}
+                bubble={bubbles[1]}
+                sub={opponent && <RankBadge points={opponent.points} size="sm" />}
+              />
               <div className="strip-r">
                 <OppHand g={g} />
                 <Piles g={g} pid={1} onGraveyard={() => setPile(1)} onHover={setHover} />
@@ -517,7 +623,24 @@ export function Battle(props: Props) {
               <div className="strip-l">
                 <LandZone g={g} pid={0} marks={marks} onCard={onCard} onHover={setHover} />
               </div>
-              <Avatar g={g} pid={0} face={faces[0]} selectable={legalPlayers.has(0)} onPlayer={() => onPlayer(0)} />
+              <Avatar g={g} pid={0} face={faces[0]} selectable={legalPlayers.has(0)} onPlayer={() => onPlayer(0)} bubble={bubbles[0]}>
+                {opponent && (
+                  <div className="emote-wrap">
+                    <button className="emote-btn" onClick={() => setEmoteMenu((m) => !m)} aria-label="表情" title="表情">
+                      💬
+                    </button>
+                    {emoteMenu && (
+                      <div className="emote-menu" role="menu">
+                        {EMOTES.map((e) => (
+                          <button key={e} role="menuitem" onClick={() => myEmote(e)}>
+                            {e}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </Avatar>
               <div className="strip-r">
                 <Piles g={g} pid={0} onGraveyard={() => setPile(0)} onHover={setHover} />
               </div>
@@ -635,7 +758,16 @@ export function Battle(props: Props) {
         <PileModal g={g} title={`${g.players[pile].name}的墳墓場`} ids={[...g.players[pile].graveyard].reverse()} onClose={() => setPile(null)} />
       )}
       {ctl.finished && (
-        <GameOverModal g={g} reward={props.reward} aiDeck={aiDeck.name} onRematch={props.onRematch} onExit={props.onExit} error={ctl.error} />
+        <GameOverModal
+          g={g}
+          reward={props.reward}
+          aiDeck={aiDeck.name}
+          onRematch={props.onRematch}
+          onExit={props.onExit}
+          error={ctl.error}
+          extra={props.resultExtra}
+          rematchLabel={props.rematchLabel}
+        />
       )}
     </div>
   );

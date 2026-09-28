@@ -16,6 +16,11 @@ export interface MatchOptions {
   firstPlayer?: PID;
 }
 
+/** 主要階段的決策比較花時間 */
+function g1Main(g: GameState): boolean {
+  return g.phase === 'main1' || g.phase === 'main2';
+}
+
 export type StopMode = 'smart' | 'all';
 
 /**
@@ -35,6 +40,8 @@ export class MatchController {
   private listeners = new Set<() => void>();
   private timer: ReturnType<typeof setTimeout> | null = null;
   aiDelay: number;
+  /** 讓 AI 的思考時間有快有慢，更像真人 */
+  humanize = false;
   error: string | null = null;
 
   constructor(opts: MatchOptions) {
@@ -64,10 +71,10 @@ export class MatchController {
     this.finished = true;
   }
 
-  concede(): void {
+  concede(pid: PID = 0): void {
     if (this.finished) return;
-    this.g.winner = 1;
-    this.g.log.push({ turn: this.g.turn, text: '你投降了', kind: 'result' });
+    this.g.winner = pid === 0 ? 1 : 0;
+    this.g.log.push({ turn: this.g.turn, text: pid === 0 ? '你投降了' : `${this.g.players[pid].name} 投降了`, kind: 'result' });
     this.finished = true;
     this.decision = null;
     if (this.timer) clearTimeout(this.timer);
@@ -119,7 +126,7 @@ export class MatchController {
               this.timer = null;
               this.aiThinking = false;
               this.advance(a);
-            }, this.aiDelay);
+            }, this.humanize ? this.aiDelay * (0.55 + Math.random() * (d.type === 'priority' && g1Main(this.g) ? 1.4 : 0.8)) : this.aiDelay);
             return;
           }
           r = this.gen.next(a);
