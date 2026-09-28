@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useReducer, useRef, useState } from 'react';
+import { useEffect, useMemo, useReducer, useRef, useState, type CSSProperties } from 'react';
 import type { Level } from '../../ai/combatAI';
 import { expandDeck, type DeckList } from '../../data';
 import {
@@ -11,15 +11,15 @@ import {
 } from '../../engine/actions';
 import { attackCandidates, blockCandidates, canBlock } from '../../engine/combat';
 import { MatchController } from '../../engine/controller';
-import { costToString } from '../../engine/mana';
+import { costToString, manaValue } from '../../engine/mana';
 import { cardName, isCreature, stats } from '../../engine/state';
 import { legalTargets, sameTarget } from '../../engine/targets';
-import type { Filter, PID, PriorityAction, TargetRef, TargetSpec } from '../../engine/types';
+import type { CardDef, Filter, PID, PriorityAction, TargetRef, TargetSpec } from '../../engine/types';
 import type { SavedDeck, Settings } from '../../meta/profile';
 import { CardDetail, CardFace } from '../CardView';
 import { LEVEL_ZH, PHASE_ZH } from '../i18n';
 import { ManaCost } from '../Mana';
-import { PhaseTrack, PlayerField, PlayerInfo, StackView, type Marks } from './Board';
+import { Avatar, CreatureZone, LandZone, OppHand, OtherZone, PhaseTrack, Piles, StackView, type Marks } from './Board';
 import { ChooseModal, GameOverModal, MulliganModal, PileModal, YesNoModal } from './Modals';
 
 export interface BattleResult {
@@ -120,6 +120,18 @@ export function Battle(props: Props) {
 
   const g = ctl?.g ?? null;
   const d = ctl?.decision ?? null;
+  // 頭像：以套牌中最具代表性的生物當作肖像（傳奇優先，其次總費用最高）
+  const faces = useMemo(() => {
+    const pick = (pid: PID): CardDef | null => {
+      if (!ctl) return null;
+      const defs = Object.values(ctl.g.cards)
+        .filter((c) => c.owner === pid && !c.token && c.def.types.includes('Creature'))
+        .map((c) => c.def);
+      defs.sort((x, y) => Number(!!y.supertypes?.includes('Legendary')) - Number(!!x.supertypes?.includes('Legendary')) || manaValue(y) - manaValue(x));
+      return defs[0] ?? null;
+    };
+    return [pick(0), pick(1)] as const;
+  }, [ctl]);
 
   // 決策改變時重設選擇狀態
   const lastDecision = useRef<unknown>(null);
@@ -465,9 +477,23 @@ export function Battle(props: Props) {
       </header>
 
       <div className="battle-body">
-        <main className="table">
-          <PlayerInfo g={g} pid={1} selectable={legalPlayers.has(1)} onPlayer={() => onPlayer(1)} onGraveyard={() => setPile(1)} />
-          <PlayerField g={g} pid={1} marks={marks} onCard={onCard} onHover={setHover} />
+        <main className="arena">
+          <section className="half half-opp">
+            <div className="strip">
+              <div className="strip-l">
+                <LandZone g={g} pid={1} marks={marks} onCard={onCard} onHover={setHover} />
+              </div>
+              <Avatar g={g} pid={1} face={faces[1]} selectable={legalPlayers.has(1)} onPlayer={() => onPlayer(1)} />
+              <div className="strip-r">
+                <OppHand g={g} />
+                <Piles g={g} pid={1} onGraveyard={() => setPile(1)} onHover={setHover} />
+              </div>
+            </div>
+            <div className="battle-row">
+              <CreatureZone g={g} pid={1} marks={marks} onCard={onCard} onHover={setHover} />
+              <OtherZone g={g} pid={1} marks={marks} onCard={onCard} onHover={setHover} />
+            </div>
+          </section>
           <div className="midline">
             <PhaseTrack g={g} />
             <StackView g={g} marks={marks} onCard={onCard} onHover={setHover} />
@@ -475,40 +501,47 @@ export function Battle(props: Props) {
               <p className="prompt-text">{prompt}</p>
               <div className="prompt-buttons">
                 {buttons.map((b) => (
-                  <button key={b.label} className={`btn ${b.primary ? 'btn-primary' : ''}`} onClick={b.onClick}>
+                  <button key={b.label} className={`btn ${b.primary ? 'btn-primary btn-go' : ''}`} onClick={b.onClick}>
                     {b.label}
                   </button>
                 ))}
               </div>
             </div>
           </div>
-          <PlayerField g={g} pid={0} marks={marks} onCard={onCard} onHover={setHover} />
-          <PlayerInfo g={g} pid={0} selectable={legalPlayers.has(0)} onPlayer={() => onPlayer(0)} onGraveyard={() => setPile(0)} />
-          <div className="hand" aria-label="你的手牌">
-            {hand.map((c) => (
-              <CardFace
-                key={c.id}
-                def={c.def}
-                size="md"
-                className={`hand-card ${marks.playable.has(c.id) ? 'playable' : ''} ${focus === c.id ? 'focused' : ''} ${marks.selectable.has(c.id) ? 'selectable' : ''}`}
-                onClick={() => onCard(c.id)}
-                onDoubleClick={() => quickCast(c.id)}
-                onMouseEnter={() => setHover(c.id)}
-              />
-            ))}
-            {exiled.map((c) => (
-              <CardFace
-                key={c.id}
-                def={c.def}
-                size="md"
-                className={`hand-card exiled ${marks.playable.has(c.id) ? 'playable' : ''} ${focus === c.id ? 'focused' : ''}`}
-                onClick={() => onCard(c.id)}
-                onDoubleClick={() => quickCast(c.id)}
-                onMouseEnter={() => setHover(c.id)}
-              >
-                <span className="exile-tag">放逐區・本回合可用</span>
-              </CardFace>
-            ))}
+          <section className="half half-me">
+            <div className="battle-row">
+              <CreatureZone g={g} pid={0} marks={marks} onCard={onCard} onHover={setHover} />
+              <OtherZone g={g} pid={0} marks={marks} onCard={onCard} onHover={setHover} />
+            </div>
+            <div className="strip">
+              <div className="strip-l">
+                <LandZone g={g} pid={0} marks={marks} onCard={onCard} onHover={setHover} />
+              </div>
+              <Avatar g={g} pid={0} face={faces[0]} selectable={legalPlayers.has(0)} onPlayer={() => onPlayer(0)} />
+              <div className="strip-r">
+                <Piles g={g} pid={0} onGraveyard={() => setPile(0)} onHover={setHover} />
+              </div>
+            </div>
+          </section>
+          <div className="hand" aria-label="你的手牌" onMouseLeave={() => setHover(null)}>
+            {[...hand, ...exiled].map((c, i, all) => {
+              const off = i - (all.length - 1) / 2;
+              const ex = c.zone === 'exile';
+              return (
+                <CardFace
+                  key={c.id}
+                  def={c.def}
+                  size="md"
+                  className={`hand-card ${ex ? 'exiled' : ''} ${marks.playable.has(c.id) ? 'playable' : ''} ${focus === c.id ? 'focused' : ''} ${marks.selectable.has(c.id) ? 'selectable' : ''}`}
+                  style={{ '--rot': `${off * 2.2}deg`, '--dy': `${Math.abs(off) * Math.abs(off) * 1.2}px`, zIndex: i + 1 } as CSSProperties}
+                  onClick={() => onCard(c.id)}
+                  onDoubleClick={() => quickCast(c.id)}
+                  onMouseEnter={() => setHover(c.id)}
+                >
+                  {ex && <span className="exile-tag">放逐區・本回合可用</span>}
+                </CardFace>
+              );
+            })}
             {hand.length === 0 && exiled.length === 0 && <div className="row-empty">手上沒有牌</div>}
           </div>
         </main>
