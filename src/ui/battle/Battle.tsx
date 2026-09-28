@@ -23,6 +23,7 @@ import { CardDetail, CardFace } from '../CardView';
 import { LEVEL_ZH, PHASE_ZH } from '../i18n';
 import { ManaCost } from '../Mana';
 import { Avatar, CreatureZone, LandZone, OppHand, OtherZone, PhaseTrack, Piles, StackView, type Marks } from './Board';
+import { ArrowLayer, Spotlight } from './Fx';
 import { ChooseModal, GameOverModal, MulliganModal, PileModal, YesNoModal } from './Modals';
 
 export interface BattleResult {
@@ -62,6 +63,8 @@ interface Draft {
 }
 
 const SPEED_MS = { slow: 1100, normal: 650, fast: 250 } as const;
+/** 施放、攻擊之後停下來讓玩家看清楚的時間 */
+const PRESENT_MS = { slow: 1500, normal: 1050, fast: 550 } as const;
 
 function specPrompt(spec: TargetSpec): string {
   if (spec.prompt) return spec.prompt;
@@ -100,6 +103,7 @@ export function Battle(props: Props) {
   const [seq, setSeq] = useState(0);
   const ended = useRef(false);
   const logRef = useRef<HTMLDivElement>(null);
+  const arenaRef = useRef<HTMLElement>(null);
 
   useEffect(() => {
     const c = new MatchController({
@@ -111,6 +115,7 @@ export function Battle(props: Props) {
     });
     c.stopMode = settings.stopMode;
     c.humanize = !!opponent;
+    c.presentDelay = PRESENT_MS[settings.aiSpeed];
     const un = c.subscribe(force);
     setCtl(c);
     c.start();
@@ -125,6 +130,7 @@ export function Battle(props: Props) {
     if (!ctl) return;
     ctl.aiDelay = SPEED_MS[settings.aiSpeed] * (opponent?.think ?? 1);
     ctl.stopMode = settings.stopMode;
+    ctl.presentDelay = PRESENT_MS[settings.aiSpeed];
   }, [ctl, settings.aiSpeed, settings.stopMode]);
 
   const g = ctl?.g ?? null;
@@ -584,7 +590,8 @@ export function Battle(props: Props) {
       </header>
 
       <div className="battle-body">
-        <main className="arena">
+        <main className="arena" ref={arenaRef}>
+          <ArrowLayer g={g} rootRef={arenaRef} />
           <section className="half half-opp">
             <div className="strip">
               <div className="strip-l">
@@ -733,6 +740,7 @@ export function Battle(props: Props) {
         </aside>
       </div>
 
+      <Spotlight g={g} />
       {toast && <div className="toast" role="status">{toast}</div>}
 
       {d?.type === 'mulligan' && d.player === 0 && (

@@ -13,6 +13,7 @@ import type {
   LogEntry,
   PID,
   Player,
+  Show,
   TargetRef,
 } from './types';
 
@@ -101,6 +102,8 @@ export function createGame(p0: PlayerSetup, p1: PlayerSetup, seed = Date.now()):
     version: 0,
     attackedThisTurn: false,
     maxTurns: 200,
+    shows: [],
+    showSeq: 0,
   };
   [p0, p1].forEach((s, i) => {
     const pid = i as PID;
@@ -162,6 +165,7 @@ export function cloneGame(g: GameState): GameState {
     eot: g.eot.map((e) => ({ ...e })),
     pending: g.pending.slice(),
     log: [],
+    shows: [],
     sim: true,
   };
 }
@@ -169,6 +173,13 @@ export function cloneGame(g: GameState): GameState {
 // ------------------------------------------------------------
 // 日誌
 // ------------------------------------------------------------
+/** 記錄一個畫面事件（施放、攻擊等），讓介面可以顯示動畫 */
+export function show(g: GameState, s: Omit<Show, 'seq'>): void {
+  if (g.sim) return;
+  g.shows.push({ ...s, seq: ++g.showSeq });
+  if (g.shows.length > 30) g.shows.splice(0, g.shows.length - 30);
+}
+
 export function log(g: GameState, text: string, player?: PID, kind: LogEntry['kind'] = 'info'): void {
   g.version++;
   if (g.sim) return;

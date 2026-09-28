@@ -9,6 +9,7 @@ import {
   isLand,
   log,
   matches,
+  show,
   stats,
 } from './state';
 import { hasTargetsAvailable, validateTargets } from './targets';
@@ -340,6 +341,7 @@ function doCast(g: GameState, pid: PID, a: Extract<PriorityAction, { type: 'cast
     text: def.text,
     modeIndex: mode,
   });
+  show(g, { kind: 'spell', player: pid, card: c.id, targets });
   if (sacCard) sacrifice(g, sacCard);
   p.spellsThisTurn++;
   if (def.types.includes('Instant') || def.types.includes('Sorcery')) p.instSorcThisTurn++;
@@ -390,6 +392,7 @@ function doActivate(g: GameState, pid: PID, a: Extract<PriorityAction, { type: '
     text: ab.label,
     lkiPower: lki,
   });
+  show(g, { kind: 'activated', player: pid, card: c.id, targets, text: ab.label });
   log(g, `起動 ${cardName(c)}：${ab.label}${describeTargets(g, targets)}`, pid, 'cast');
   if (sacCard) sacrifice(g, sacCard);
   if (ab.cost.sacSelf) sacrifice(g, c);
