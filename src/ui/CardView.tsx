@@ -157,6 +157,7 @@ export function CardDetail({ def, extra }: { def: CardDef; extra?: ReactNode }) 
         )}
         {extra}
       </div>
+      {def.back && <BackFace def={def.back} />}
       <Explain def={def} kws={[...kws]} />
     </div>
   );
@@ -225,5 +226,35 @@ function Explain({ def, kws }: { def: CardDef; kws: Keyword[] }) {
         </dl>
       )}
     </details>
+  );
+}
+
+/** 雙面牌的背面 */
+function BackFace({ def }: { def: CardDef }) {
+  const img = useCardImage(def);
+  return (
+    <div className="cd-back">
+      <div className="cd-back-head">背面</div>
+      <div className="cd-back-body">
+        {img?.full ? <img className="cd-back-img" src={img.full} alt={displayName(def)} draggable={false} /> : null}
+        <div>
+          <div className="cd-head">
+            <h4 className="cd-name">{displayName(def)}</h4>
+            <ManaCost cost={def.cost} size={16} />
+          </div>
+          <div className="cd-type">{typeLine(def)}</div>
+          {def.text && (
+            <div className="cd-text">
+              <RulesText text={def.text} size={15} />
+            </div>
+          )}
+          {def.types.includes('Creature') && (
+            <div className="cd-pt">
+              力量／防禦力 <b>{`${def.power}/${def.toughness}`}</b>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
   );
 }

@@ -47,7 +47,7 @@ KW = {
     'prowess': ('prowess', '勇行'),
 }
 # Scryfall keywords 欄位中可以接受的（其餘機制一律略過整張卡）
-OK_KEYWORDS = {k.title() for k in KW} | {'First strike', 'Double strike', 'Ward', 'Scry', 'Surveil', 'Mill', 'Fight', 'Landfall', 'Enchant', 'Equip', 'Treasure', 'Investigate', 'Food', 'Clue', 'Earthbend', 'Flashback', 'Role token'}
+OK_KEYWORDS = {k.title() for k in KW} | {'First strike', 'Double strike', 'Ward', 'Scry', 'Surveil', 'Mill', 'Fight', 'Landfall', 'Enchant', 'Equip', 'Treasure', 'Investigate', 'Food', 'Clue', 'Earthbend', 'Flashback', 'Role token', 'Craft', 'Transform'}
 
 NUM = {'a': 1, 'an': 1, 'one': 1, 'two': 2, 'three': 3, 'four': 4, 'five': 5, 'six': 6, 'seven': 7}
 ZHN = {1: '一', 2: '二', 3: '三', 4: '四', 5: '五', 6: '六', 7: '七', 8: '八', 9: '九', 10: '十'}
@@ -937,7 +937,84 @@ TYPE_ZH = {'Instant': '瞬間', 'Sorcery': '法術'}
 def convert(c):
     if c['layout'] == 'adventure':
         return convert_adventure(c)
+    if c['layout'] in ('transform', 'modal_dfc'):
+        return convert_dfc(c)
     return convert_face(c)
+
+
+CRAFT = {
+    'artifact': ({'type': 'Artifact'}, '神器'),
+    'creature': ({'type': 'Creature'}, '生物'),
+    'Cave': ({'sub': 'Cave'}, '洞穴'),
+    'Island': ({'sub': 'Island'}, '海島'),
+    'Dinosaur': ({'sub': 'Dinosaur'}, '恐龍'),
+}
+NUMWORD = r'(two|three|four|five|six|seven|eight|\d+)'
+
+
+def dfc_par(par, d, self_zh):
+    """雙面牌正面上「如何轉化」的段落；回傳中文或 None"""
+    abil = d.setdefault('abilities', [])
+    if re.fullmatch(r"When SELF dies, return it to the battlefield tapped and transformed under its owner's control\.", par):
+        abil.append({'kind': 'trigger', 'on': 'dies', 'effects': [{'e': 'returnTransformed', 'tapped': True}]})
+        return f'當{self_zh}死去時，將它轉化並橫置放回戰場。'
+    m = re.fullmatch(r"((?:\{[0-9WUBRGC/]+\})+)(, \{T\})?: Exile SELF, then return it to the battlefield transformed under its owner's control\.( Activate only as a sorcery\.)?", par)
+    if m:
+        cost = {'mana': m.group(1)}
+        if m.group(2):
+            cost['tap'] = True
+        a = {'kind': 'activated', 'cost': cost, 'effects': [{'e': 'returnTransformed'}], 'label': '轉化'}
+        if m.group(3):
+            a['sorcery'] = True
+        abil.append(a)
+        return f"{m.group(1)}{'，{T}' if m.group(2) else ''}：放逐{self_zh}，然後將它轉化後放回戰場。{'只能於法術時機起動。' if m.group(3) else ''}"
+    m = re.fullmatch(r'((?:\{[0-9WUBRGC]\})+), \{T\}: Transform SELF\.', par)
+    if m:
+        abil.append({'kind': 'activated', 'cost': {'mana': m.group(1), 'tap': True}, 'effects': [{'e': 'transform', 'what': 'self'}], 'label': '轉化'})
+        return f'{m.group(1)}，{{T}}：轉化{self_zh}。'
+    m = re.fullmatch(r'At the beginning of your end step, if you control ' + NUMWORD + r' or more (creatures|lands|artifacts), transform SELF\.', par)
+    if m:
+        n = num(m.group(1))
+        t = {'creatures': 'Creature', 'lands': 'Land', 'artifacts': 'Artifact'}[m.group(2)]
+        tz = {'creatures': '生物', 'lands': '地', 'artifacts': '神器'}[m.group(2)]
+        abil.append({'kind': 'trigger', 'on': 'endStep', 'cond': {'c': 'controls', 'filter': {'type': t}, 'n': n}, 'effects': [{'e': 'transform', 'what': 'self'}]})
+        return f'在你的結束步驟開始時，若你操控{n}個或更多{tz}，轉化{self_zh}。'
+    m = re.fullmatch(r'At the beginning of your end step, if ' + NUMWORD + r' or more cards are in your graveyard, transform SELF\.', par)
+    if m:
+        n = num(m.group(1))
+        abil.append({'kind': 'trigger', 'on': 'endStep', 'cond': {'c': 'gyCount', 'filter': {}, 'n': n}, 'effects': [{'e': 'transform', 'what': 'self'}]})
+        return f'在你的結束步驟開始時，若你的墳墓場中有{n}張或更多牌，轉化{self_zh}。'
+    m = re.fullmatch(r'Craft with (artifact|creature|Cave|Island|Dinosaur) ((?:\{[0-9WUBRGC]\})+)', par)
+    if m:
+        f, z = CRAFT[m.group(1)]
+        abil.append({'kind': 'activated', 'cost': {'mana': m.group(2), 'craft': f}, 'effects': [{'e': 'returnTransformed'}], 'label': '工藝：轉化', 'sorcery': True})
+        return f'工藝—{m.group(2)}，放逐{self_zh}與另一個{z}（由你操控的，或在你墳墓場中的）：將{self_zh}轉化後放回戰場。只能於法術時機起動。'
+    if not abil:
+        d.pop('abilities')
+    return None
+
+
+def face_of(c, f):
+    return dict(c, layout='normal', name=f['name'], mana_cost=f.get('mana_cost') or '', type_line=f['type_line'],
+                oracle_text=f.get('oracle_text') or '', power=f.get('power'), toughness=f.get('toughness'))
+
+
+def convert_dfc(c):
+    f0, f1 = c['card_faces']
+    modal = c['layout'] == 'modal_dfc'
+    d = convert_face(face_of(c, f0), dfc=not modal)
+    b = convert_face(face_of(c, f1), back=not modal)
+    b['id'] = slug(f0['name']) + '-back'
+    d['back'] = b
+    d['imageName'] = c['name']
+    if modal:
+        d['mdfc'] = True
+        d['text'] = (d['text'] + '\n' if d['text'] else '') + f"（模式雙面牌：你可以選擇施放正面，或施放背面《{f1['name']}》。）"
+    else:
+        if not any(a.get('effects') and a['effects'][0]['e'] in ('transform', 'returnTransformed') for a in d.get('abilities', [])):
+            raise Unsupported('no transform trigger')
+        d['text'] = (d['text'] + '\n' if d['text'] else '') + f"（雙面牌：轉化後會翻到背面《{f1['name']}》。）"
+    return d
 
 
 def convert_adventure(c):
@@ -974,7 +1051,7 @@ def convert_adventure(c):
     return d
 
 
-def convert_face(c):
+def convert_face(c, dfc=False, back=False):
     if c['layout'] != 'normal':
         raise Unsupported('layout ' + c['layout'])
     tl = c['type_line']
@@ -984,7 +1061,7 @@ def convert_face(c):
         if k not in OK_KEYWORDS:
             raise Unsupported('keyword ' + k)
     cost = c.get('mana_cost') or ''
-    if re.search(r'\{[^}]*(X|P|S)[^}]*\}', cost) or not cost and 'Land' not in tl:
+    if re.search(r'\{[^}]*(X|P|S)[^}]*\}', cost) or not cost and 'Land' not in tl and not back:
         raise Unsupported('cost ' + cost)
     left, _, right = tl.partition('—')
     words = left.split()
@@ -1135,6 +1212,11 @@ def convert_face(c):
                 continue
             spell_pars.append(par)
             continue
+        if dfc:
+            z = dfc_par(par, d, self_zh)
+            if z:
+                zh_lines.append(z)
+                continue
         r = parse_trigger(par, self_zh)
         if r:
             abilities += r[0]

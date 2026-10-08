@@ -384,6 +384,8 @@ export function checkCond(
       return landsOf(g, controller).length <= cond.n;
     case 'anyLifeLte':
       return me.life <= cond.n || opp.life <= cond.n;
+    case 'handLte':
+      return opp.hand.length <= cond.n || (cond.who === 'any' && me.hand.length <= cond.n);
     case 'attacked':
       return g.active === controller && g.attackedThisTurn;
     case 'drawsGte':

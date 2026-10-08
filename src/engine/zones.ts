@@ -176,6 +176,11 @@ export function moveCard(g: GameState, c: Card, to: Zone, bottom = false): void 
   c.controller = c.owner;
   c.playableTurn = undefined;
   c.onAdventure = false;
+  // 雙面牌離開戰場後回到正面
+  if (c.front) {
+    c.def = c.front;
+    c.front = undefined;
+  }
   if (to !== 'exile') c.exiledBy = undefined;
   if (c.token && to !== 'battlefield') {
     // 衍生物離開戰場即消失
@@ -226,6 +231,37 @@ export function enterBattlefield(g: GameState, c: Card, controller: PID, tapped 
   c.playableTurn = undefined;
   g.version++;
   emit(g, { type: 'etb', card: c.id, controller });
+}
+
+/** 以背面進戰場（模式雙面牌施放背面、轉化後放回戰場） */
+export function enterBattlefieldBack(g: GameState, c: Card, controller: PID, tapped = false): void {
+  const front = c.front ?? c.def;
+  if (!front.back) {
+    enterBattlefield(g, c, controller, tapped);
+    return;
+  }
+  if (c.zone !== 'battlefield') removeFromZone(g, c);
+  c.front = front;
+  c.def = front.back;
+  enterBattlefield(g, c, controller, tapped);
+}
+
+/** 轉化戰場上的雙面牌（正面 ↔ 背面）；回傳是否成功 */
+export function transformCard(g: GameState, c: Card): boolean {
+  if (c.zone !== 'battlefield') return false;
+  if (c.baseDef) {
+    c.def = c.baseDef;
+    c.baseDef = undefined;
+  }
+  if (c.front) {
+    c.def = c.front;
+    c.front = undefined;
+  } else if (c.def.back) {
+    c.front = c.def;
+    c.def = c.def.back;
+  } else return false;
+  g.version++;
+  return true;
 }
 
 /** 同時將多張永久物置入墳墓場（生物會觸發「死去」） */

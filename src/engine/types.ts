@@ -163,7 +163,9 @@ export type Cond =
   /** 你本回合已抓了 n 張或更多牌 */
   | { c: 'drawsGte'; n: number }
   /** 你本回合攻擊過 */
-  | { c: 'attacked' };
+  | { c: 'attacked' }
+  /** 手牌數量在 n 張或以下（對手／任一玩家） */
+  | { c: 'handLte'; who: 'opp' | 'any'; n: number };
 
 export interface ExtraCost {
   mana?: string;
@@ -232,6 +234,10 @@ export type Effect =
   | { e: 'landFromHand' }
   | { e: 'cantGainLife'; who: Ref }
   /** 直到回合結束，永久物（通常是地）成為生物 */
+  /** 轉化（翻到另一面） */
+  | { e: 'transform'; what: Ref }
+  /** 放逐此牌（不論在戰場或墳墓場），再以轉化後的面放回戰場 */
+  | { e: 'returnTransformed'; tapped?: boolean }
   | { e: 'animate'; what: Ref; p: number; t: number; kw?: Keyword[]; subtypes?: string[]; colors?: Color[] };
 
 export type TriggerOn =
@@ -290,7 +296,7 @@ export interface TriggeredAbility {
 
 export interface ActivatedAbility {
   kind: 'activated';
-  cost: { mana?: string; tap?: boolean; sacSelf?: boolean; sacOther?: Filter; life?: number };
+  cost: { mana?: string; tap?: boolean; sacSelf?: boolean; sacOther?: Filter; life?: number; craft?: Filter; craftCount?: number };
   targets?: TargetSpec[];
   effects: Effect[];
   sorcery?: boolean;
@@ -352,6 +358,10 @@ export interface CardDef {
   adventure?: { name: string; zh?: string; cost: string; types: CardType[]; text: string; spell: SpellSpec };
   /** 返照：可以支付此費用從墳墓場施放，之後放逐 */
   flashback?: string;
+  /** 雙面牌的背面 */
+  back?: CardDef;
+  /** 可以選擇施放背面（模式雙面牌） */
+  mdfc?: boolean;
   etbTappedUnless?: Cond;
   etbCounters?: number;
   ward?: number;
@@ -390,6 +400,8 @@ export interface Card {
   baseDef?: CardDef;
   /** 冒險中：在放逐區，可以施放本體 */
   onAdventure?: boolean;
+  /** 已轉化：目前是背面，這是正面的定義 */
+  front?: CardDef;
   owner: PID;
   controller: PID;
   zone: Zone;
@@ -442,7 +454,7 @@ export interface Player {
 export type TargetRef = { p: PID } | { c: number };
 
 /** 特殊的施放方式 */
-export type CastAlt = 'adventure' | 'flashback';
+export type CastAlt = 'adventure' | 'flashback' | 'back';
 
 export interface StackItem {
   sid: number;

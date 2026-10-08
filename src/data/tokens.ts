@@ -5,6 +5,7 @@ import { GEN_TOKENS } from './sets/gen/tokens';
 const T = (d: Omit<CardDef, 'set' | 'rarity' | 'token'>): CardDef => ({ ...d, set: 'TOK', rarity: 'T', token: true });
 
 export const TOKENS: CardDef[] = [
+  T({ id: 'tok-spider-reach', name: 'Spider', zh: '蜘蛛', colors: ['G'], types: ['Creature'], subtypes: ['Spider'], power: 2, toughness: 1, keywords: ['reach'], text: '延勢' }),
   T({
     id: 'tok-treasure',
     name: 'Treasure',

@@ -809,6 +809,35 @@ button {
   font-size: 13px;
 }
 
+/* 雙面牌背面 */
+.cd-back {
+  grid-column: 1 / -1;
+  border: 1px dashed var(--line);
+  border-radius: 10px;
+  padding: 10px 12px;
+  background: rgba(255, 255, 255, 0.03);
+}
+.cd-back-head {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--brass-hi);
+  margin-bottom: 6px;
+}
+.cd-back-body {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+}
+.cd-back-img {
+  width: 120px;
+  border-radius: 7px;
+  flex: none;
+}
+.cd-back .cd-name {
+  margin: 0;
+  font-size: 16px;
+}
+
 /* 效果解說 */
 .cd-explain {
   grid-column: 1 / -1;

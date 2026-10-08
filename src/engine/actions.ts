@@ -26,7 +26,7 @@ import type {
   TargetRef,
   TargetSpec,
 } from './types';
-import { discard, emit, enterBattlefield, removeFromZone, sacrifice } from './zones';
+import { discard, emit, enterBattlefield, moveCard, removeFromZone, sacrifice } from './zones';
 
 // ------------------------------------------------------------
 // 法術力
@@ -102,6 +102,8 @@ export function castDef(def: CardDef, alt?: CastAlt): CardDef {
       text: a.text,
       imageName: def.imageName,
     };
+  } else if (alt === 'back' && def.back) {
+    d = def.back;
   } else {
     d = { ...def, cost: def.flashback ?? def.cost };
   }
@@ -112,7 +114,7 @@ export function castDef(def: CardDef, alt?: CastAlt): CardDef {
 /** 這張牌在目前的區域可以用哪些方式施放 */
 export function castAlts(g: GameState, pid: PID, c: Card): (CastAlt | undefined)[] {
   const def = c.def;
-  if (c.zone === 'hand' && c.owner === pid) return def.adventure ? [undefined, 'adventure'] : [undefined];
+  if (c.zone === 'hand' && c.owner === pid) return def.adventure ? [undefined, 'adventure'] : def.mdfc && def.back ? [undefined, 'back'] : [undefined];
   if (c.zone === 'exile' && c.owner === pid && c.onAdventure) return [undefined];
   if (c.zone === 'exile' && c.playableTurn === g.turn && c.playableBy === pid) return def.adventure ? [undefined, 'adventure'] : [undefined];
   if (c.zone === 'graveyard' && c.owner === pid && def.flashback) return ['flashback'];
@@ -194,6 +196,15 @@ export function activatedAbilities(def: CardDef): ActivatedAbility[] {
   return list;
 }
 
+/** 工藝的素材：優先用墳墓場的牌，其次是戰場上價值最低的永久物 */
+export function craftMaterials(g: GameState, pid: PID, f: Filter, selfId: number, n = 1): number[] | null {
+  const gy = g.players[pid].graveyard.map((id) => g.cards[id]).filter((c) => matches(g, f, c, pid, selfId));
+  const bf = sacCandidates(g, pid, { ...f, other: true }, selfId).filter((c) => c.id !== selfId);
+  bf.sort((a, b) => manaValue(a.def) - manaValue(b.def) || Number(!!b.token) - Number(!!a.token));
+  const pick = [...gy, ...bf].slice(0, n).map((c) => c.id);
+  return pick.length === n ? pick : null;
+}
+
 function sacCandidates(g: GameState, pid: PID, f: Filter, sourceId?: number): Card[] {
   return g.battlefield
     .map((id) => g.cards[id])
@@ -212,6 +223,7 @@ export function canActivate(g: GameState, pid: PID, c: Card, idx: number): boole
   }
   if (ab.cost.life && g.players[pid].life < ab.cost.life) return false;
   if (ab.cost.sacOther && sacCandidates(g, pid, ab.cost.sacOther, c.id).length === 0) return false;
+  if (ab.cost.craft && craftMaterials(g, pid, ab.cost.craft, c.id, ab.cost.craftCount) == null) return false;
   if (ab.cost.mana) {
     const cost = parseCost(ab.cost.mana);
     if (ab.isEquip) {
@@ -301,6 +313,8 @@ function castOptionsAs(g: GameState, pid: PID, c: Card, alt: CastAlt | undefined
           ? `冒險：${name}`
           : alt === 'flashback'
             ? `返照：${name}`
+            : alt === 'back'
+              ? `施放背面：${def.name}`
             : def.spell?.modes
               ? def.spell.modes[m].text
               : `施放 ${name}`,
@@ -467,6 +481,12 @@ function doActivate(g: GameState, pid: PID, a: Extract<PriorityAction, { type: '
   log(g, `起動 ${cardName(c)}：${ab.label}${describeTargets(g, targets)}`, pid, 'cast');
   if (sacCard) sacrifice(g, sacCard);
   if (ab.cost.sacSelf) sacrifice(g, c);
+  if (ab.cost.craft) {
+    for (const m of craftMaterials(g, pid, ab.cost.craft, c.id, ab.cost.craftCount) ?? []) {
+      log(g, `工藝：放逐 ${cardName(g.cards[m])}`, pid);
+      moveCard(g, g.cards[m], 'exile');
+    }
+  }
   for (const t of targets) if (t && 'c' in t && g.cards[t.c].zone === 'battlefield') emit(g, { type: 'targeted', card: t.c, by: pid, spell: false });
   return null;
 }
