@@ -24,7 +24,7 @@ import {
 } from './state';
 import { isLegalTarget, legalTargets, validateTargets } from './targets';
 import type { Card, Flow, GameState, PID, Response, SubFlow, TargetRef } from './types';
-import { discard, drawCards, emit, enterBattlefield, moveCard, putIntoGraveyard } from './zones';
+import { discard, drawCards, emit, enterBattlefield, enterBattlefieldBack, moveCard, putIntoGraveyard } from './zones';
 
 // ------------------------------------------------------------
 // 狀態動作
@@ -184,7 +184,7 @@ export function* resolveTop(g: GameState): SubFlow {
   };
   if (item.kind === 'spell') {
     const def = src.def;
-    if (item.alt) {
+    if (item.alt === 'adventure' || item.alt === 'flashback') {
       // 冒險：結算後放逐，之後可以施放本體；返照：結算後放逐
       yield* runEffects(g, ctx, item.effects);
       if (src.zone === 'stack') {
@@ -204,6 +204,9 @@ export function* resolveTop(g: GameState): SubFlow {
         enterBattlefield(g, src, item.controller);
         src.attachedTo = t.c;
         log(g, `${cardName(src)} 結附於 ${cardName(g.cards[t.c])}`, item.controller);
+      } else if (item.alt === 'back') {
+        enterBattlefieldBack(g, src, item.controller);
+        log(g, `${cardName(src)} 進入戰場`, item.controller);
       } else {
         enterBattlefield(g, src, item.controller);
         log(g, `${cardName(src)} 進入戰場`, item.controller);

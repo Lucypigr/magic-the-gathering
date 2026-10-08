@@ -53,7 +53,7 @@ function notify() {
 interface ScryCard {
   name: string;
   image_uris?: { art_crop?: string; normal?: string };
-  card_faces?: { image_uris?: { art_crop?: string; normal?: string } }[];
+  card_faces?: { name?: string; image_uris?: { art_crop?: string; normal?: string } }[];
 }
 
 let inflight = false;
@@ -101,6 +101,10 @@ export async function prefetchImages(names: string[]): Promise<void> {
         const entry = { art: iu?.art_crop, full: iu?.normal };
         cache[c.name.toLowerCase()] = entry;
         cache[c.name.split(' // ')[0].toLowerCase()] = entry;
+        // 雙面牌的背面有自己的圖
+        for (const f of c.card_faces?.slice(1) ?? []) {
+          if (f.name && f.image_uris) cache[f.name.toLowerCase()] = { art: f.image_uris.art_crop, full: f.image_uris.normal };
+        }
       }
       for (const nf of json.not_found ?? []) cache[nf.name.toLowerCase()] = null;
       persist();

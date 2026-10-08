@@ -26,6 +26,8 @@ import {
   loseLife,
   moveCard,
   sacrifice,
+  enterBattlefieldBack,
+  transformCard,
 } from './zones';
 
 export interface Ctx {
@@ -294,6 +296,23 @@ function* runEffect(g: GameState, ctx: Ctx, ef: Effect): SubFlow {
       }
       g.version++;
       break;
+    case 'transform': {
+      for (const c of resolveRef(g, ctx, ef.what).cards) {
+        const from = cardName(c);
+        if (transformCard(g, c)) log(g, `${from} 轉化為 ${cardName(c)}`, c.controller);
+      }
+      break;
+    }
+    case 'returnTransformed': {
+      const c = g.cards[ctx.source];
+      if (!c || (c.zone !== 'battlefield' && c.zone !== 'graveyard') || !(c.front ?? c.def).back) break;
+      const from = cardName(c);
+      const owner = c.owner;
+      moveCard(g, c, 'exile');
+      enterBattlefieldBack(g, c, owner, ef.tapped);
+      log(g, `${from} 轉化後回到戰場，成為 ${cardName(c)}`, owner);
+      break;
+    }
     case 'animate': {
       for (const c of resolveRef(g, ctx, ef.what).cards) {
         if (c.zone !== 'battlefield' || c.baseDef) continue;

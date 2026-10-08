@@ -17,3 +17,4 @@ import './mkm';
 import './lci';
 import './woe';
 import './gen';
+import './dfc';
