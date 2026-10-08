@@ -34,6 +34,17 @@ export const MECHANICS: Term[] = [
   { term: '強化', match: ['強化'], desc: '一種每回合只能起動一次的起動式異能。' },
   { term: '結盟', match: ['結盟'], desc: '每當另一個生物在你的操控下進戰場時觸發。' },
   { term: '增幅', match: ['增幅'], desc: '施放時可以多付一筆額外費用，付了的話效果會變強（不付也能正常施放）。' },
+  {
+    term: '冒險',
+    match: ['冒險'],
+    desc: '一張牌上印了兩種用法：本體（通常是生物）和一個小咒語（冒險）。你可以先施放冒險咒語，效果結算後這張牌不會進墳墓場，而是「踏上冒險」放到放逐區；之後你可以像從手上一樣，從放逐區施放本體。等於一張牌用兩次！也可以直接施放本體，那就沒有冒險可用了。',
+  },
+  {
+    term: '返照',
+    match: ['返照'],
+    desc: '這張牌進了墳墓場之後，還能再用一次：支付「返照」後面寫的費用，就能從墳墓場施放它（時機規則和平常一樣）。用完之後它會被放逐，不會再回到墳墓場，所以返照只能用一次。',
+  },
+  { term: '角色衍生物', match: ['角色衍生物'], desc: '一種貼在生物上的靈氣衍生物，給予那個生物加成。生物離開戰場時，角色也會消失。' },
   { term: '暈眩指示物', match: ['暈眩'], desc: '有暈眩指示物的永久物在重置步驟不會重置，而是移除一個暈眩指示物。' },
 ];
 
@@ -86,7 +97,7 @@ export function symbolNotes(def: CardDef): SymbolNote[] {
   return out;
 }
 
-export type LineKind = 'keyword' | 'mana' | 'activated' | 'triggered' | 'static' | 'spell' | 'modes' | 'mode';
+export type LineKind = 'keyword' | 'mana' | 'activated' | 'triggered' | 'static' | 'spell' | 'modes' | 'mode' | 'adventure' | 'flashback';
 
 export const LINE_KIND_ZH: Record<LineKind, string> = {
   keyword: '關鍵字異能',
@@ -97,6 +108,8 @@ export const LINE_KIND_ZH: Record<LineKind, string> = {
   spell: '咒語效果',
   modes: '模式咒語',
   mode: '選項',
+  adventure: '冒險',
+  flashback: '返照',
 };
 
 export interface LineNote {
@@ -121,6 +134,24 @@ export function lineNotes(def: CardDef): LineNote[] {
   for (const raw of def.text.split('\n')) {
     const line = raw.trim();
     if (!line) continue;
+    // 括號裡的提示文字由下面的解說取代
+    if (line.startsWith('（') && line.endsWith('）')) continue;
+    const adv = line.match(/^冒險—《(.+?)》((?:\{[^}]+\})+)（(.+?)）：(.+)$/);
+    if (adv) {
+      out.push({
+        kind: 'adventure',
+        text: line,
+        cost: adv[2],
+        effect: adv[4],
+        desc: `你可以把這張牌當成${adv[3]}「${adv[1]}」施放（時機和一般${adv[3]}相同）。結算後此牌放逐，之後可以從放逐區施放本體。`,
+      });
+      continue;
+    }
+    const fb = line.match(/^返照((?:\{[^}]+\})+)/);
+    if (fb) {
+      out.push({ kind: 'flashback', text: line, cost: fb[1], effect: '從墳墓場再施放一次此牌', desc: '這張牌在你的墳墓場時，支付這個費用就能再施放一次，之後它會被放逐。' });
+      continue;
+    }
     if (line.startsWith('•')) {
       out.push({ kind: 'mode', text: line, desc: '可以選擇的其中一個效果。' });
       continue;

@@ -175,6 +175,7 @@ export function moveCard(g: GameState, c: Card, to: Zone, bottom = false): void 
   c.zone = to;
   c.controller = c.owner;
   c.playableTurn = undefined;
+  c.onAdventure = false;
   if (to !== 'exile') c.exiledBy = undefined;
   if (c.token && to !== 'battlefield') {
     // 衍生物離開戰場即消失

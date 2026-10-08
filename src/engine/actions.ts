@@ -17,6 +17,7 @@ import type {
   ActivatedAbility,
   Card,
   CardDef,
+  CastAlt,
   Effect,
   Filter,
   GameState,
@@ -77,12 +78,53 @@ export function spellEffects(def: CardDef, mode?: number): Effect[] {
   return def.spell?.effects ?? [];
 }
 
+const altCache = new WeakMap<CardDef, Partial<Record<CastAlt, CardDef>>>();
+
+/** 以冒險或返照施放時，這個咒語實際的特性（費用、類別、效果） */
+export function castDef(def: CardDef, alt?: CastAlt): CardDef {
+  if (!alt) return def;
+  let m = altCache.get(def);
+  if (!m) altCache.set(def, (m = {}));
+  if (m[alt]) return m[alt]!;
+  let d: CardDef;
+  if (alt === 'adventure' && def.adventure) {
+    const a = def.adventure;
+    d = {
+      id: def.id,
+      name: a.name,
+      zh: a.zh,
+      set: def.set,
+      rarity: def.rarity,
+      cost: a.cost,
+      types: a.types,
+      subtypes: ['Adventure'],
+      spell: a.spell,
+      text: a.text,
+      imageName: def.imageName,
+    };
+  } else {
+    d = { ...def, cost: def.flashback ?? def.cost };
+  }
+  m[alt] = d;
+  return d;
+}
+
+/** 這張牌在目前的區域可以用哪些方式施放 */
+export function castAlts(g: GameState, pid: PID, c: Card): (CastAlt | undefined)[] {
+  const def = c.def;
+  if (c.zone === 'hand' && c.owner === pid) return def.adventure ? [undefined, 'adventure'] : [undefined];
+  if (c.zone === 'exile' && c.owner === pid && c.onAdventure) return [undefined];
+  if (c.zone === 'exile' && c.playableTurn === g.turn && c.playableBy === pid) return def.adventure ? [undefined, 'adventure'] : [undefined];
+  if (c.zone === 'graveyard' && c.owner === pid && def.flashback) return ['flashback'];
+  return [];
+}
+
 export function modeCount(def: CardDef): number {
   return def.spell?.modes?.length ?? 1;
 }
 
-export function spellCost(g: GameState, c: Card, pid: PID, mode?: number, targets?: (TargetRef | null)[]): ManaCost {
-  const def = c.def;
+export function spellCost(g: GameState, c: Card, pid: PID, mode?: number, targets?: (TargetRef | null)[], alt?: CastAlt): ManaCost {
+  const def = castDef(c.def, alt);
   let cost = parseCost(def.spell?.modes?.[mode ?? 0]?.cost ?? def.cost);
   const cr = def.costReduce;
   if (cr) {
@@ -197,6 +239,10 @@ export interface PlayOption {
   specs: TargetSpec[];
   sacFilter?: Filter;
   label: string;
+  /** 冒險或返照 */
+  alt?: CastAlt;
+  /** 施放時的效果（AI 用） */
+  effects?: Effect[];
 }
 
 export function castableCards(g: GameState, pid: PID): Card[] {
@@ -204,7 +250,11 @@ export function castableCards(g: GameState, pid: PID): Card[] {
   const out = p.hand.map((id) => g.cards[id]);
   for (const id of p.exile) {
     const c = g.cards[id];
-    if (c.playableTurn === g.turn && c.playableBy === pid) out.push(c);
+    if ((c.playableTurn === g.turn && c.playableBy === pid) || c.onAdventure) out.push(c);
+  }
+  for (const id of p.graveyard) {
+    const c = g.cards[id];
+    if (c.def.flashback) out.push(c);
   }
   return out;
 }
@@ -214,12 +264,18 @@ export function canPlayLand(g: GameState, pid: PID): boolean {
 }
 
 export function castOptionsFor(g: GameState, pid: PID, c: Card): PlayOption[] {
-  const def = c.def;
   const out: PlayOption[] = [];
   if (isLand(c)) {
-    if (canPlayLand(g, pid)) out.push({ kind: 'play', card: c.id, specs: [], label: `打出 ${displayName(def)}` });
+    if (c.zone !== 'graveyard' && canPlayLand(g, pid)) out.push({ kind: 'play', card: c.id, specs: [], label: `打出 ${displayName(c.def)}` });
     return out;
   }
+  for (const alt of castAlts(g, pid, c)) out.push(...castOptionsAs(g, pid, c, alt));
+  return out;
+}
+
+function castOptionsAs(g: GameState, pid: PID, c: Card, alt: CastAlt | undefined): PlayOption[] {
+  const def = castDef(c.def, alt);
+  const out: PlayOption[] = [];
   if (!instantSpeed(def) && !sorceryTiming(g, pid)) return out;
   if (def.addCost?.life && g.players[pid].life < def.addCost.life) return out;
   if (def.addCost?.sac && sacCandidates(g, pid, def.addCost.sac).length === 0) return out;
@@ -229,15 +285,25 @@ export function castOptionsFor(g: GameState, pid: PID, c: Card): PlayOption[] {
     const mode = def.spell?.modes ? m : undefined;
     const specs = castTargetSpecs(def, mode);
     if (!hasTargetsAvailable(g, specs, pid, c.id)) continue;
-    const cost = spellCost(g, c, pid, mode);
+    const cost = spellCost(g, c, pid, mode, undefined, alt);
     if (!canPayCost(g, pid, cost)) continue;
+    const name = alt === 'adventure' ? (def.zh ?? def.name) : displayName(def);
     out.push({
       kind: 'cast',
       card: c.id,
       mode,
       specs,
       sacFilter: def.addCost?.sac,
-      label: def.spell?.modes ? def.spell.modes[m].text : `施放 ${displayName(def)}`,
+      alt,
+      effects: spellEffects(def, mode),
+      label:
+        alt === 'adventure'
+          ? `冒險：${name}`
+          : alt === 'flashback'
+            ? `返照：${name}`
+            : def.spell?.modes
+              ? def.spell.modes[m].text
+              : `施放 ${name}`,
     });
   }
   return out;
@@ -279,9 +345,9 @@ export function performAction(g: GameState, pid: PID, a: PriorityAction): string
   return null;
 }
 
-function inCastableZone(g: GameState, pid: PID, c: Card): boolean {
-  if (c.zone === 'hand' && c.owner === pid) return true;
-  return c.zone === 'exile' && c.playableTurn === g.turn && c.playableBy === pid;
+function inCastableZone(g: GameState, pid: PID, c: Card, alt?: CastAlt): boolean {
+  if (isLand(c)) return (c.zone === 'hand' && c.owner === pid) || (c.zone === 'exile' && c.playableTurn === g.turn && c.playableBy === pid);
+  return castAlts(g, pid, c).includes(alt);
 }
 
 function doPlay(g: GameState, pid: PID, id: number): string | null {
@@ -296,8 +362,9 @@ function doPlay(g: GameState, pid: PID, id: number): string | null {
 
 function doCast(g: GameState, pid: PID, a: Extract<PriorityAction, { type: 'cast' }>): string | null {
   const c = g.cards[a.card];
-  if (!c || isLand(c) || !inCastableZone(g, pid, c)) return '無法施放這張牌';
-  const def = c.def;
+  const alt = a.alt;
+  if (!c || isLand(c) || !inCastableZone(g, pid, c, alt)) return '無法施放這張牌';
+  const def = castDef(c.def, alt);
   if (!instantSpeed(def) && !sorceryTiming(g, pid)) return '只能在你的主要階段且堆疊為空時施放';
   const mode = def.spell?.modes ? Math.max(0, Math.min(def.spell.modes.length - 1, a.mode ?? 0)) : undefined;
   const specs = castTargetSpecs(def, mode);
@@ -318,7 +385,7 @@ function doCast(g: GameState, pid: PID, a: Extract<PriorityAction, { type: 'cast
       return '請選擇要棄掉的牌';
   }
   if (def.addCost?.life && p.life < def.addCost.life) return '生命不足';
-  const cost = spellCost(g, c, pid, mode, targets);
+  const cost = spellCost(g, c, pid, mode, targets, alt);
   if (!payCost(g, pid, cost)) return `法術力不足（需要 ${costToString(cost)}）`;
   if (def.addCost?.life) {
     p.life -= def.addCost.life;
@@ -327,6 +394,7 @@ function doCast(g: GameState, pid: PID, a: Extract<PriorityAction, { type: 'cast
   }
   if (discardCard) discard(g, discardCard);
   removeFromZone(g, c);
+  c.onAdventure = false;
   c.zone = 'stack';
   c.controller = pid;
   c.playableTurn = undefined;
@@ -341,12 +409,14 @@ function doCast(g: GameState, pid: PID, a: Extract<PriorityAction, { type: 'cast
     effects: spellEffects(def, mode),
     text: def.text,
     modeIndex: mode,
+    alt,
   });
   show(g, { kind: 'spell', player: pid, card: c.id, targets });
   if (sacCard) sacrifice(g, sacCard);
   p.spellsThisTurn++;
   if (def.types.includes('Instant') || def.types.includes('Sorcery')) p.instSorcThisTurn++;
-  log(g, `施放 ${displayName(def)}${modeText}${describeTargets(g, targets)}`, pid, 'cast');
+  const how = alt === 'adventure' ? '施放冒險 ' : alt === 'flashback' ? '返照施放 ' : '施放 ';
+  log(g, `${how}${alt === 'adventure' ? (def.zh ?? def.name) : displayName(def)}${modeText}${describeTargets(g, targets)}`, pid, 'cast');
   emit(g, { type: 'cast', card: c.id, player: pid, opponentTurn: g.active !== pid });
   for (const t of targets) if (t && 'c' in t && g.cards[t.c].zone === 'battlefield') emit(g, { type: 'targeted', card: t.c, by: pid, spell: true });
   return null;

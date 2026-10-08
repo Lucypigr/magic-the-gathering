@@ -348,6 +348,10 @@ export interface CardDef {
   sacOnMana?: boolean;
   /** 過濾地：{T}：加{C}；{1}，{T}：加一點任意顏色的法術力 */
   filterMana?: boolean;
+  /** 冒險：同一張牌上的另一個瞬間或法術；施放後此牌放逐，之後可以從放逐區施放本體 */
+  adventure?: { name: string; zh?: string; cost: string; types: CardType[]; text: string; spell: SpellSpec };
+  /** 返照：可以支付此費用從墳墓場施放，之後放逐 */
+  flashback?: string;
   etbTappedUnless?: Cond;
   etbCounters?: number;
   ward?: number;
@@ -384,6 +388,8 @@ export interface Card {
   def: CardDef;
   /** 暫時變成生物前的原始定義（回合結束時還原） */
   baseDef?: CardDef;
+  /** 冒險中：在放逐區，可以施放本體 */
+  onAdventure?: boolean;
   owner: PID;
   controller: PID;
   zone: Zone;
@@ -435,6 +441,9 @@ export interface Player {
 
 export type TargetRef = { p: PID } | { c: number };
 
+/** 特殊的施放方式 */
+export type CastAlt = 'adventure' | 'flashback';
+
 export interface StackItem {
   sid: number;
   kind: 'spell' | 'trigger' | 'activated';
@@ -450,6 +459,8 @@ export interface StackItem {
   cond?: Cond;
   ev?: GameEvent;
   lkiPower?: number;
+  /** 以冒險或返照的方式施放 */
+  alt?: CastAlt;
 }
 
 export interface EotEffect {
@@ -587,7 +598,7 @@ export type ChoosePurpose =
 export type PriorityAction =
   | { type: 'pass' }
   | { type: 'play'; card: number }
-  | { type: 'cast'; card: number; targets: (TargetRef | null)[]; mode?: number; sac?: number; discard?: number }
+  | { type: 'cast'; card: number; targets: (TargetRef | null)[]; mode?: number; sac?: number; discard?: number; alt?: CastAlt }
   | { type: 'activate'; card: number; ability: number; targets: (TargetRef | null)[]; sac?: number };
 
 export type Response =

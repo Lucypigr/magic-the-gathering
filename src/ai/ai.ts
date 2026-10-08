@@ -1,5 +1,6 @@
 import {
   activatedAbilities,
+  castDef,
   castTargetSpecs,
   isMainPhase,
   manaSources,
@@ -190,8 +191,10 @@ export class AIPlayer {
     for (const o of opts) {
       if (o.kind === 'play') continue;
       const c = g.cards[o.card];
-      const def = c.def;
+      const def = o.kind === 'cast' ? castDef(c.def, o.alt) : c.def;
       let bonus = 0;
+      // 冒險：施放後牌還能再用一次，返照：用的是墳墓場的牌，都是額外的價值
+      if (o.alt) bonus += 0.6;
       let threshold = T.actThreshold;
       if (o.kind === 'cast') {
         const isCr = def.types.includes('Creature');
@@ -237,7 +240,7 @@ export class AIPlayer {
     const me = this.pid;
     const c = g.cards[o.card];
     const effects: Effect[] =
-      o.kind === 'cast' ? spellEffects(c.def, o.mode) : activatedAbilities(c.def)[o.ability!].effects;
+      o.kind === 'cast' ? (o.effects ?? spellEffects(c.def, o.mode)) : activatedAbilities(c.def)[o.ability!].effects;
     const specs = o.specs;
     const lists: (TargetRef | null)[][] = specs.map((spec, i) => {
       let r: (TargetRef | null)[] = rankTargets(g, me, spec, effects, i, c.id).slice(0, specs.length > 1 ? 4 : 8);
@@ -264,7 +267,7 @@ export class AIPlayer {
     const out: PriorityAction[] = [];
     for (const targets of combos) {
       if (validateTargets(g, specs, targets, me, c.id)) continue;
-      if (o.kind === 'cast') out.push({ type: 'cast', card: c.id, targets, mode: o.mode, sac });
+      if (o.kind === 'cast') out.push({ type: 'cast', card: c.id, targets, mode: o.mode, sac, alt: o.alt });
       else out.push({ type: 'activate', card: c.id, ability: o.ability!, targets, sac });
     }
     return out;
@@ -307,7 +310,7 @@ export class AIPlayer {
     if (!casts.length || this.rnd() < 0.2) return PASS;
     const o = casts[this.rndInt(casts.length)];
     const c = g.cards[o.card];
-    const effects = o.kind === 'cast' ? spellEffects(c.def, o.mode) : activatedAbilities(c.def)[o.ability!].effects;
+    const effects = o.kind === 'cast' ? (o.effects ?? spellEffects(c.def, o.mode)) : activatedAbilities(c.def)[o.ability!].effects;
     let targets = quickTargets(g, me, o.specs, effects, c.id);
     if (this.rnd() < 0.3) {
       targets = o.specs.map((s) => {
@@ -322,7 +325,7 @@ export class AIPlayer {
     }
     const action: PriorityAction =
       o.kind === 'cast'
-        ? { type: 'cast', card: c.id, targets, mode: o.mode, sac }
+        ? { type: 'cast', card: c.id, targets, mode: o.mode, sac, alt: o.alt }
         : { type: 'activate', card: c.id, ability: o.ability!, targets, sac };
     const g2 = cloneGame(g);
     return performAction(g2, me, action) ? PASS : action;
