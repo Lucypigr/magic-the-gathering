@@ -47,7 +47,7 @@ KW = {
     'prowess': ('prowess', '勇行'),
 }
 # Scryfall keywords 欄位中可以接受的（其餘機制一律略過整張卡）
-OK_KEYWORDS = {k.title() for k in KW} | {'First strike', 'Double strike', 'Ward', 'Scry', 'Surveil', 'Mill', 'Fight', 'Landfall', 'Enchant', 'Equip', 'Treasure', 'Investigate', 'Food', 'Clue', 'Earthbend'}
+OK_KEYWORDS = {k.title() for k in KW} | {'First strike', 'Double strike', 'Ward', 'Scry', 'Surveil', 'Mill', 'Fight', 'Landfall', 'Enchant', 'Equip', 'Treasure', 'Investigate', 'Food', 'Clue', 'Earthbend', 'Flashback', 'Role token'}
 
 NUM = {'a': 1, 'an': 1, 'one': 1, 'two': 2, 'three': 3, 'four': 4, 'five': 5, 'six': 6, 'seven': 7}
 ZHN = {1: '一', 2: '二', 3: '三', 4: '四', 5: '五', 6: '六', 7: '七', 8: '八', 9: '九', 10: '十'}
@@ -328,6 +328,8 @@ def sentence(s, ctx):
     m = re.match(r"^return (target .+|up to one target .+) to (?:its|their) owner's hand$", low)
     if m:
         ref, z = tgt(ctx, m.group(1))
+        if ctx.targets[-1]['kind'] == 'spell':
+            raise Unsupported('bounce spell')
         return [{'e': 'bounce', 'what': ref}], f'將{z}移回其擁有者手上'
     m = re.match(r'^destroy all creatures$', low)
     if m:
@@ -488,6 +490,17 @@ def sentence(s, ctx):
     if m:
         b, zb = tgt(ctx, m.group(1).lower())
         return [{'e': 'fight', 'a': 'self', 'b': b}], f'{ctx.self_zh}與{zb}互鬥'
+    m = re.match(r'^create a monster role token attached to (.+)$', low)
+    if m:
+        ref, z = tgt(ctx, m.group(1))
+        return [{'e': 'role', 'what': ref, 'token': 'tok-monster-role'}], f'派出一個怪物角色衍生物結附於{z}（得+1/+1且具有踐踏異能）'
+    m = re.match(r'^attacking creatures you control get ([+-]\d+/[+-]\d+) until end of turn$|^attacking creatures get ([+-]\d+/[+-]\d+) until end of turn$', low)
+    if m:
+        p, t = pt(m.group(1) or m.group(2))
+        f = {'type': 'Creature', 'attacking': True}
+        if m.group(1):
+            f['ctrl'] = 'you'
+        return [{'e': 'pump', 'what': {'all': f}, 'p': p, 't': t}], f"{'由你操控的' if m.group(1) else ''}進行攻擊的生物得{fmt_pt(p, t)}直到回合結束"
     # 具名衍生物
     NAMED = {'food': ('tok-food', '食物'), 'clue': ('tok-clue', '線索'), 'treasure': ('tok-treasure', '珍寶'), 'lander': ('tok-lander', '登陸器')}
     m = re.match(r'^create (a|an|one|two|three) (food|clue|treasure|lander) tokens?$', low)
@@ -918,7 +931,50 @@ def self_noun(types, subtypes):
     return '此咒語'
 
 
+TYPE_ZH = {'Instant': '瞬間', 'Sorcery': '法術'}
+
+
 def convert(c):
+    if c['layout'] == 'adventure':
+        return convert_adventure(c)
+    return convert_face(c)
+
+
+def convert_adventure(c):
+    main, adv = c['card_faces']
+    face = dict(c, layout='normal', name=main['name'], mana_cost=main.get('mana_cost'), type_line=main['type_line'],
+                oracle_text=main.get('oracle_text') or '', power=main.get('power'), toughness=main.get('toughness'))
+    d = convert_face(face)
+    tl = adv['type_line']
+    if tl.startswith('Instant'):
+        atypes = ['Instant']
+    elif tl.startswith('Sorcery'):
+        atypes = ['Sorcery']
+    else:
+        raise Unsupported('adventure type ' + tl)
+    acost = adv.get('mana_cost') or ''
+    if not acost or re.search(r'\{[^}]*(X|P|S)[^}]*\}', acost):
+        raise Unsupported('cost ' + acost)
+    text = re.sub(r'\s*\([^)]*\)', '', adv.get('oracle_text') or '')
+    for nm in (adv['name'], main['name']):
+        text = text.replace(nm, 'SELF')
+    text = re.sub(r'\b[Tt]his spell\b', 'SELF', text)
+    pars = [x.strip() for x in text.split('\n') if x.strip()]
+    if not pars:
+        raise Unsupported('empty adventure')
+    ctx = Ctx('spell', '此咒語')
+    effs, zh = effects_of(' '.join(pars), ctx)
+    spell = {'effects': effs}
+    if ctx.targets:
+        spell['targets'] = ctx.targets
+    tz = TYPE_ZH[atypes[0]]
+    d['adventure'] = {'name': adv['name'], 'cost': acost, 'types': atypes, 'text': zh, 'spell': spell}
+    d['imageName'] = c['name']
+    d['text'] = (d['text'] + '\n' if d['text'] else '') + f"冒險—《{adv['name']}》{acost}（{tz}）：{zh}\n（你可以改為施放這個冒險{tz}。結算後此牌會被放逐，之後你可以從放逐區施放本體。）"
+    return d
+
+
+def convert_face(c):
     if c['layout'] != 'normal':
         raise Unsupported('layout ' + c['layout'])
     tl = c['type_line']
@@ -1057,6 +1113,11 @@ def convert(c):
                     produces = prod
                 zh_lines.append(z)
                 continue
+        m = re.fullmatch(r'Flashback ((?:\{[0-9WUBRGC]\})+)', par)
+        if m:
+            d['flashback'] = m.group(1)
+            zh_lines.append(f'返照{m.group(1)}（你可以支付返照費用，從你的墳墓場施放此牌。之後此牌會被放逐。）')
+            continue
         if is_spell:
             if re.fullmatch(r'Choose one —', par):
                 modes = []

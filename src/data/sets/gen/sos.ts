@@ -1,5 +1,7 @@
 // 由 scripts/gen_cards.py 從 Scryfall 資料自動產生（SOS）：請勿手動修改
 import { add } from '../../dsl';
 
+add({"set": "SOS", "rarity": "C", "name": "Dig Site Inventory", "cost": "{W}", "types": ["Sorcery"], "flashback": "{W}", "spell": {"effects": [{"e": "counters", "what": "T0", "n": 1}, {"e": "pump", "what": "T0", "p": 0, "t": 0, "kw": ["vigilance"]}], "targets": [{"kind": "creature", "filter": {"ctrl": "you"}}]}, "text": "返照{W}（你可以支付返照費用，從你的墳墓場施放此牌。之後此牌會被放逐。）\n在目標由你操控的生物上放置一個+1/+1指示物。該由你操控的生物獲得警戒異能直到回合結束。"});
+add({"set": "SOS", "rarity": "C", "name": "Tome Blast", "cost": "{1}{R}", "types": ["Sorcery"], "flashback": "{4}{R}", "spell": {"effects": [{"e": "damage", "n": 2, "to": "T0"}], "targets": [{"kind": "any"}]}, "text": "返照{4}{R}（你可以支付返照費用，從你的墳墓場施放此牌。之後此牌會被放逐。）\n對任意一個目標造成2點傷害。"});
 add({"set": "SOS", "rarity": "U", "name": "Proctor's Gaze", "cost": "{2}{G}{U}", "types": ["Instant"], "spell": {"effects": [{"e": "bounce", "what": "T0"}, {"e": "searchLand", "to": "battlefield", "tapped": true}], "targets": [{"kind": "permanent", "filter": {"nonType": "Land"}, "optional": true}]}, "text": "將至多一個目標非地永久物移回其擁有者手上。從你的牌庫中搜尋一張基本地牌，將它橫置放進戰場，然後將你的牌庫洗牌。"});
 add({"set": "SOS", "rarity": "C", "name": "Render Speechless", "cost": "{2}{W}{B}", "types": ["Sorcery"], "spell": {"effects": [{"e": "discardChosen", "who": "T0", "filter": {"nonType": "Land"}}, {"e": "counters", "what": "T1", "n": 2}], "targets": [{"kind": "opponent"}, {"kind": "creature", "optional": true}]}, "text": "目標對手展示其手牌。你從中選擇一張非地牌，該玩家棄掉那張牌。在至多一個目標生物上放置兩個+1/+1指示物。"});

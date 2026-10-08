@@ -14,7 +14,7 @@ import { MatchController } from '../../engine/controller';
 import { costToString, manaValue } from '../../engine/mana';
 import { cardName, isCreature, stats } from '../../engine/state';
 import { legalTargets, sameTarget } from '../../engine/targets';
-import type { CardDef, Filter, PID, PriorityAction, TargetRef, TargetSpec } from '../../engine/types';
+import type { CardDef, CastAlt, Filter, PID, PriorityAction, TargetRef, TargetSpec } from '../../engine/types';
 import type { SavedDeck, Settings } from '../../meta/profile';
 import { EMOTES, type Emote, type Opponent } from '../../meta/ladder';
 import { getDef, hasDef } from '../../engine/registry';
@@ -60,6 +60,7 @@ interface Draft {
   sac?: number;
   stage: 'targets' | 'sac';
   label: string;
+  alt?: CastAlt;
 }
 
 const SPEED_MS = { slow: 1100, normal: 650, fast: 250 } as const;
@@ -321,7 +322,7 @@ export function Battle(props: Props) {
     }
     const a: PriorityAction =
       dr.kind === 'cast'
-        ? { type: 'cast', card: dr.source, targets: dr.targets, mode: dr.mode, sac: dr.sac }
+        ? { type: 'cast', card: dr.source, targets: dr.targets, mode: dr.mode, sac: dr.sac, alt: dr.alt }
         : { type: 'activate', card: dr.source, ability: dr.ability!, targets: dr.targets, sac: dr.sac };
     submitAction(a);
   }
@@ -349,6 +350,7 @@ export function Battle(props: Props) {
       source: o.card,
       ability: o.ability,
       mode: o.mode,
+      alt: o.alt,
       specs: o.specs,
       targets: [],
       sacFilter: o.sacFilter,
@@ -514,12 +516,16 @@ export function Battle(props: Props) {
   const inspected = inspectId != null ? g.cards[inspectId] : null;
   let actions: PlayOption[] = [];
   if (inspected && myPriority && !draft && focus === inspectId) {
-    if (inspected.zone === 'hand' || inspected.zone === 'exile') actions = castOptionsFor(g, 0, inspected);
+    if (inspected.zone === 'hand' || inspected.zone === 'exile' || inspected.zone === 'graveyard') actions = castOptionsFor(g, 0, inspected);
     else if (inspected.zone === 'battlefield') actions = options.filter((o) => o.card === inspected.id && o.kind === 'activate');
   }
 
   const hand = g.players[0].hand.map((id) => g.cards[id]);
-  const exiled = g.players[0].exile.map((id) => g.cards[id]).filter((c) => c.playableTurn === g.turn && c.playableBy === 0);
+  const exiled = [
+    ...g.players[0].exile.map((id) => g.cards[id]).filter((c) => (c.playableTurn === g.turn && c.playableBy === 0) || c.onAdventure),
+    // 有返照的牌在墳墓場也能施放
+    ...g.players[0].graveyard.map((id) => g.cards[id]).filter((c) => c.def.flashback),
+  ];
   const gySpec = draft?.stage === 'targets' && draft.specs[draft.targets.length]?.kind === 'gyCard';
 
   return (
@@ -665,7 +671,7 @@ export function Battle(props: Props) {
           <div className="hand" aria-label="你的手牌" onMouseLeave={() => setHover(null)}>
             {[...hand, ...exiled].map((c, i, all) => {
               const off = i - (all.length - 1) / 2;
-              const ex = c.zone === 'exile';
+              const ex = c.zone !== 'hand';
               return (
                 <CardFace
                   key={c.id}
@@ -677,7 +683,11 @@ export function Battle(props: Props) {
                   onDoubleClick={() => quickCast(c.id)}
                   onMouseEnter={() => setHover(c.id)}
                 >
-                  {ex && <span className="exile-tag">放逐區・本回合可用</span>}
+                  {ex && (
+                    <span className={`exile-tag ${c.onAdventure ? 'adv' : c.zone === 'graveyard' ? 'fb' : ''}`}>
+                      {c.onAdventure ? '冒險中・可施放本體' : c.zone === 'graveyard' ? `墳墓場・返照 ${c.def.flashback}` : '放逐區・本回合可用'}
+                    </span>
+                  )}
                 </CardFace>
               );
             })}
@@ -708,8 +718,8 @@ export function Battle(props: Props) {
                       <div className="actions">
                         {actions.map((o, i) => (
                           <button key={i} className="btn btn-primary btn-block" onClick={() => startOption(o)}>
-                            {o.kind === 'play' ? '打出這張地' : o.kind === 'activate' ? `起動：${o.label}` : inspected.def.spell?.modes ? o.label : '施放'}
-                            {o.kind === 'cast' && <ManaCost cost={costToString(spellCost(g, inspected, 0, o.mode))} size={15} />}
+                            {o.kind === 'play' ? '打出這張地' : o.kind === 'activate' ? `起動：${o.label}` : o.alt || inspected.def.spell?.modes ? o.label : inspected.def.adventure ? `施放本體 ${cardName(inspected)}` : '施放'}
+                            {o.kind === 'cast' && <ManaCost cost={costToString(spellCost(g, inspected, 0, o.mode, undefined, o.alt))} size={15} />}
                             {o.kind === 'activate' && activatedAbilities(inspected.def)[o.ability!].cost.mana && (
                               <ManaCost cost={activatedAbilities(inspected.def)[o.ability!].cost.mana} size={15} />
                             )}

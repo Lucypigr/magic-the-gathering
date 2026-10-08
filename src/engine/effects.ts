@@ -155,6 +155,11 @@ export function amount(g: GameState, ctx: Ctx, a: Amt): number {
 // ------------------------------------------------------------
 // 效果執行
 // ------------------------------------------------------------
+/** 被反擊的咒語去哪裡：返照施放的咒語會被放逐 */
+function counteredZone(g: GameState, c: Card): 'graveyard' | 'exile' {
+  return g.stack.some((s) => s.kind === 'spell' && s.cardId === c.id && s.alt === 'flashback') ? 'exile' : 'graveyard';
+}
+
 export function* runEffects(g: GameState, ctx: Ctx, effects: Effect[]): SubFlow {
   for (const ef of effects) yield* runEffect(g, ctx, ef);
 }
@@ -491,7 +496,7 @@ function* runEffect(g: GameState, ctx: Ctx, ef: Effect): SubFlow {
       for (const c of resolveRef(g, ctx, ef.what).cards) {
         if (c.zone !== 'stack') continue;
         log(g, `${cardName(c)} 被反擊`, c.controller, 'cast');
-        moveCard(g, c, 'graveyard');
+        moveCard(g, c, counteredZone(g, c));
       }
       break;
     }
@@ -508,7 +513,7 @@ function* runEffect(g: GameState, ctx: Ctx, ef: Effect): SubFlow {
         if (paid) log(g, `支付了 {${ef.pay}}`, payer);
         else {
           log(g, `${cardName(c)} 被反擊`, payer, 'cast');
-          moveCard(g, c, 'graveyard');
+          moveCard(g, c, counteredZone(g, c));
         }
       }
       break;

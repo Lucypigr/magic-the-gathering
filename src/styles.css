@@ -869,6 +869,10 @@ button {
 .ex-static {
   border-left-color: #7fb2de;
 }
+.ex-adventure,
+.ex-flashback {
+  border-left-color: #e07a3c;
+}
 .ex-spell,
 .ex-modes,
 .ex-mode {
@@ -1432,6 +1436,12 @@ button {
 }
 
 /* 手牌 */
+.exile-tag.adv {
+  background: #2f6f5a;
+}
+.exile-tag.fb {
+  background: #7a4a1f;
+}
 .exile-tag {
   position: absolute;
   top: -10px;

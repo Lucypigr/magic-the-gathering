@@ -172,7 +172,7 @@ export function* resolveTop(g: GameState): SubFlow {
   );
   if (hadTargets && legal.every((t) => !t)) {
     log(g, `${cardName(src)} 因目標不合法而無效`, item.controller);
-    if (item.kind === 'spell' && src.zone === 'stack') moveCard(g, src, 'graveyard');
+    if (item.kind === 'spell' && src.zone === 'stack') moveCard(g, src, item.alt === 'flashback' ? 'exile' : 'graveyard');
     return;
   }
   const ctx: Ctx = {
@@ -184,7 +184,17 @@ export function* resolveTop(g: GameState): SubFlow {
   };
   if (item.kind === 'spell') {
     const def = src.def;
-    if (isPermanentDef(def)) {
+    if (item.alt) {
+      // 冒險：結算後放逐，之後可以施放本體；返照：結算後放逐
+      yield* runEffects(g, ctx, item.effects);
+      if (src.zone === 'stack') {
+        moveCard(g, src, 'exile');
+        if (item.alt === 'adventure') {
+          src.onAdventure = true;
+          log(g, `${cardName(src)} 踏上冒險（之後可以從放逐區施放）`, item.controller);
+        }
+      }
+    } else if (isPermanentDef(def)) {
       if (def.aura) {
         const t = legal[0];
         if (!t || !('c' in t)) {
