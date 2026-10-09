@@ -42,6 +42,8 @@ export interface Profile {
   created: number;
   /** 天梯配對 */
   ladder: LadderState;
+  /** 已完成的新手教學章節 */
+  tutorial?: Record<string, boolean>;
 }
 
 const KEY = 'mtg-duel-arena-profile-v1';

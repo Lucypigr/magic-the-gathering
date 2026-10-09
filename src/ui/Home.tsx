@@ -3,6 +3,7 @@ import type { Screen, UpdateProfile } from '../App';
 import { COLLECTIBLE, aiDecksFor, type Format } from '../data';
 import { FORMAT_NAME, listSlots, resetProfile, type Profile } from '../meta/profile';
 import { rankOf } from '../meta/ladder';
+import { CHAPTERS, CHAPTER_REWARD } from './tutorial';
 import { ColorPips, Gold } from './common';
 import { LEVEL_ZH } from './i18n';
 import { hasLocalImages, imagesUnavailable, useImageVersion, zhStatus } from './images';
@@ -25,6 +26,7 @@ export function Home({ profile, go, update }: { profile: Profile; go: (s: Screen
   const [confirmReset, setConfirmReset] = useState(false);
   const [fmt, setFmt] = useState<Format>(profile.lastFormat ?? 'standard');
   const aiDecks = aiDecksFor(fmt);
+  const tutDone = CHAPTERS.filter((c) => profile.tutorial?.[c.id]).length;
   const slotInfo = listSlots();
   const currentSlot = slotInfo.slots.find((x) => x.id === slotInfo.active)?.name ?? '存檔 1';
   const slotCount = slotInfo.slots.length;
@@ -42,6 +44,14 @@ export function Home({ profile, go, update }: { profile: Profile; go: (s: Screen
           <p className="hero-sub">
             用入門套牌出發，贏下對戰賺取金幣，買補充包擴充收藏，組出屬於你的套牌。標準模式收錄 18 個現行標準賽系列，AI 會使用 2026 年 9 月標準賽的熱門套路。
           </p>
+          {tutDone === 0 && wins + losses === 0 && (
+            <div className="newbie-callout">
+              <span>第一次玩萬智牌？先花幾分鐘看新手教學，一章一章學會規則。</span>
+              <button className="btn btn-primary" onClick={() => go({ name: 'tutorial' })}>
+                開始新手教學
+              </button>
+            </div>
+          )}
           <div className="hero-actions">
             <button className="btn btn-primary btn-big" onClick={() => go({ name: 'setup' })}>
               練習對戰
@@ -84,6 +94,12 @@ export function Home({ profile, go, update }: { profile: Profile; go: (s: Screen
       </section>
 
       <nav className="menu-grid">
+        <button className="menu-tile menu-tile-tut" onClick={() => go({ name: 'tutorial' })}>
+          <span className="mt-title">新手教學</span>
+          <span className="mt-sub">
+            {tutDone}／{CHAPTERS.length} 章 · 一章一章學會規則與機制，每章 +{CHAPTER_REWARD} 金幣
+          </span>
+        </button>
         <button className="menu-tile" onClick={() => go({ name: 'decks' })}>
           <span className="mt-title">套牌組建</span>
           <span className="mt-sub">{profile.decks.length} 副套牌 · 自由搭配收藏中的卡</span>

@@ -19,6 +19,12 @@ export function Help({ go }: { go: (s: Screen) => void }) {
       </header>
 
       <section className="panel prose">
+        <div className="newbie-callout">
+          <span>第一次接觸萬智牌？「新手教學」用十二個章節一步一步介紹規則，還有小測驗和練習對戰。</span>
+          <button className="btn btn-primary" onClick={() => go({ name: 'tutorial' })}>
+            前往新手教學
+          </button>
+        </div>
         <h3>遊戲目標</h3>
         <p>雙方各從 20 點生命開始。把對手的生命降到 0，或讓對手在需要抓牌時牌庫已空，你就獲勝。</p>
 
