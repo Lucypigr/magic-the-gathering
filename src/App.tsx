@@ -4,7 +4,8 @@ import { ALL_AI_DECKS, CARDS, aiDecksFor, type Format } from './data';
 import { TIERS, ladderReward, pointsDelta, rankOf, type Opponent } from './meta/ladder';
 import { Ladder } from './ui/Ladder';
 import { Saves } from './ui/Saves';
-import { loadProfile, REWARDS, saveProfile, type Profile, type Settings } from './meta/profile';
+import { Tutorial } from './ui/Tutorial';
+import { checkDeck, loadProfile, REWARDS, saveProfile, type Profile, type Settings } from './meta/profile';
 import { Battle, type BattleResult } from './ui/battle/Battle';
 import { ImagesEnabled } from './ui/CardView';
 import { Collection } from './ui/Collection';
@@ -21,6 +22,7 @@ export type Screen =
   | { name: 'battle'; deckId: string; aiDeckId: string; level: Level; key: number; random: boolean; format: Format; opponent?: Opponent }
   | { name: 'ladder'; auto?: boolean }
   | { name: 'saves' }
+  | { name: 'tutorial'; chapter?: string }
   | { name: 'decks' }
   | { name: 'collection' }
   | { name: 'shop' }
@@ -191,6 +193,21 @@ export default function App() {
     }
     case 'ladder':
       body = <Ladder key={String(screen.auto)} profile={profile} go={go} auto={screen.auto} onStart={startLadder} />;
+      break;
+    case 'tutorial':
+      body = (
+        <Tutorial
+          profile={profile}
+          go={go}
+          update={update}
+          initial={screen.chapter}
+          onPractice={(deckId, aiId) => {
+            const ok = (id: string) => profile.decks.some((d) => d.id === id && checkDeck(profile, d, 'free').ok);
+            const deck = ok(deckId) ? deckId : profile.decks.find((d) => checkDeck(profile, d, 'free').ok)?.id;
+            if (deck) startBattle(deck, 'easy', aiId, 'free');
+          }}
+        />
+      );
       break;
     case 'saves':
       body = <Saves profile={profile} go={go} onLoad={(p) => setProfile(p)} />;
