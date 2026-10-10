@@ -166,14 +166,12 @@ export function Spotlight({ g }: { g: GameState }) {
     return () => clearTimeout(t);
   }, [cur]);
   if (!cur) return null;
-  const who = g.players[cur.player].name;
   const mine = cur.player === 0;
+  const who = mine ? '你' : g.players[cur.player].name;
   if (cur.kind === 'attack' || cur.kind === 'block') {
     const n = cur.pairs?.length ?? 0;
-    const text =
-      cur.kind === 'attack'
-        ? `${who} 宣告攻擊：${cur.pairs!.map(([a]) => cardName(g.cards[a])).join('、')}`
-        : `${who} 阻擋：${cur.pairs!.map(([b, a]) => `${cardName(g.cards[b])} 擋 ${cardName(g.cards[a])}`).join('；')}`;
+    // 誰打誰由箭頭表示，橫幅只留一句短字
+    const text = cur.kind === 'attack' ? `${mine ? '你' : '對手'}攻擊${n > 1 ? ` ×${n}` : ''}` : `${mine ? '你' : '對手'}阻擋${n > 1 ? ` ×${n}` : ''}`;
     return (
       <div key={cur.seq} className={`combat-banner ${cur.kind} ${mine ? 'mine' : 'theirs'}`} role="status">
         <span className="cb-icon">{cur.kind === 'attack' ? '⚔' : '🛡'}</span>

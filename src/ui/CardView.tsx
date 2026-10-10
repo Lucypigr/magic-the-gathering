@@ -110,7 +110,16 @@ export function CardBack({ size = 'sm' }: { size?: 'xs' | 'sm' | 'md' }) {
   );
 }
 
-/** 卡牌詳細資訊（檢視器 / 收藏） */
+/** 放大的卡圖（對戰中的預覽），沒有圖時用文字版卡面 */
+export function CardZoom({ def }: { def: CardDef }) {
+  const img = useCardImage(def);
+  const [broken, setBroken] = useState<string | null>(null);
+  if (img?.full && broken !== img.full)
+    return <img className="card-zoom" src={img.full} alt={displayName(def)} draggable={false} onError={() => setBroken(img.full!)} />;
+  return <CardFace def={def} size="lg" showText className="card-zoom" />;
+}
+
+/** 卡牌詳細資訊（效果解說 / 收藏） */
 export function CardDetail({ def, extra }: { def: CardDef; extra?: ReactNode }) {
   const img = useCardImage(def);
   const [broken, setBroken] = useState<string | null>(null);

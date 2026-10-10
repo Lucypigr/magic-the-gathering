@@ -19,8 +19,9 @@ import type { SavedDeck, Settings } from '../../meta/profile';
 import { EMOTES, type Emote, type Opponent } from '../../meta/ladder';
 import { getDef, hasDef } from '../../engine/registry';
 import { RankBadge } from '../Ladder';
-import { CardDetail, CardFace } from '../CardView';
-import { LEVEL_ZH, PHASE_ZH } from '../i18n';
+import { CardDetail, CardFace, CardZoom } from '../CardView';
+import { Modal } from '../common';
+import { LEVEL_ZH } from '../i18n';
 import { ManaCost } from '../Mana';
 import { Avatar, CreatureZone, LandZone, OppHand, OtherZone, PhaseTrack, Piles, StackView, type Marks } from './Board';
 import { ArrowLayer, Spotlight } from './Fx';
@@ -101,6 +102,8 @@ export function Battle(props: Props) {
   const [pile, setPile] = useState<PID | null>(null);
   const [showLog, setShowLog] = useState(false);
   const [confirmConcede, setConfirmConcede] = useState(false);
+  const [menu, setMenu] = useState(false);
+  const [detail, setDetail] = useState<number | null>(null);
   const [seq, setSeq] = useState(0);
   const ended = useRef(false);
   const logRef = useRef<HTMLDivElement>(null);
@@ -413,7 +416,7 @@ export function Battle(props: Props) {
         return;
       }
     }
-    setFocus(id);
+    setFocus((f) => (f === id ? null : id));
   }
 
   function onPlayer(pid: PID) {
@@ -426,6 +429,17 @@ export function Battle(props: Props) {
     const opts = castOptionsFor(g, 0, c);
     if (opts.length) startOption(opts[0]);
   }
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape') return;
+      setFocus(null);
+      setMenu(false);
+      setShowLog(false);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
 
   if (!ctl || !g) return <div className="battle loading">準備對戰中…</div>;
 
@@ -459,66 +473,66 @@ export function Battle(props: Props) {
     });
   }
 
-  // ---------- 提示與按鈕 ----------
+  // ---------- 狀態與按鈕（只顯示必要的短字） ----------
   const top = g.stack[g.stack.length - 1];
-  let prompt = '';
-  const buttons: { label: string; onClick: () => void; primary?: boolean; danger?: boolean }[] = [];
-  if (ctl.finished) prompt = '對戰結束';
+  let status = '';
+  /** 主要按鈕（右下角的大按鈕） */
+  let main: { label: string; onClick: () => void; tone?: 'go' | 'ok' | 'calm' } | null = null;
+  const minor: { label: string; onClick: () => void; title?: string }[] = [];
+  if (ctl.finished) status = '';
   else if (draft?.stage === 'targets') {
     const spec = draft.specs[draft.targets.length];
-    prompt = `${cardName(g.cards[draft.source])}：${specPrompt(spec)}${draft.specs.length > 1 ? `（${draft.targets.length + 1}/${draft.specs.length}）` : ''}`;
-    if (spec.optional) buttons.push({ label: '不選這個目標', onClick: () => chooseTarget(null) });
-    if (draft.kind !== 'trigger') buttons.push({ label: '取消', onClick: () => setDraft(null) });
-    else if (legal.length === 0) buttons.push({ label: '繼續', onClick: () => chooseTarget(null) });
+    status = `${specPrompt(spec)}${draft.specs.length > 1 ? `（${draft.targets.length + 1}/${draft.specs.length}）` : ''}`;
+    if (spec.optional) minor.push({ label: '不選', onClick: () => chooseTarget(null) });
+    if (draft.kind !== 'trigger') minor.push({ label: '取消', onClick: () => setDraft(null) });
+    else if (legal.length === 0) main = { label: '繼續', onClick: () => chooseTarget(null) };
   } else if (draft?.stage === 'sac') {
-    prompt = `${cardName(g.cards[draft.source])}：選擇要犧牲的永久物`;
-    buttons.push({ label: '取消', onClick: () => setDraft(null) });
+    status = '選擇要犧牲的永久物';
+    minor.push({ label: '取消', onClick: () => setDraft(null) });
   } else if (!d) {
-    prompt = ctl.aiThinking ? '對手行動中…' : '…';
+    status = ctl.aiThinking ? '對手思考中…' : '';
   } else if (d.type === 'priority') {
-    const opp = top && top.controller === 1;
-    if (opp) {
-      prompt = `對手的「${cardName(g.cards[top.cardId])}」在堆疊上，要回應嗎？`;
-      buttons.push({ label: '不回應', onClick: () => ctl.submit({ type: 'pass' }), primary: true });
-    } else if (g.active === 0) {
-      if (g.phase === 'main1') {
-        prompt = '你的主要階段：打出地、施放咒語。點選手牌查看可用動作，雙擊可直接使用。';
-        const canAtk = attackCandidates(g, 0).length > 0;
-        buttons.push({ label: canAtk ? '進入戰鬥' : '下一步', onClick: () => ctl.submit({ type: 'pass' }), primary: true });
-        buttons.push({ label: '結束回合', onClick: () => ctl.endTurn() });
-      } else if (g.phase === 'main2') {
-        prompt = '第二主要階段：還可以打出地或施放咒語。';
-        buttons.push({ label: '結束回合', onClick: () => ctl.submit({ type: 'pass' }), primary: true });
-      } else {
-        prompt = `${PHASE_ZH[g.phase]}：可以施放瞬間或起動異能。`;
-        buttons.push({ label: '繼續', onClick: () => ctl.submit({ type: 'pass' }), primary: true });
-      }
+    const pass = () => ctl.submit({ type: 'pass' });
+    if (top && top.controller === 1) {
+      status = '要回應嗎？';
+      main = { label: '不回應', onClick: pass, tone: 'ok' };
+    } else if (g.active === 0 && g.phase === 'main1') {
+      const canAtk = attackCandidates(g, 0).length > 0;
+      main = { label: canAtk ? '戰鬥' : '下一步', onClick: pass, tone: 'go' };
+      minor.push({ label: '結束回合', onClick: () => ctl.endTurn(), title: '略過到對手的回合' });
+    } else if (g.active === 0 && g.phase === 'main2') {
+      main = { label: '結束回合', onClick: pass, tone: 'go' };
     } else {
-      prompt = `對手的${PHASE_ZH[g.phase]}：可以施放瞬間、閃現生物或起動異能。`;
-      buttons.push({ label: '繼續', onClick: () => ctl.submit({ type: 'pass' }), primary: true });
+      main = { label: '繼續', onClick: pass, tone: 'calm' };
     }
   } else if (d.type === 'attackers') {
-    prompt = '宣告攻擊：點選要攻擊的生物。';
-    buttons.push({ label: `攻擊（${attackSel.size}）`, onClick: () => ctl.submit({ type: 'attackers', ids: [...attackSel] }), primary: attackSel.size > 0 });
-    buttons.push({ label: '全部攻擊', onClick: () => setAttackSel(new Set(attackable)) });
-    buttons.push({ label: '不攻擊', onClick: () => ctl.submit({ type: 'attackers', ids: [] }), primary: attackSel.size === 0 });
+    status = '選擇攻擊者';
+    main =
+      attackSel.size > 0
+        ? { label: `攻擊 ×${attackSel.size}`, onClick: () => ctl.submit({ type: 'attackers', ids: [...attackSel] }), tone: 'go' }
+        : { label: '不攻擊', onClick: () => ctl.submit({ type: 'attackers', ids: [] }), tone: 'calm' };
+    if (attackSel.size < attackable.size) minor.push({ label: '全部攻擊', onClick: () => setAttackSel(new Set(attackable)) });
+    else if (attackSel.size > 0) minor.push({ label: '清除', onClick: () => setAttackSel(new Set()) });
   } else if (d.type === 'blockers') {
     const incoming = g.battlefield.map((id) => g.cards[id]).filter((c) => c.attacking);
     const dmg = incoming.filter((a) => ![...blocks.values()].includes(a.id)).reduce((s, a) => s + Math.max(0, stats(g, a).p), 0);
-    prompt = blockSel != null ? `選擇 ${cardName(g.cards[blockSel])} 要阻擋的攻擊生物` : `宣告阻擋：先點你的生物，再點攻擊生物。未阻擋的傷害約 ${dmg} 點。`;
-    buttons.push({ label: `確認阻擋（${blocks.size}）`, onClick: () => ctl.submit({ type: 'blockers', blocks: [...blocks.entries()] }), primary: true });
-    buttons.push({ label: '不阻擋', onClick: () => ctl.submit({ type: 'blockers', blocks: [] }) });
-  } else if (d.type === 'mulligan') prompt = '決定是否保留起手。';
-  else if (d.type === 'choose' || d.type === 'yesno') prompt = '請做出選擇。';
+    status = blockSel != null ? `${cardName(g.cards[blockSel])} 要擋誰？` : myBlockers.size ? `選擇阻擋者 · 將受 ${dmg} 傷害` : `將受 ${dmg} 傷害`;
+    main =
+      blocks.size > 0
+        ? { label: `阻擋 ×${blocks.size}`, onClick: () => ctl.submit({ type: 'blockers', blocks: [...blocks.entries()] }), tone: 'go' }
+        : { label: '不阻擋', onClick: () => ctl.submit({ type: 'blockers', blocks: [] }), tone: 'calm' };
+  }
+  const myMove = !!(d && d.player === 0) || !!draft;
 
-  // ---------- 檢視器 ----------
-  const inspectId = draft ? (focus ?? draft.source) : (focus ?? hover);
+  // ---------- 卡牌預覽 ----------
+  const inspectId = draft ? focus : (focus ?? hover);
   const inspected = inspectId != null ? g.cards[inspectId] : null;
   let actions: PlayOption[] = [];
   if (inspected && myPriority && !draft && focus === inspectId) {
     if (inspected.zone === 'hand' || inspected.zone === 'exile' || inspected.zone === 'graveyard') actions = castOptionsFor(g, 0, inspected);
     else if (inspected.zone === 'battlefield') actions = options.filter((o) => o.card === inspected.id && o.kind === 'activate');
   }
+  const liveStats = inspected && inspected.zone === 'battlefield' && isCreature(inspected) ? stats(g, inspected) : null;
 
   const hand = g.players[0].hand.map((id) => g.cards[id]);
   const exiled = [
@@ -530,73 +544,15 @@ export function Battle(props: Props) {
 
   return (
     <div className="battle">
-      <header className="battle-top">
-        <div className="bt-left">
-          {!opponent && <span className="bt-level">難度：{LEVEL_ZH[level]}</span>}
-          {opponent ? (
-            <span className="bt-vs">
-              天梯對戰 · {opponent.name}（{opponent.rank}）
-            </span>
-          ) : (
-            <span className="bt-vs">對手套牌：{aiDeck.name}</span>
-          )}
-        </div>
-        <div className="bt-right">
-          <label className="mini-select">
-            AI 速度
-            <select
-              id="ai-speed"
-              value={settings.aiSpeed}
-              onChange={(e) => props.onSettings({ ...settings, aiSpeed: e.target.value as Settings['aiSpeed'] })}
-            >
-              <option value="slow">慢</option>
-              <option value="normal">中</option>
-              <option value="fast">快</option>
-            </select>
-          </label>
-          <label className="mini-select" title="智慧：只在可能需要你操作時停下；全部：每次有可用動作都停下">
-            停頓
-            <select
-              id="stop-mode"
-              value={settings.stopMode}
-              onChange={(e) => props.onSettings({ ...settings, stopMode: e.target.value as Settings['stopMode'] })}
-            >
-              <option value="smart">智慧</option>
-              <option value="all">全部</option>
-            </select>
-          </label>
-          {opponent && (
-            <button className="btn btn-small" onClick={() => setMuted((m) => !m)} title="隱藏對手的表情">
-              {muted ? '取消靜音' : '靜音對手'}
-            </button>
-          )}
-          <button className="btn btn-small" onClick={() => setShowLog((s) => !s)}>
-            紀錄
-          </button>
-          {!ctl.finished &&
-            (confirmConcede ? (
-              <button
-                className="btn btn-small btn-danger"
-                onClick={() => {
-                  ctl.concede();
-                  if (!ended.current) {
-                    ended.current = true;
-                    props.onEnd({ won: false, draw: false, conceded: true });
-                  }
-                }}
-              >
-                確定投降
-              </button>
-            ) : (
-              <button className="btn btn-small" onClick={() => setConfirmConcede(true)} onBlur={() => setConfirmConcede(false)}>
-                投降
-              </button>
-            ))}
-        </div>
-      </header>
-
       <div className="battle-body">
-        <main className="arena" ref={arenaRef}>
+        <main
+          className="arena"
+          ref={arenaRef}
+          onClick={(e) => {
+            // 點桌面空白處關閉預覽
+            if (focus != null && !(e.target as HTMLElement).closest('.perm, .land-pile, .card, .hero-portrait, .stack-item, .pile, button, .peek')) setFocus(null);
+          }}
+        >
           <ArrowLayer g={g} rootRef={arenaRef} />
           <section className="half half-opp">
             <div className="strip">
@@ -609,7 +565,7 @@ export function Battle(props: Props) {
                 face={faces[1]}
                 selectable={legalPlayers.has(1)}
                 onPlayer={() => onPlayer(1)}
-                bubble={bubbles[1]}
+                bubble={bubbles[1] ?? (ctl.aiThinking && !ctl.finished ? '…' : null)}
                 sub={opponent && <RankBadge points={opponent.points} size="sm" />}
               />
               <div className="strip-r">
@@ -625,14 +581,19 @@ export function Battle(props: Props) {
           <div className="midline">
             <PhaseTrack g={g} />
             <StackView g={g} marks={marks} onCard={onCard} onHover={setHover} />
-            <div className={`prompt-bar ${d && d.player === 0 ? 'your-move' : ''}`}>
-              <p className="prompt-text">{prompt}</p>
-              <div className="prompt-buttons">
-                {buttons.map((b) => (
-                  <button key={b.label} className={`btn ${b.primary ? 'btn-primary btn-go' : ''}`} onClick={b.onClick}>
+            <div className={`action-dock ${myMove ? 'your-move' : ''}`}>
+              {status && <div className="dock-status">{status}</div>}
+              <div className="dock-buttons">
+                {minor.map((b) => (
+                  <button key={b.label} className="btn btn-minor" onClick={b.onClick} title={b.title}>
                     {b.label}
                   </button>
                 ))}
+                {main && (
+                  <button className={`btn btn-main tone-${main.tone ?? 'go'}`} onClick={main.onClick}>
+                    {main.label}
+                  </button>
+                )}
               </div>
             </div>
           </div>
@@ -682,72 +643,140 @@ export function Battle(props: Props) {
                   onClick={() => onCard(c.id)}
                   onDoubleClick={() => quickCast(c.id)}
                   onMouseEnter={() => setHover(c.id)}
+                  title={c.onAdventure ? '冒險中：可以施放生物本體' : c.zone === 'graveyard' ? `在墳墓場，可用返照 ${c.def.flashback} 施放` : ex ? '在放逐區，本回合可以使用' : undefined}
                 >
-                  {ex && (
-                    <span className={`exile-tag ${c.onAdventure ? 'adv' : c.zone === 'graveyard' ? 'fb' : ''}`}>
-                      {c.onAdventure ? '冒險中・可施放本體' : c.zone === 'graveyard' ? `墳墓場・返照 ${c.def.flashback}` : '放逐區・本回合可用'}
-                    </span>
-                  )}
+                  {ex && <span className={`exile-tag ${c.onAdventure ? 'adv' : c.zone === 'graveyard' ? 'fb' : ''}`}>{c.onAdventure ? '冒險' : c.zone === 'graveyard' ? '返照' : '放逐'}</span>}
                 </CardFace>
               );
             })}
-            {hand.length === 0 && exiled.length === 0 && <div className="row-empty">手上沒有牌</div>}
           </div>
         </main>
 
-        <aside className="side">
-          <div className={`inspector ${inspected ? '' : 'empty'} ${focus != null ? 'pinned' : ''}`}>
-          {inspected ? (
-            <>
-              <button className="icon-btn inspector-close" onClick={() => setFocus(null)} aria-label="關閉">
-                ✕
+        {/* 左上角：設定、紀錄、投降 */}
+        <div className="hud">
+          <button className={`hud-btn ${menu ? 'on' : ''}`} onClick={() => setMenu((m) => !m)} aria-label="設定" title="設定">
+            ⚙
+          </button>
+          <button className={`hud-btn ${showLog ? 'on' : ''}`} onClick={() => setShowLog((s) => !s)} aria-label="對戰紀錄" title="對戰紀錄">
+            📜
+          </button>
+          {!ctl.finished &&
+            (confirmConcede ? (
+              <button
+                className="hud-btn hud-danger"
+                onClick={() => {
+                  ctl.concede();
+                  if (!ended.current) {
+                    ended.current = true;
+                    props.onEnd({ won: false, draw: false, conceded: true });
+                  }
+                }}
+                onBlur={() => setConfirmConcede(false)}
+                autoFocus
+              >
+                確定投降？
               </button>
-              <CardDetail
-                def={inspected.def}
-                extra={
+            ) : (
+              <button className="hud-btn" onClick={() => setConfirmConcede(true)} aria-label="投降" title="投降">
+                🏳
+              </button>
+            ))}
+          {menu && (
+            <div className="hud-menu" role="dialog" aria-label="設定">
+              <div className="hm-info">
+                {opponent ? (
                   <>
-                    {inspected.zone === 'battlefield' && isCreature(inspected) && (
-                      <div className="live-stats">
-                        目前 {stats(g, inspected).p}/{stats(g, inspected).t}
-                        {inspected.damage > 0 && `，受到 ${inspected.damage} 點傷害`}
-                        {inspected.tapped && '，已橫置'}
-                        {inspected.controller === 1 ? '（對手操控）' : ''}
-                      </div>
-                    )}
-                    {actions.length > 0 && (
-                      <div className="actions">
-                        {actions.map((o, i) => (
-                          <button key={i} className="btn btn-primary btn-block" onClick={() => startOption(o)}>
-                            {o.kind === 'play' ? '打出這張地' : o.kind === 'activate' ? `起動：${o.label}` : o.alt || inspected.def.spell?.modes ? o.label : inspected.def.adventure ? `施放本體 ${cardName(inspected)}` : '施放'}
-                            {o.kind === 'cast' && <ManaCost cost={costToString(spellCost(g, inspected, 0, o.mode, undefined, o.alt))} size={15} />}
-                            {o.kind === 'activate' && activatedAbilities(inspected.def)[o.ability!].cost.mana && (
-                              <ManaCost cost={activatedAbilities(inspected.def)[o.ability!].cost.mana} size={15} />
-                            )}
-                          </button>
-                        ))}
-                      </div>
-                    )}
-                    {focus === inspectId && myPriority && !draft && actions.length === 0 && (inspected.zone === 'hand' || inspected.controller === 0) && (
-                      <p className="muted small">現在無法使用這張牌（時機、法術力或目標不符）。</p>
-                    )}
+                    天梯 · {opponent.name}（{opponent.rank}）
                   </>
-                }
-              />
-            </>
-          ) : (
-            <div className="inspector-hint">
-              <p>將滑鼠移到卡牌上可以查看詳細內容；點一下卡牌會顯示可以進行的動作。</p>
+                ) : (
+                  <>
+                    {LEVEL_ZH[level]} AI · {aiDeck.name}
+                  </>
+                )}
+              </div>
+              <label className="mini-select">
+                AI 速度
+                <select
+                  id="ai-speed"
+                  value={settings.aiSpeed}
+                  onChange={(e) => props.onSettings({ ...settings, aiSpeed: e.target.value as Settings['aiSpeed'] })}
+                >
+                  <option value="slow">慢</option>
+                  <option value="normal">中</option>
+                  <option value="fast">快</option>
+                </select>
+              </label>
+              <label className="mini-select" title="智慧：只在可能需要你操作時停下；全部：每次有可用動作都停下">
+                停頓
+                <select
+                  id="stop-mode"
+                  value={settings.stopMode}
+                  onChange={(e) => props.onSettings({ ...settings, stopMode: e.target.value as Settings['stopMode'] })}
+                >
+                  <option value="smart">智慧</option>
+                  <option value="all">全部</option>
+                </select>
+              </label>
+              {opponent && (
+                <label className="mini-select">
+                  對手表情
+                  <input type="checkbox" checked={!muted} onChange={() => setMuted((m) => !m)} />
+                </label>
+              )}
+              <p className="hm-tip">點手牌看動作、雙擊直接施放；點空白處關閉預覽。</p>
             </div>
           )}
-          </div>
-          <div className={`log ${showLog ? 'open' : ''}`} ref={logRef}>
-            {g.log.slice(-120).map((l, i) => (
-              <div key={i} className={`log-line k-${l.kind ?? 'info'} ${l.player === 0 ? 'p-me' : l.player === 1 ? 'p-opp' : ''}`}>
-                {l.text}
+        </div>
+
+        {inspected && (
+          <div className={`peek ${focus === inspectId ? 'pinned' : 'hover'}`} onMouseEnter={() => focus == null && setHover(null)}>
+            {focus === inspectId && (
+              <button className="icon-btn peek-close" onClick={() => setFocus(null)} aria-label="關閉">
+                ✕
+              </button>
+            )}
+            <CardZoom def={inspected.def} />
+            {(liveStats || inspected.tapped || inspected.controller === 1) && inspected.zone === 'battlefield' && (
+              <div className="peek-chips">
+                {liveStats && (
+                  <span className="chip">
+                    {liveStats.p}/{liveStats.t}
+                  </span>
+                )}
+                {inspected.damage > 0 && <span className="chip chip-bad">受傷 {inspected.damage}</span>}
+                {inspected.tapped && <span className="chip">已橫置</span>}
+                {inspected.controller === 1 && <span className="chip chip-opp">對手</span>}
               </div>
-            ))}
+            )}
+            {actions.length > 0 && (
+              <div className="actions">
+                {actions.map((o, i) => (
+                  <button key={i} className="btn btn-primary btn-block" onClick={() => startOption(o)}>
+                    {o.kind === 'play' ? '打出' : o.kind === 'activate' ? `起動：${o.label}` : o.alt || inspected.def.spell?.modes ? o.label : inspected.def.adventure ? `施放本體` : '施放'}
+                    {o.kind === 'cast' && <ManaCost cost={costToString(spellCost(g, inspected, 0, o.mode, undefined, o.alt))} size={15} />}
+                    {o.kind === 'activate' && activatedAbilities(inspected.def)[o.ability!].cost.mana && (
+                      <ManaCost cost={activatedAbilities(inspected.def)[o.ability!].cost.mana} size={15} />
+                    )}
+                  </button>
+                ))}
+              </div>
+            )}
+            {focus === inspectId && myPriority && !draft && actions.length === 0 && inspected.zone === 'hand' && <div className="peek-note">現在不能使用</div>}
+            {focus === inspectId && (
+              <button className="btn btn-small peek-more" onClick={() => setDetail(inspected.id)}>
+                ⓘ 效果解說
+              </button>
+            )}
           </div>
-        </aside>
+        )}
+
+        <div className={`log ${showLog ? 'open' : ''}`} ref={logRef} aria-hidden={!showLog}>
+          {g.log.slice(-120).map((l, i) => (
+            <div key={i} className={`log-line k-${l.kind ?? 'info'} ${l.player === 0 ? 'p-me' : l.player === 1 ? 'p-opp' : ''}`}>
+              {l.text}
+            </div>
+          ))}
+        </div>
       </div>
 
       <Spotlight g={g} />
@@ -783,6 +812,11 @@ export function Battle(props: Props) {
       )}
       {pile != null && !gySpec && (
         <PileModal g={g} title={`${g.players[pile].name}的墳墓場`} ids={[...g.players[pile].graveyard].reverse()} onClose={() => setPile(null)} />
+      )}
+      {detail != null && (
+        <Modal title="卡牌詳細資訊" onClose={() => setDetail(null)} wide>
+          <CardDetail def={g.cards[detail].def} />
+        </Modal>
       )}
       {ctl.finished && (
         <GameOverModal

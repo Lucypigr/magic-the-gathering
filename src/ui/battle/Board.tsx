@@ -36,7 +36,8 @@ export function Permanent({ g, c, marks, onCard, onHover }: { g: GameState; c: C
     c.controller === 0 ? 'mine' : 'theirs',
   ].join(' ');
   const attached = g.battlefield.map((id) => g.cards[id]).filter((a) => a.attachedTo === c.id);
-  const label = marks.labels.get(c.id) ?? (c.blocking != null ? `擋 ${cardName(g.cards[c.blocking])}` : null);
+  // 已宣告的阻擋由箭頭表示，只有宣告中的阻擋才顯示標籤
+  const label = marks.labels.get(c.id) ?? null;
   const lethal = cr && c.damage > 0;
   return (
     <div
@@ -66,11 +67,18 @@ export function Permanent({ g, c, marks, onCard, onHover }: { g: GameState; c: C
         <div className="perm-badges">
           {c.counters !== 0 && <span className="b-counter">{c.counters > 0 ? `+${c.counters}` : c.counters}</span>}
           {lethal && <span className="b-dmg">-{c.damage}</span>}
-          {c.stun > 0 && <span className="b-stun">暈{c.stun}</span>}
-          {cr && c.sick && !st.kw.has('haste') && c.controller === g.active && <span className="b-sick">召喚失調</span>}
-          {attached.length > 0 && <span className="b-att">{attached.map((a) => (a.def.equip ? '裝' : '靈')).join('')}</span>}
-          {c.def.aura && c.attachedTo != null && <span className="b-att">→{cardName(g.cards[c.attachedTo])}</span>}
-          {c.def.equip && c.attachedTo != null && <span className="b-att">→{cardName(g.cards[c.attachedTo])}</span>}
+          {c.stun > 0 && <span className="b-stun" title={`暈眩指示物 ${c.stun}`}>暈{c.stun}</span>}
+          {cr && c.sick && !st.kw.has('haste') && c.controller === g.active && <span className="b-sick" title="召喚失調：剛進場，這回合不能攻擊或橫置">💤</span>}
+          {attached.length > 0 && (
+            <span className="b-att" title={attached.map((a) => cardName(a)).join('、')}>
+              {attached.map((a) => (a.def.equip ? '⚒' : '✦')).join('')}
+            </span>
+          )}
+          {(c.def.aura || c.def.equip) && c.attachedTo != null && (
+            <span className="b-att" title={`貼附在 ${cardName(g.cards[c.attachedTo])}`}>
+              →{cardName(g.cards[c.attachedTo])}
+            </span>
+          )}
         </div>
       </div>
       {label && <div className="perm-label">{label}</div>}
@@ -241,18 +249,15 @@ export function Piles({ g, pid, onGraveyard, onHover }: { g: GameState; pid: PID
       <div className="pile" title={`牌庫 ${p.library.length} 張`}>
         <CardBack size="xs" />
         <span className="pile-count">{p.library.length}</span>
-        <span className="pile-label">牌庫</span>
       </div>
       <button className="pile pile-gy" onClick={onGraveyard} onMouseEnter={() => top && onHover(top.id)} onMouseLeave={() => onHover(null)} title={`墳墓場 ${p.graveyard.length} 張`}>
         {top ? <CardFace def={top.def} size="xs" /> : <div className="pile-empty" />}
         <span className="pile-count">{p.graveyard.length}</span>
-        <span className="pile-label">墳墓場</span>
       </button>
       {p.exile.length > 0 && (
         <div className="pile" title={`放逐區 ${p.exile.length} 張`}>
           <div className="pile-empty exile" />
           <span className="pile-count">{p.exile.length}</span>
-          <span className="pile-label">放逐</span>
         </div>
       )}
     </div>
@@ -283,18 +288,15 @@ export function PhaseTrack({ g }: { g: GameState }) {
   ];
   const mine = g.active === 0;
   return (
-    <div className={`phase-track ${mine ? 'mine' : 'theirs'}`}>
-      <span className="turn-who">
-        {mine ? '你的回合' : '對手回合'} · 第 {Math.max(1, Math.ceil(g.turn / 2))} 輪
-      </span>
+    <div className={`phase-track ${mine ? 'mine' : 'theirs'}`} title={`第 ${Math.max(1, Math.ceil(g.turn / 2))} 輪 · ${PHASE_ZH[g.phase]}`}>
+      <span className="turn-who">{mine ? '你的回合' : '對手回合'}</span>
       <ol>
         {steps.map(([label, ps]) => (
-          <li key={label} className={ps.includes(g.phase) ? 'now' : ''} title={ps.includes(g.phase) ? PHASE_ZH[g.phase] : undefined}>
+          <li key={label} className={ps.includes(g.phase) ? 'now' : ''}>
             {label}
           </li>
         ))}
       </ol>
-      <span className="phase-now">{PHASE_ZH[g.phase]}</span>
     </div>
   );
 }
@@ -304,7 +306,6 @@ export function StackView({ g, marks, onCard, onHover }: { g: GameState; marks: 
   const items = [...g.stack].reverse();
   return (
     <div className="stack">
-      <div className="stack-title">堆疊（由上往下結算）</div>
       <div className="stack-items">
         {items.map((s, i) => {
           const c = g.cards[s.cardId];
@@ -317,6 +318,7 @@ export function StackView({ g, marks, onCard, onHover }: { g: GameState; marks: 
               key={s.sid}
               data-sid={s.sid}
               data-scid={s.cardId}
+              title={`${s.controller === 0 ? '你' : '對手'}的${s.kind === 'spell' ? '咒語' : '異能'}${tnames ? ` → ${tnames}` : ''}（堆疊最上面的先結算）`}
               className={`stack-item ${s.controller === 0 ? 'mine' : 'theirs'} ${i === 0 ? 'top' : ''} ${marks.selectable.has(s.cardId) ? 'selectable' : ''}`}
               onClick={() => onCard(s.cardId)}
               onMouseEnter={() => onHover(s.cardId)}
@@ -327,10 +329,9 @@ export function StackView({ g, marks, onCard, onHover }: { g: GameState; marks: 
               <CardFace def={c.def} size="xs" />
               <div className="stack-desc">
                 <div className="stack-name">
-                  {s.kind === 'spell' ? '' : '能力：'}
+                  {s.kind === 'spell' ? '' : '⚡'}
                   {cardName(c)}
                 </div>
-                <div className="stack-who">{s.controller === 0 ? '你' : '對手'}{tnames ? ` → ${tnames}` : ''}</div>
               </div>
             </div>
           );
