@@ -17,3 +17,4 @@ import './tmt';
 import './sos';
 import './msh';
 import './hob';
+import './fra';

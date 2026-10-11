@@ -18,3 +18,4 @@ import './lci';
 import './woe';
 import './gen';
 import './dfc';
+import './staples';

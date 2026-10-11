@@ -26,7 +26,7 @@ import type {
   TargetRef,
   TargetSpec,
 } from './types';
-import { discard, emit, enterBattlefield, moveCard, removeFromZone, sacrifice } from './zones';
+import { discard, emit, enterBattlefield, loseLife, moveCard, removeFromZone, sacrifice } from './zones';
 
 // ------------------------------------------------------------
 // 法術力
@@ -38,9 +38,20 @@ export function manaSources(g: GameState, pid: PID, exclude?: number): ManaSourc
     if (c.controller !== pid || c.tapped || !c.def.produces || id === exclude) continue;
     const cr = isCreature(c);
     if (cr && c.sick && !hasKw(g, c, 'haste')) continue;
-    out.push({ id, produces: c.def.produces, isCreature: cr, sac: c.def.sacOnMana, filter: c.def.filterMana });
+    out.push({ id, produces: c.def.produces, isCreature: cr, sac: c.def.sacOnMana, filter: c.def.filterMana, pain: c.def.painMana });
   }
   return out;
+}
+
+/** 額外的地（例如「你每回合可以多使用一張地」） */
+export function extraLandDrops(g: GameState, pid: PID): number {
+  let n = 0;
+  for (const id of g.battlefield) {
+    const c = g.cards[id];
+    if (c.controller !== pid) continue;
+    for (const ab of c.def.abilities ?? []) if (ab.kind === 'static' && ab.extraLand) n += ab.extraLand;
+  }
+  return n;
 }
 
 export function canPayCost(g: GameState, pid: PID, cost: ManaCost, exclude?: number): boolean {
@@ -51,6 +62,7 @@ export function payCost(g: GameState, pid: PID, cost: ManaCost, exclude?: number
   const pay = findPayment(cost, manaSources(g, pid, exclude));
   if (!pay) return false;
   for (const p of pay) g.cards[p.id].tapped = true;
+  for (const p of pay) if (g.cards[p.id].def.painMana && p.mana !== 'C') loseLife(g, pid, 1);
   for (const p of pay) if (g.cards[p.id].def.sacOnMana) sacrifice(g, g.cards[p.id]);
   g.version++;
   return true;
@@ -272,7 +284,7 @@ export function castableCards(g: GameState, pid: PID): Card[] {
 }
 
 export function canPlayLand(g: GameState, pid: PID): boolean {
-  return sorceryTiming(g, pid) && g.players[pid].landsPlayed < 1;
+  return sorceryTiming(g, pid) && g.players[pid].landsPlayed < 1 + extraLandDrops(g, pid);
 }
 
 export function castOptionsFor(g: GameState, pid: PID, c: Card): PlayOption[] {

@@ -8,4 +8,5 @@ export const GEN_TOKENS: CardDef[] = [
   {"id": "tok-g-insect-11-bg-flying", "name": "Insect", "colors": ["B", "G"], "types": ["Creature"], "subtypes": ["Insect"], "power": 1, "toughness": 1, "keywords": ["flying"], "text": "飛行", "set": "TOK", "rarity": "T", "token": true},
   {"id": "tok-g-dragon-55-r-flying", "name": "Dragon", "colors": ["R"], "types": ["Creature"], "subtypes": ["Dragon"], "power": 5, "toughness": 5, "keywords": ["flying"], "text": "飛行", "set": "TOK", "rarity": "T", "token": true},
   {"id": "tok-g-elf-warrior-11-g", "name": "Elf Warrior", "colors": ["G"], "types": ["Creature"], "subtypes": ["Elf", "Warrior"], "power": 1, "toughness": 1, "text": "", "set": "TOK", "rarity": "T", "token": true},
+  {"id": "tok-g-beast-44-g-trample", "name": "Beast", "colors": ["G"], "types": ["Creature"], "subtypes": ["Beast"], "power": 4, "toughness": 4, "keywords": ["trample"], "text": "踐踏", "set": "TOK", "rarity": "T", "token": true},
 ];

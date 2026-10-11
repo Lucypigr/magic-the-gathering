@@ -28,6 +28,7 @@ export const STANDARD_SETS = [
   'SOS',
   'MSH',
   'HOB',
+  'FRA',
 ] as const;
 export type StandardSet = (typeof STANDARD_SETS)[number];
 export type SetCode = StandardSet | 'CORE' | 'META' | 'BAS' | 'TOK';
@@ -165,7 +166,11 @@ export type Cond =
   /** 你本回合攻擊過 */
   | { c: 'attacked' }
   /** 手牌數量在 n 張或以下（對手／任一玩家） */
-  | { c: 'handLte'; who: 'opp' | 'any'; n: number };
+  | { c: 'handLte'; who: 'opp' | 'any'; n: number }
+  /** 這是你的第 n 個或更早的回合 */
+  | { c: 'myTurnLte'; n: number }
+  /** 你本回合已失去 n 點或更多生命 */
+  | { c: 'lostLifeGte'; n: number };
 
 export interface ExtraCost {
   mana?: string;
@@ -183,7 +188,8 @@ export type Effect =
   | { e: 'discardChosen'; who: Ref; filter?: Filter }
   | { e: 'gain'; n: Amt; who?: Ref }
   | { e: 'lose'; n: Amt; who: Ref }
-  | { e: 'destroy'; what: Ref }
+  /** sameName：連同所有與它同名的其他永久物一起消滅 */
+  | { e: 'destroy'; what: Ref; sameName?: boolean }
   | { e: 'exile'; what: Ref }
   | { e: 'exileLinked'; what: Ref }
   | { e: 'bounce'; what: Ref }
@@ -213,7 +219,7 @@ export type Effect =
   | { e: 'mill'; n: Amt; who?: Ref }
   | { e: 'scry'; n: number }
   | { e: 'surveil'; n: number }
-  | { e: 'dig'; n: number; take?: number; filter?: Filter; rest: 'bottom' | 'graveyard' }
+  | { e: 'dig'; n: Amt; take?: number; filter?: Filter; rest: 'bottom' | 'graveyard'; to?: 'hand' | 'battlefield' }
   | { e: 'searchLand'; to: 'battlefield' | 'hand'; tapped?: boolean; untapIfLands?: number; who?: Ref; may?: boolean }
   | { e: 'counter'; what: Ref }
   | { e: 'counterUnless'; what: Ref; pay: number }
@@ -316,6 +322,8 @@ export interface StaticAbility {
   spellCostLess?: { filter: Filter; n: number };
   /** 你獲得生命時額外多獲得 n 點 */
   lifegainPlus?: number;
+  /** 你每回合可以多使用 n 張地 */
+  extraLand?: number;
 }
 
 export type Ability = TriggeredAbility | ActivatedAbility | StaticAbility;
@@ -354,6 +362,8 @@ export interface CardDef {
   sacOnMana?: boolean;
   /** 過濾地：{T}：加{C}；{1}，{T}：加一點任意顏色的法術力 */
   filterMana?: boolean;
+  /** 產生有色法術力時要支付1點生命（{C} 不用） */
+  painMana?: boolean;
   /** 冒險：同一張牌上的另一個瞬間或法術；施放後此牌放逐，之後可以從放逐區施放本體 */
   adventure?: { name: string; zh?: string; cost: string; types: CardType[]; text: string; spell: SpellSpec };
   /** 返照：可以支付此費用從墳墓場施放，之後放逐 */
