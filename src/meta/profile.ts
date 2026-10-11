@@ -44,6 +44,8 @@ export interface Profile {
   ladder: LadderState;
   /** 已完成的新手教學章節 */
   tutorial?: Record<string, boolean>;
+  /** 已兌換的獎勵碼（雜湊） */
+  redeemed?: string[];
 }
 
 const KEY = 'mtg-duel-arena-profile-v1';

@@ -4131,3 +4131,32 @@ button {
     align-items: stretch;
   }
 }
+
+/* 獎勵碼 */
+.redeem-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  margin: 10px 0;
+}
+.redeem-row input {
+  flex: 0 1 200px;
+  min-width: 0;
+  background: var(--raised);
+  color: var(--text);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 6px 10px;
+  font: inherit;
+}
+.redeem-msg {
+  flex-basis: 100%;
+  font-size: 13px;
+}
+.redeem-msg.ok {
+  color: var(--good);
+}
+.redeem-msg.bad {
+  color: #e2847a;
+}

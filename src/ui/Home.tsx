@@ -3,6 +3,7 @@ import type { Screen, UpdateProfile } from '../App';
 import { COLLECTIBLE, aiDecksFor, type Format } from '../data';
 import { FORMAT_NAME, listSlots, resetProfile, type Profile } from '../meta/profile';
 import { rankOf } from '../meta/ladder';
+import { checkCode, redeemCode } from '../meta/codes';
 import { CHAPTERS, CHAPTER_REWARD } from './tutorial';
 import { ColorPips, Gold } from './common';
 import { LEVEL_ZH } from './i18n';
@@ -207,6 +208,7 @@ export function Home({ profile, go, update }: { profile: Profile; go: (s: Screen
           ))}
         </div>
         {profile.settings.cardLang === 'zh' && <p className="muted small">{zhText()}</p>}
+        <RedeemRow profile={profile} update={update} />
         <div className="reset-row">
           {confirmReset ? (
             <>
@@ -242,4 +244,41 @@ function zhText(): string {
   const base = '卡名與完整卡面優先使用繁體中文版，其次簡體中文版（卡名轉為繁體字），沒有中文版的卡維持英文。';
   if (s.failed && !s.named) return `目前無法連線到 Scryfall，暫時顯示英文卡名。${base}`;
   return `${base}已取得 ${s.named} 張卡的中文名。`;
+}
+
+function RedeemRow({ profile, update }: { profile: Profile; update: UpdateProfile }) {
+  const [code, setCode] = useState('');
+  const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  const submit = () => {
+    const r = checkCode(profile, code);
+    if (r.ok) {
+      update((p) => {
+        redeemCode(p, code);
+      });
+      setCode('');
+      setMsg({ ok: true, text: `兌換成功！獲得 ${r.gold.toLocaleString()} 金幣。` });
+    } else {
+      setMsg({ ok: false, text: r.reason === 'used' ? '這組獎勵碼已經在這個存檔兌換過了。' : r.reason === 'empty' ? '請輸入獎勵碼。' : '獎勵碼不正確。' });
+    }
+  };
+  return (
+    <form
+      className="redeem-row"
+      onSubmit={(e) => {
+        e.preventDefault();
+        submit();
+      }}
+    >
+      <label htmlFor="redeem-code">獎勵碼</label>
+      <input id="redeem-code" value={code} maxLength={32} autoComplete="off" onChange={(e) => setCode(e.target.value)} placeholder="輸入獎勵碼" />
+      <button className="btn btn-small btn-primary" disabled={!code.trim()}>
+        兌換
+      </button>
+      {msg && (
+        <span className={`redeem-msg ${msg.ok ? 'ok' : 'bad'}`} role="status">
+          {msg.text}
+        </span>
+      )}
+    </form>
+  );
 }
