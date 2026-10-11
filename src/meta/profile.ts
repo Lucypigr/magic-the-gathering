@@ -44,6 +44,8 @@ export interface Profile {
   ladder: LadderState;
   /** 已完成的新手教學章節 */
   tutorial?: Record<string, boolean>;
+  /** 擁有特殊版本（異畫、無邊框等）的卡 id */
+  specials?: string[];
   /** 已兌換的獎勵碼（雜湊） */
   redeemed?: string[];
 }
@@ -293,6 +295,7 @@ function sanitize(p: Profile): Profile {
     out.standardStarters = true;
   }
   for (const id of Object.keys(out.collection)) if (!hasDef(id)) delete out.collection[id];
+  if (out.specials) out.specials = out.specials.filter(hasDef);
   for (const d of out.decks) for (const id of Object.keys(d.cards)) if (!hasDef(id)) delete d.cards[id];
   return out;
 }

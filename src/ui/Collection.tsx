@@ -15,22 +15,25 @@ import { RARITY_ZH } from './i18n';
 export function Collection({ profile, go, update }: { profile: Profile; go: (s: Screen) => void; update: UpdateProfile }) {
   const [f, setF] = useState<PoolFilter>({ q: '', color: '', type: '', set: '', rarity: '' });
   const [ownedOnly, setOwnedOnly] = useState(false);
+  const [specialOnly, setSpecialOnly] = useState(false);
+  const [showSpecial, setShowSpecial] = useState(true);
+  const specials = useMemo(() => new Set(profile.specials ?? []), [profile.specials]);
   const [detail, setDetail] = useState<CardDef | null>(null);
   const list = useMemo(
-    () => COLLECTIBLE.filter((d) => matchFilter(d, f) && (!ownedOnly || (profile.collection[d.id] ?? 0) > 0)).sort(sortDefs),
-    [f, ownedOnly, profile.collection],
+    () => COLLECTIBLE.filter((d) => matchFilter(d, f) && (!ownedOnly || (profile.collection[d.id] ?? 0) > 0) && (!specialOnly || specials.has(d.id))).sort(sortDefs),
+    [f, ownedOnly, specialOnly, specials, profile.collection],
   );
   const sets = ([...[...STANDARD_SETS].reverse(), 'CORE', 'META'] as const).map((s) => {
     const all = COLLECTIBLE.filter((c) => c.set === s);
     const own = all.filter((c) => (profile.collection[c.id] ?? 0) > 0).length;
-    return { s, own, total: all.length };
+    return { s, own, total: all.length, sp: all.filter((c) => specials.has(c.id)).length };
   });
   const usedInDecks = (id: string) => Math.max(0, ...profile.decks.map((d) => d.cards[id] ?? 0));
   return (
     <div className="page page-wide">
       <TopBar profile={profile} go={go} title="我的收藏" />
       <div className="set-progress">
-        {sets.map(({ s, own, total }) => (
+        {sets.map(({ s, own, total, sp }) => (
           <button key={s} className={`sp ${f.set === s ? 'on' : ''}`} onClick={() => setF({ ...f, set: f.set === s ? '' : s })} title={SET_INFO[s].name}>
             <div className="sp-name">{SET_INFO[s].short}</div>
             <div className="sp-bar">
@@ -38,6 +41,7 @@ export function Collection({ profile, go, update }: { profile: Profile; go: (s: 
             </div>
             <div className="sp-n">
               {own}／{total}
+              {sp > 0 && <span className="special-text"> ★{sp}</span>}
             </div>
           </button>
         ))}
@@ -59,6 +63,10 @@ export function Collection({ profile, go, update }: { profile: Profile; go: (s: 
               <input id="owned-only" type="checkbox" checked={ownedOnly} onChange={(e) => setOwnedOnly(e.target.checked)} />
               只看已擁有
             </label>
+            <label className="check">
+              <input id="special-only" type="checkbox" checked={specialOnly} onChange={(e) => setSpecialOnly(e.target.checked)} />
+              只看特殊版本（{specials.size}）
+            </label>
           </>
         }
       />
@@ -67,9 +75,12 @@ export function Collection({ profile, go, update }: { profile: Profile; go: (s: 
           const n = profile.collection[d.id] ?? 0;
           return (
             <div key={d.id} className="pool-card">
-              <CardFace def={d} size="sm" className={n ? 'pickable' : 'unowned'} onClick={() => setDetail(d)} />
+              <CardFace def={d} size="sm" special={specials.has(d.id)} className={n ? 'pickable' : 'unowned'} onClick={() => setDetail(d)} />
               <div className="pool-meta">
-                <span className={n ? 'in-deck' : 'muted'}>{n ? `×${n}` : '未擁有'}</span>
+                <span className={n ? 'in-deck' : 'muted'}>
+                  {n ? `×${n}` : '未擁有'}
+                  {specials.has(d.id) && <span className="special-text"> ★</span>}
+                </span>
                 <span className={`rarity-tag r-${d.rarity}`}>{RARITY_ZH[d.rarity]}</span>
               </div>
             </div>
@@ -80,8 +91,14 @@ export function Collection({ profile, go, update }: { profile: Profile; go: (s: 
         <Modal title={displayName(detail)} onClose={() => setDetail(null)} wide>
           <CardDetail
             def={detail}
+            special={specials.has(detail.id) && showSpecial}
             extra={
               <div className="detail-actions">
+                {specials.has(detail.id) && (
+                  <button className="btn btn-small" onClick={() => setShowSpecial(!showSpecial)}>
+                    {showSpecial ? '看一般版本' : '看特殊版本'}
+                  </button>
+                )}
                 <span className="muted">
                   持有 {profile.collection[detail.id] ?? 0} 張
                   {usedInDecks(detail.id) > 0 && ` · 套牌最多使用 ${usedInDecks(detail.id)} 張`}

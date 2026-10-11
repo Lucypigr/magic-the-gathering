@@ -4,7 +4,7 @@ import { SET_INFO, isStandardBanned, isStandardLegal } from '../data';
 import { colorsOf } from '../engine/mana';
 import type { CardDef, Keyword } from '../engine/types';
 import { KW_DESC, KW_ZH, RARITY_ZH, typeLine } from './i18n';
-import { imageFor, useImageVersion } from './images';
+import { imageFor, specialImageFor, useImageVersion } from './images';
 import { ManaCost, ManaSymbol, RulesText } from './Mana';
 import { LINE_KIND_ZH, lineNotes, symbolNotes, termNotes, typeNote } from './explain';
 
@@ -33,15 +33,16 @@ export function glyphFor(def: CardDef): string {
   return TYPE_GLYPH[t] ?? '✦';
 }
 
-export function useCardImage(def: CardDef) {
+export function useCardImage(def: CardDef, special = false) {
   useImageVersion();
   const enabled = useContext(ImagesEnabled);
   if (!enabled || def.token) return null;
-  return imageFor(def.imageName ?? def.name);
+  const name = def.imageName ?? def.name;
+  return special ? specialImageFor(name) : imageFor(name);
 }
 
-export function Art({ def, children }: { def: CardDef; children?: ReactNode }) {
-  const img = useCardImage(def);
+export function Art({ def, special, children }: { def: CardDef; special?: boolean; children?: ReactNode }) {
+  const img = useCardImage(def, special);
   return (
     <div className={`art ${img?.art ? '' : 'art-fallback'}`}>
       {img?.art ? <img src={img.art} alt="" loading="lazy" draggable={false} /> : <span className="art-glyph">{glyphFor(def)}</span>}
@@ -62,16 +63,18 @@ export interface CardFaceProps {
   children?: ReactNode;
   title?: string;
   style?: CSSProperties;
+  /** 特殊版本：特殊卡圖與閃卡效果 */
+  special?: boolean;
 }
 
-export function CardFace({ def, size = 'md', pt, showText, className = '', onClick, onDoubleClick, onMouseEnter, children, title, style }: CardFaceProps) {
+export function CardFace({ def, size = 'md', pt, showText, className = '', onClick, onDoubleClick, onMouseEnter, children, title, style, special }: CardFaceProps) {
   const isCr = def.types.includes('Creature');
   const p = pt?.p ?? def.power ?? 0;
   const t = pt?.t ?? def.toughness ?? 0;
   const ptCls = pt ? (pt.p > (def.power ?? 0) || pt.t > (def.toughness ?? 0) ? 'up' : pt.p < (def.power ?? 0) || pt.t < (def.toughness ?? 0) ? 'down' : '') : '';
   return (
     <div
-      className={`card card-${size} ${frameClass(def)} ${className}`}
+      className={`card card-${size} ${frameClass(def)} ${special ? 'card-special' : ''} ${className}`}
       onClick={onClick}
       onDoubleClick={onDoubleClick}
       onMouseEnter={onMouseEnter}
@@ -86,7 +89,7 @@ export function CardFace({ def, size = 'md', pt, showText, className = '', onCli
           <span className="card-name">{displayName(def)}</span>
           <ManaCost cost={def.cost} />
         </div>
-        <Art def={def} />
+        <Art def={def} special={special} />
         <div className="card-type">
           <span className="card-type-text">{typeLine(def)}</span>
           <span className={`gem gem-${def.rarity}`} title={RARITY_ZH[def.rarity]} />
@@ -122,8 +125,8 @@ export function CardZoom({ def }: { def: CardDef }) {
 }
 
 /** 卡牌詳細資訊（效果解說 / 收藏） */
-export function CardDetail({ def, extra }: { def: CardDef; extra?: ReactNode }) {
-  const img = useCardImage(def);
+export function CardDetail({ def, extra, special }: { def: CardDef; extra?: ReactNode; special?: boolean }) {
+  const img = useCardImage(def, special);
   const [broken, setBroken] = useState<string | null>(null);
   const name = displayName(def);
   // 中文模式顯示英文原名、英文模式顯示中文名，方便對照
@@ -133,9 +136,11 @@ export function CardDetail({ def, extra }: { def: CardDef; extra?: ReactNode }) 
   return (
     <div className="card-detail">
       {img?.full && broken !== img.full ? (
-        <img className="card-detail-img" src={img.full} alt={name} draggable={false} onError={() => setBroken(img.full!)} />
+        <div className={special ? 'special-img' : undefined}>
+          <img className="card-detail-img" src={img.full} alt={name} draggable={false} onError={() => setBroken(img.full!)} />
+        </div>
       ) : (
-        <CardFace def={def} size="lg" showText />
+        <CardFace def={def} size="lg" showText special={special} />
       )}
       <div className="card-detail-info">
         <div className="cd-head">
@@ -146,6 +151,7 @@ export function CardDetail({ def, extra }: { def: CardDef; extra?: ReactNode }) 
         <div className="cd-type">
           {typeLine(def)}
           <span className={`rarity-tag r-${def.rarity}`}>{RARITY_ZH[def.rarity]}</span>
+          {special && <span className="special-tag">★ 特殊版本</span>}
         </div>
         {!def.token && def.set !== 'BAS' && (
           <div className="cd-set">

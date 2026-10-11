@@ -434,3 +434,56 @@ export async function prefetchZh(names: string[]): Promise<void> {
 export function zhStatus(): { named: number; failed: boolean; loading: boolean } {
   return { named: Object.values(zhCache).filter((z) => z?.name).length, failed: zhFailed, loading: zhInflight };
 }
+
+// ------------------------------------------------------------
+// 特殊版本（異畫、無邊框、延伸插畫、主題卡框等）
+// 向 Scryfall 找同名卡的特殊印刷；找不到就沿用一般卡圖（畫面上仍有閃卡效果）。
+// ------------------------------------------------------------
+
+const SPECIAL_KEY = 'mtg-duel-arena-special-v1';
+let specialCache: Record<string, ImageEntry | null> = {};
+const specialSending = new Set<string>();
+
+try {
+  const raw = typeof localStorage !== 'undefined' ? localStorage.getItem(SPECIAL_KEY) : null;
+  if (raw) specialCache = JSON.parse(raw);
+} catch {
+  specialCache = {};
+}
+
+async function fetchSpecial(name: string): Promise<void> {
+  const k = name.toLowerCase();
+  const front = name.split(' // ')[0].replace(/"/g, '');
+  const q = `!"${front}" game:paper (is:showcase or is:borderless or is:extendedart or is:fullart or frame:inverted)`;
+  const url = `https://api.scryfall.com/cards/search?${new URLSearchParams({ q, unique: 'art', order: 'released', dir: 'desc' })}`;
+  try {
+    const res = await scryFetch(url, { headers: { Accept: 'application/json' } }, 'urgent');
+    if (res.status === 404) specialCache[k] = null;
+    else if (res.ok) {
+      const json = (await res.json()) as { data: ScryCard[] };
+      const c = json.data.find((x) => (x.image_uris ?? x.card_faces?.[0]?.image_uris)?.normal);
+      const iu = c?.image_uris ?? c?.card_faces?.[0]?.image_uris;
+      specialCache[k] = iu ? { art: iu.art_crop, full: iu.normal } : null;
+    } else return;
+    try {
+      localStorage.setItem(SPECIAL_KEY, JSON.stringify(specialCache));
+    } catch {
+      // 忽略
+    }
+    notify();
+  } catch {
+    // 連不上就先用一般卡圖
+  } finally {
+    specialSending.delete(k);
+  }
+}
+
+/** 特殊版本的卡圖；沒有特殊印刷或還在查詢時回傳一般卡圖 */
+export function specialImageFor(name: string): ImageEntry | null {
+  const k = name.toLowerCase();
+  if (!(k in specialCache) && !specialSending.has(k) && typeof window !== 'undefined' && !failed) {
+    specialSending.add(k);
+    void fetchSpecial(name);
+  }
+  return specialCache[k] ?? imageFor(name);
+}
