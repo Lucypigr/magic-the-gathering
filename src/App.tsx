@@ -5,7 +5,8 @@ import { TIERS, ladderReward, pointsDelta, rankOf, type Opponent } from './meta/
 import { Ladder } from './ui/Ladder';
 import { Saves } from './ui/Saves';
 import { Tutorial } from './ui/Tutorial';
-import { checkDeck, loadProfile, REWARDS, saveProfile, type Profile, type Settings } from './meta/profile';
+import { checkDeck, loadProfile, REWARDS, saveProfile, type Profile, type SavedDeck, type Settings } from './meta/profile';
+import { NetDecks } from './ui/NetDecks';
 import { Battle, type BattleResult } from './ui/battle/Battle';
 import { ImagesEnabled } from './ui/CardView';
 import { Collection } from './ui/Collection';
@@ -19,7 +20,19 @@ import { Shop } from './ui/Shop';
 export type Screen =
   | { name: 'home' }
   | { name: 'setup' }
-  | { name: 'battle'; deckId: string; aiDeckId: string; level: Level; key: number; random: boolean; format: Format; opponent?: Opponent }
+  | {
+      name: 'battle';
+      deckId: string;
+      aiDeckId: string;
+      level: Level;
+      key: number;
+      random: boolean;
+      format: Format;
+      opponent?: Opponent;
+      /** 試玩：用還沒擁有的套牌和 AI 打一場（不計金幣與戰績） */
+      trial?: SavedDeck;
+    }
+  | { name: 'netdecks' }
   | { name: 'ladder'; auto?: boolean }
   | { name: 'saves' }
   | { name: 'tutorial'; chapter?: string }
@@ -87,6 +100,12 @@ export default function App() {
     go({ name: 'battle', deckId, level: opp.level, aiDeckId: opp.deck.id, random: true, key: Date.now(), format, opponent: opp });
   };
 
+  const startTrial = (deck: SavedDeck, aiDeckId?: string) => {
+    setReward(0);
+    setResultExtra(null);
+    go({ name: 'battle', deckId: deck.id, level: 'normal', aiDeckId: aiDeckId ?? randomAiDeck('standard'), random: !aiDeckId, key: Date.now(), format: 'standard', trial: deck });
+  };
+
   const setSettings = (s: Settings) =>
     update((p) => {
       p.settings = s;
@@ -101,7 +120,7 @@ export default function App() {
       body = <Setup profile={profile} go={go} onStart={startBattle} />;
       break;
     case 'battle': {
-      const deck = profile.decks.find((d) => d.id === screen.deckId);
+      const deck = screen.trial ?? profile.decks.find((d) => d.id === screen.deckId);
       const aiDeck = screen.opponent?.deck ?? ALL_AI_DECKS.find((d) => d.id === screen.aiDeckId)!;
       if (!deck) {
         body = <Home profile={profile} go={go} update={update} />;
@@ -118,9 +137,10 @@ export default function App() {
           reward={reward}
           onSettings={setSettings}
           opponent={s.opponent}
-          resultExtra={s.opponent ? resultExtra : undefined}
           rematchLabel={s.opponent ? '繼續配對' : undefined}
+          resultExtra={s.opponent ? resultExtra : s.trial ? <p className="muted">試玩對戰不計金幣與戰績。</p> : undefined}
           onEnd={(r: BattleResult) => {
+            if (s.trial) return;
             if (s.opponent) {
               const opp = s.opponent;
               const lf = profile.ladder[s.format];
@@ -186,7 +206,9 @@ export default function App() {
             });
           }}
           onExit={() => go({ name: 'home' })}
-          onRematch={() => (s.opponent ? go({ name: 'ladder', auto: true }) : startBattle(s.deckId, s.level, s.random ? null : s.aiDeckId, s.format))}
+          onRematch={() =>
+            s.trial ? startTrial(s.trial) : s.opponent ? go({ name: 'ladder', auto: true }) : startBattle(s.deckId, s.level, s.random ? null : s.aiDeckId, s.format)
+          }
         />
       );
       break;
@@ -211,6 +233,9 @@ export default function App() {
       break;
     case 'saves':
       body = <Saves profile={profile} go={go} onLoad={(p) => setProfile(p)} />;
+      break;
+    case 'netdecks':
+      body = <NetDecks profile={profile} go={go} update={update} onTrial={(d) => startTrial(d)} />;
       break;
     case 'decks':
       body = <DeckBuilder profile={profile} go={go} update={update} />;
