@@ -55,6 +55,11 @@ function permanentValue(g: GameState, c: Card): number {
   if (isCreature(c)) return creatureValue(g, c);
   if (isLand(c)) return 0;
   if (c.def.aura) return 0.3; // 效果已反映在生物上
+  // 鵬洛客：每回合都能產生效果，忠誠越高越安全
+  if (c.def.types.includes('Planeswalker')) {
+    const loyalty = Math.max(0, c.loyalty ?? 0);
+    return loyalty <= 0 ? 0 : 3 + manaValue(c.def) * 0.6 + loyalty * 0.9;
+  }
   let v = 1 + manaValue(c.def) * 0.7;
   if (c.def.equip) v = c.attachedTo != null ? 1 : 0.6 + manaValue(c.def) * 0.3;
   v += activatedAbilities(c.def).length * 0.4;

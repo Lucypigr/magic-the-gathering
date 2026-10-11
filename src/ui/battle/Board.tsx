@@ -63,6 +63,11 @@ export function Permanent({ g, c, marks, onCard, onHover }: { g: GameState; c: C
             ))}
           </div>
         )}
+        {c.def.types.includes('Planeswalker') && !cr && (
+          <div className="perm-loyalty" title="忠誠：受到傷害或起動 −N 異能會減少，歸零時置入墳墓場">
+            {c.loyalty ?? 0}
+          </div>
+        )}
         {cr && <div className={`perm-pt ${st.p > (c.def.power ?? 0) || st.t > (c.def.toughness ?? 0) ? 'up' : st.p < (c.def.power ?? 0) || st.t < (c.def.toughness ?? 0) ? 'down' : ''}`}>{`${st.p}/${st.t}`}</div>}
         <div className="perm-badges">
           {c.counters !== 0 && <span className="b-counter">{c.counters > 0 ? `+${c.counters}` : c.counters}</span>}

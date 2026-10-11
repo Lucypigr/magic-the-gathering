@@ -696,6 +696,25 @@ function* runEffect(g: GameState, ctx: Ctx, ef: Effect): SubFlow {
       }
       break;
     }
+    case 'loyalty': {
+      const n = amount(g, ctx, ef.n);
+      for (const c of resolveRef(g, ctx, ef.what).cards) {
+        if (c.zone !== 'battlefield' || !c.def.types.includes('Planeswalker')) continue;
+        c.loyalty = (c.loyalty ?? 0) + n;
+        log(g, `${cardName(c)} 的忠誠${n >= 0 ? '+' : ''}${n}（${c.loyalty}）`, c.controller);
+      }
+      g.version++;
+      break;
+    }
+    case 'empowerJace': {
+      let jace = g.battlefield.map((id) => g.cards[id]).find((c) => c.controller === me && c.def.id === 'tok-jace');
+      if (!jace) jace = createToken(g, 'tok-jace', me);
+      const n = amount(g, ctx, ef.n);
+      jace.loyalty = (jace.loyalty ?? 0) + n;
+      log(g, `強化傑斯 ${n}（忠誠 ${jace.loyalty}）`, me);
+      g.version++;
+      break;
+    }
     case 'cantGainLife':
       for (const p of resolveRef(g, ctx, ef.who).players) g.players[p].cantGainLife = true;
       break;

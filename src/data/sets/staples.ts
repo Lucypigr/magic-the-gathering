@@ -104,9 +104,24 @@ inst('ECL', 'U', 'Spell Snare', '{U}', '反擊目標法術力值為2的咒語。
   targets: [{ kind: 'spell', filter: { mvMin: 2, mvMax: 2 }, prompt: '選擇法術力值為2的咒語' }],
   effects: [{ e: 'counter', what: 'T0' }],
 });
-inst('FRA', 'U', 'Countersculpt', '{1}{U}{U}', '反擊目標咒語。\n（簡化：固定多付{1}，沒有注視傑斯與強化傑斯）', {
+inst('FRA', 'U', 'Countersculpt', '{1}{U}{U}', '若你操控傑斯，此咒語減少{1}來施放。\n反擊目標咒語。強化傑斯1。（在你的傑斯衍生物上放置忠誠指示物；沒有的話先派出一個具有「−1：刺探1」「−3：抓一張牌」的藍色傑斯鵬洛客衍生物）\n（簡化：注視傑斯只看戰場上的傑斯）', {
   targets: [{ kind: 'spell' }],
-  effects: [{ e: 'counter', what: 'T0' }],
+  effects: [{ e: 'counter', what: 'T0' }, { e: 'empowerJace', n: 1 }],
+}, { costReduce: { cond: { c: 'controls', filter: { sub: 'Jace' } }, mana: '{1}' } });
+inst('FRA', 'R', "Jace's Machinations", '{2}{U}', '強化傑斯8。（在你的傑斯衍生物上放置忠誠指示物；沒有的話先派出一個具有「−1：刺探1」「−3：抓一張牌」的藍色傑斯鵬洛客衍生物）\n（簡化：沒有在瞬間時機起動忠誠異能的效果）', {
+  effects: [{ e: 'empowerJace', n: 8 }],
+});
+cr('FRA', 'M', 'Avatar of Burgeoning Echoes', '{G}{U}', 'Avatar', 2, 3, '地落～每當一個地在你的操控下進戰場時，強化傑斯2。（在你的傑斯衍生物上放置忠誠指示物；沒有的話先派出一個具有「−1：刺探1」「−3：抓一張牌」的藍色傑斯鵬洛客衍生物）\n（簡化：沒有給予鵬洛客 −10 異能）', {
+  abilities: [trig('landfall', [{ e: 'empowerJace', n: 2 }])],
+});
+ench('FRA', 'U', 'Way of the Pyromancer', '{1}{R}', '當此結界進戰場時，強化傑斯2。（在你的傑斯衍生物上放置忠誠指示物；沒有的話先派出一個具有「−1：刺探1」「−3：抓一張牌」的藍色傑斯鵬洛客衍生物）\n（簡化：沒有給予鵬洛客加{R}的異能）', {
+  supertypes: ['Legendary'],
+  abilities: [etb([{ e: 'empowerJace', n: 2 }])],
+});
+land('FRA', 'R', "Theorist's Sanctum", ['U'], '（{T}：加{U}。）\n除非你操控傑斯，否則此地橫置進戰場。\n{2}{U}，{T}：強化傑斯2。\n（簡化：注視傑斯只看戰場上的傑斯）', {
+  subtypes: ['Island'],
+  etbTappedUnless: { c: 'controls', filter: { sub: 'Jace' } },
+  abilities: [act({ mana: '{2}{U}', tap: true }, [{ e: 'empowerJace', n: 2 }], '強化傑斯2')],
 });
 inst('OTJ', 'R', 'Three Steps Ahead', '{U}', '選擇一項：\n• {1}{U}{U}：反擊目標咒語。\n• {2}{U}：抓兩張牌，然後棄一張牌。\n• {3}{U}{U}：反擊目標咒語，抓兩張牌，然後棄一張牌。\n（簡化：沒有複製永久物的選項）', {
   modes: [
@@ -334,9 +349,9 @@ ench('BLB', 'R', 'Lunar Convocation', '{W}{B}', '在你的結束步驟開始時�
     act({ mana: '{1}{B}', life: 2 }, [{ e: 'draw', n: 1 }], '支付2點生命：抓一張牌'),
   ],
 });
-inst('FRA', 'U', 'Fatehold Charm', '{W}{U}', '選擇一項：\n• 抓一張牌。\n• 將目標生物移回其擁有者手上。\n• 由你操控的生物得+1/+2直到回合結束。\n（簡化：沒有強化傑斯，不能以咒語為目標）', {
+inst('FRA', 'U', 'Fatehold Charm', '{W}{U}', '選擇一項：\n• 抓一張牌。強化傑斯2。\n• 將目標生物移回其擁有者手上。\n• 由你操控的生物得+1/+2直到回合結束。\n（簡化：不能以咒語為目標）', {
   modes: [
-    { text: '抓一張牌', effects: [{ e: 'draw', n: 1 }] },
+    { text: '抓一張牌，強化傑斯2', effects: [{ e: 'draw', n: 1 }, { e: 'empowerJace', n: 2 }] },
     { text: '生物回手', targets: [CR], effects: [{ e: 'bounce', what: 'T0' }] },
     { text: '你的生物+1/+2', effects: [{ e: 'pump', what: { all: { type: 'Creature', ctrl: 'you' } }, p: 1, t: 2 }] },
   ],

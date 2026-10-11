@@ -12,6 +12,12 @@ export interface Term {
 
 /** 機制與術語（說明頁也使用這份清單） */
 export const MECHANICS: Term[] = [
+  { term: '忠誠', match: ['忠誠'], desc: '鵬洛客的「血量」。起動 +N 異能會增加、−N 異能會減少，受到傷害也會減少；歸零時鵬洛客被置入墳墓場。' },
+  {
+    term: '強化傑斯 N',
+    match: ['強化傑斯'],
+    desc: '在你的傑斯衍生物上放 N 個忠誠指示物。如果你還沒有傑斯衍生物，就先派出一個藍色的傑斯鵬洛客衍生物（−1：刺探1；−3：抓一張牌），再放上指示物。',
+  },
   { term: '地落', match: ['地落'], desc: '每當一個地在你的操控下進戰場時觸發。' },
   { term: '英勇', match: ['英勇'], desc: '每回合此生物第一次成為你的咒語或異能的目標時觸發。' },
   { term: '占卜 N', match: ['占卜'], desc: '檢視牌庫頂 N 張牌，把任意數量放到牌庫底，其餘放回牌庫頂。用來過濾接下來要抓的牌。' },
@@ -171,6 +177,20 @@ export function lineNotes(def: CardDef): LineNote[] {
       out.push({ kind: 'mode', text: line, desc: '可以選擇的其中一個效果。' });
       continue;
     }
+    // 鵬洛客的忠誠異能：「+1：…」「−2：…」「0：…」
+    const loy = line.match(/^([+−-]\d+|0)：(.+)$/);
+    if (loy && def.types.includes('Planeswalker')) {
+      const n = loy[1];
+      const how = n.startsWith('+') ? `放上 ${n.slice(1)} 個忠誠指示物（忠誠會增加）` : n === '0' ? '忠誠不變' : `移除 ${n.slice(1)} 個忠誠指示物（忠誠要夠才能用）`;
+      out.push({
+        kind: 'activated',
+        text: line,
+        cost: n,
+        effect: loy[2],
+        desc: `忠誠異能：${how}，然後得到效果。每個鵬洛客每回合只能用一個忠誠異能，而且只能在你的主要階段使用。`,
+      });
+      continue;
+    }
     if (/^選擇(一|二|兩)項/.test(line)) {
       out.push({ kind: 'modes', text: line, desc: '施放時從下面的選項中挑選要發生的效果。' });
       continue;
@@ -231,6 +251,8 @@ export function termNotes(def: CardDef): Term[] {
 export function typeNote(def: CardDef): string {
   const t = def.types;
   if (t.includes('Land')) return '地：每回合可以打出一張（不算施放），主要用來產生法術力。';
+  if (t.includes('Planeswalker'))
+    return '鵬洛客：你的強力盟友。進場時帶著右下角數字的忠誠，每回合可以用一個忠誠異能（+N 增加忠誠、−N 消耗忠誠）。對手可以用生物攻擊它，或用傷害咒語打它，受到的傷害會扣忠誠，歸零就被置入墳墓場。';
   if (t.includes('Creature')) return '生物：施放後留在戰場上，可以攻擊與阻擋。剛進場的回合不能攻擊（召喚失調），除非有敏捷。';
   if (t.includes('Instant')) return '瞬間：任何時候都能施放，包括對手的回合和戰鬥中，用完進入墳墓場。';
   if (t.includes('Sorcery')) return '法術：只能在你的主要階段、堆疊是空的時候施放，用完進入墳墓場。';

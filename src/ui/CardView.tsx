@@ -25,6 +25,7 @@ const TYPE_GLYPH: Record<string, string> = {
   Enchantment: '❖',
   Artifact: '⚙',
   Land: '⛰',
+  Planeswalker: '✪',
 };
 
 export function glyphFor(def: CardDef): string {
@@ -96,6 +97,7 @@ export function CardFace({ def, size = 'md', pt, showText, className = '', onCli
           </div>
         )}
         {isCr && <div className={`card-pt ${ptCls}`}>{`${p}/${t}`}</div>}
+        {!isCr && def.types.includes('Planeswalker') && <div className="card-pt card-loyalty">{def.loyalty ?? 0}</div>}
       </div>
       {children}
     </div>
@@ -162,6 +164,11 @@ export function CardDetail({ def, extra }: { def: CardDef; extra?: ReactNode }) 
         {def.types.includes('Creature') && (
           <div className="cd-pt">
             力量／防禦力 <b>{`${def.power}/${def.toughness}`}</b>
+          </div>
+        )}
+        {def.types.includes('Planeswalker') && (
+          <div className="cd-pt">
+            起始忠誠 <b>{def.loyalty ?? 0}</b>
           </div>
         )}
         {extra}

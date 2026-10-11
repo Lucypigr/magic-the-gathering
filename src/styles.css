@@ -4160,3 +4160,36 @@ button {
 .redeem-msg.bad {
   color: #e2847a;
 }
+
+/* 鵬洛客的忠誠 */
+.perm-loyalty {
+  position: absolute;
+  right: 3px;
+  bottom: 3px;
+  min-width: 26px;
+  padding: 1px 6px;
+  text-align: center;
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 14px;
+  color: #10131a;
+  background: linear-gradient(#f3e6c4, #c9a960);
+  border: 1px solid #fff6dc;
+  clip-path: polygon(0 0, 100% 0, 100% 72%, 50% 100%, 0 72%);
+  padding-bottom: 5px;
+  z-index: 2;
+}
+.card-pt.card-loyalty {
+  background: linear-gradient(#f3e6c4, #c9a960);
+  clip-path: polygon(0 0, 100% 0, 100% 72%, 50% 100%, 0 72%);
+  padding-bottom: 0.35em;
+}
+.chip-loyal {
+  background: rgba(201, 169, 96, 0.4);
+}
+@media (max-width: 700px) {
+  .perm-loyalty {
+    font-size: 11px;
+    min-width: 20px;
+  }
+}

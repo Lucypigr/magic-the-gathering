@@ -29,6 +29,8 @@ function triggerMatches(g: GameState, c: Card, ab: TriggeredAbility, ev: GameEve
       return ev.type === 'blocks' && ev.card === c.id;
     case 'upkeep':
       return ev.type === 'step' && ev.step === 'upkeep' && ev.player === pov;
+    case 'oppUpkeep':
+      return ev.type === 'step' && ev.step === 'upkeep' && ev.player !== pov;
     case 'endStep':
       return ev.type === 'step' && ev.step === 'endStep' && ev.player === pov;
     case 'combatStart':
@@ -154,6 +156,8 @@ function resetPermanentState(c: Card): void {
   c.sick = false;
   c.attachedTo = null;
   c.usedThisTurn = [];
+  c.loyalty = undefined;
+  c.attackTarget = undefined;
   if (c.baseDef) {
     c.def = c.baseDef;
     c.baseDef = undefined;
@@ -228,6 +232,7 @@ export function enterBattlefield(g: GameState, c: Card, controller: PID, tapped 
   c.sick = true;
   c.enteredTurn = g.turn;
   c.counters = c.def.etbCounters ?? 0;
+  if (c.def.types.includes('Planeswalker')) c.loyalty = c.def.loyalty ?? 0;
   c.playableTurn = undefined;
   g.version++;
   emit(g, { type: 'etb', card: c.id, controller });
@@ -348,7 +353,16 @@ export function dealDamage(
     if (opts.combat && src) emit(g, { type: 'combatDamage', source: src.id, player: target.p, amount: n });
   } else {
     const c = g.cards[target.c];
-    if (!c || c.zone !== 'battlefield' || !isCreature(c)) return 0;
+    if (!c || c.zone !== 'battlefield') return 0;
+    if (!isCreature(c)) {
+      // 對鵬洛客造成的傷害會移除等量的忠誠指示物
+      if (!c.def.types.includes('Planeswalker')) return 0;
+      c.loyalty = (c.loyalty ?? 0) - n;
+      log(g, `${srcName} 對 ${cardName(c)} 造成 ${n} 點傷害（忠誠 ${c.loyalty}）`, srcController, 'damage');
+      if (kws.has('lifelink')) gainLife(g, srcController, n);
+      g.version++;
+      return n;
+    }
     c.damage += n;
     if (kws.has('deathtouch')) c.dtDamage = true;
     log(g, `${srcName} 對 ${cardName(c)} 造成 ${n} 點傷害`, srcController, 'damage');
