@@ -156,6 +156,7 @@ function resetPermanentState(c: Card): void {
   c.sick = false;
   c.attachedTo = null;
   c.usedThisTurn = [];
+  c.exhausted = undefined;
   c.loyalty = undefined;
   c.lore = undefined;
   c.sacAtEnd = undefined;
@@ -188,6 +189,7 @@ export function moveCard(g: GameState, c: Card, to: Zone, bottom = false): void 
     c.front = undefined;
   }
   if (to !== 'exile') c.exiledBy = undefined;
+  if (to === 'graveyard' && !c.token && !c.def.types.some((t) => t === 'Instant' || t === 'Sorcery')) g.players[c.owner].permToGyThisTurn = true;
   if (c.token && to !== 'battlefield') {
     // 衍生物離開戰場即消失
   } else if (to === 'library') {
@@ -237,6 +239,7 @@ export function enterBattlefield(g: GameState, c: Card, controller: PID, tapped 
   if (c.def.types.includes('Planeswalker')) c.loyalty = c.def.loyalty ?? 0;
   c.playableTurn = undefined;
   g.version++;
+  if (!c.def.types.includes('Land')) g.players[controller].nonlandEtbThisTurn = (g.players[controller].nonlandEtbThisTurn ?? 0) + 1;
   emit(g, { type: 'etb', card: c.id, controller });
   if (c.def.saga) addLore(g, c, 1);
 }
@@ -297,7 +300,10 @@ export function transformCard(g: GameState, c: Card): boolean {
 export function putIntoGraveyard(g: GameState, cards: Card[]): void {
   const list = cards.filter((c) => c.zone === 'battlefield');
   for (const c of list) {
-    if (isCreature(c)) emit(g, { type: 'dies', card: c.id, controller: c.controller, power: stats(g, c).p });
+    if (isCreature(c)) {
+      g.creatureDiedThisTurn = true;
+      emit(g, { type: 'dies', card: c.id, controller: c.controller, power: stats(g, c).p });
+    }
   }
   for (const c of list) moveCard(g, c, 'graveyard');
 }

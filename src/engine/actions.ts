@@ -116,6 +116,9 @@ export function castDef(def: CardDef, alt?: CastAlt): CardDef {
     };
   } else if (alt === 'back' && def.back) {
     d = def.back;
+  } else if (alt === 'cycle' && def.cycling) {
+    // 循環是起動式異能：任何時候都能起動，不是施放咒語
+    d = { ...def, cost: def.cycling.cost, types: ['Instant'], spell: { effects: cycleEffects(def) }, addCost: undefined, costReduce: undefined };
   } else {
     d = { ...def, cost: def.flashback ?? def.cost };
   }
@@ -123,10 +126,17 @@ export function castDef(def: CardDef, alt?: CastAlt): CardDef {
   return d;
 }
 
+export function cycleEffects(def: CardDef): Effect[] {
+  return def.cycling?.search ? [{ e: 'tutor', filter: def.cycling.search }] : [{ e: 'draw', n: 1 }];
+}
+
 /** 這張牌在目前的區域可以用哪些方式施放 */
 export function castAlts(g: GameState, pid: PID, c: Card): (CastAlt | undefined)[] {
   const def = c.def;
-  if (c.zone === 'hand' && c.owner === pid) return def.adventure ? [undefined, 'adventure'] : def.mdfc && def.back ? [undefined, 'back'] : [undefined];
+  if (c.zone === 'hand' && c.owner === pid) {
+    const base: (CastAlt | undefined)[] = def.adventure ? [undefined, 'adventure'] : def.mdfc && def.back ? [undefined, 'back'] : [undefined];
+    return def.cycling ? [...base, 'cycle'] : base;
+  }
   if (c.zone === 'exile' && c.owner === pid && c.onAdventure) return [undefined];
   if (c.zone === 'exile' && c.playableTurn === g.turn && c.playableBy === pid) return def.adventure ? [undefined, 'adventure'] : [undefined];
   if (c.zone === 'graveyard' && c.owner === pid && def.flashback) return ['flashback'];
@@ -139,6 +149,7 @@ export function modeCount(def: CardDef): number {
 
 export function spellCost(g: GameState, c: Card, pid: PID, mode?: number, targets?: (TargetRef | null)[], alt?: CastAlt, x = 0): ManaCost {
   const def = castDef(c.def, alt);
+  if (alt === 'cycle') return parseCost(def.cost);
   let cost = parseCost(def.spell?.modes?.[mode ?? 0]?.cost ?? def.cost);
   if (cost.x) cost.generic += Math.max(0, x) * cost.x;
   const cr = def.costReduce;
@@ -170,6 +181,17 @@ export function spellCost(g: GameState, c: Card, pid: PID, mode?: number, target
   }
   if (targets) cost.generic += wardTax(g, pid, targets);
   return cost;
+}
+
+/** 守護—支付生命：以對手的永久物為目標時要支付的生命 */
+export function wardLifeTax(g: GameState, pid: PID, targets: (TargetRef | null)[]): number {
+  let n = 0;
+  for (const t of targets) {
+    if (!t || !('c' in t)) continue;
+    const tc = g.cards[t.c];
+    if (tc && tc.zone === 'battlefield' && tc.controller !== pid && tc.def.wardLife) n += tc.def.wardLife;
+  }
+  return n;
 }
 
 export function wardTax(g: GameState, pid: PID, targets: (TargetRef | null)[]): number {
@@ -267,6 +289,7 @@ export function canActivate(g: GameState, pid: PID, c: Card, idx: number): boole
   if (!ab || c.zone !== 'battlefield' || c.controller !== pid) return false;
   if (ab.sorcery && !sorceryTiming(g, pid)) return false;
   if (ab.oncePerTurn && c.usedThisTurn.includes(1000 + idx)) return false;
+  if (ab.oncePerGame && c.exhausted?.includes(idx)) return false;
   if (ab.cost.loyalty !== undefined) {
     // 忠誠異能：法術時機、每回合一次、忠誠要夠扣
     if (!sorceryTiming(g, pid) || c.usedThisTurn.includes(LOYALTY_USED)) return false;
@@ -347,6 +370,7 @@ export function castOptionsFor(g: GameState, pid: PID, c: Card): PlayOption[] {
   const out: PlayOption[] = [];
   if (isLand(c)) {
     if (c.zone !== 'graveyard' && canPlayLand(g, pid)) out.push({ kind: 'play', card: c.id, specs: [], label: `打出 ${displayName(c.def)}` });
+    if (c.def.cycling && c.zone === 'hand' && c.owner === pid) out.push(...castOptionsAs(g, pid, c, 'cycle'));
     return out;
   }
   for (const alt of castAlts(g, pid, c)) out.push(...castOptionsAs(g, pid, c, alt));
@@ -356,6 +380,11 @@ export function castOptionsFor(g: GameState, pid: PID, c: Card): PlayOption[] {
 function castOptionsAs(g: GameState, pid: PID, c: Card, alt: CastAlt | undefined): PlayOption[] {
   const def = castDef(c.def, alt);
   const out: PlayOption[] = [];
+  if (alt === 'cycle') {
+    if (!canPayCost(g, pid, parseCost(def.cost))) return out;
+    const search = c.def.cycling?.search;
+    return [{ kind: 'cast', card: c.id, specs: [], alt, effects: cycleEffects(c.def), label: `${search ? '尋地循環' : '循環'} ${def.cost}` }];
+  }
   if (!instantSpeed(def) && !sorceryTiming(g, pid)) return out;
   if (def.addCost?.life && g.players[pid].life < def.addCost.life) return out;
   if (def.addCost?.sac && sacCandidates(g, pid, def.addCost.sac).length === 0) return out;
@@ -443,9 +472,31 @@ function doPlay(g: GameState, pid: PID, id: number): string | null {
   return null;
 }
 
+function doCycle(g: GameState, pid: PID, c: Card): string | null {
+  if (!c.def.cycling || c.zone !== 'hand' || c.owner !== pid) return '無法循環這張牌';
+  const cost = parseCost(c.def.cycling.cost);
+  if (!payCost(g, pid, cost)) return `法術力不足（需要 ${costToString(cost)}）`;
+  const label = c.def.cycling.search ? '尋地循環' : '循環';
+  log(g, `${label} ${cardName(c)}`, pid, 'cast');
+  discard(g, c);
+  g.stack.push({
+    sid: g.nextSid++,
+    kind: 'activated',
+    controller: pid,
+    cardId: c.id,
+    targets: [],
+    targetSpecs: [],
+    effects: cycleEffects(c.def),
+    text: c.def.cycling.search ? '搜尋一張地牌放到手上' : '抓一張牌',
+  });
+  show(g, { kind: 'activated', player: pid, card: c.id, targets: [], text: label });
+  return null;
+}
+
 function doCast(g: GameState, pid: PID, a: Extract<PriorityAction, { type: 'cast' }>): string | null {
   const c = g.cards[a.card];
   const alt = a.alt;
+  if (c && alt === 'cycle') return doCycle(g, pid, c);
   if (!c || isLand(c) || !inCastableZone(g, pid, c, alt)) return '無法施放這張牌';
   const def = castDef(c.def, alt);
   if (!instantSpeed(def) && !sorceryTiming(g, pid)) return '只能在你的主要階段且堆疊為空時施放';
@@ -471,6 +522,11 @@ function doCast(g: GameState, pid: PID, a: Extract<PriorityAction, { type: 'cast
   const x = parseCost(def.spell?.modes?.[mode ?? 0]?.cost ?? def.cost).x ? Math.max(0, Math.floor(a.x ?? 0)) : undefined;
   const cost = spellCost(g, c, pid, mode, targets, alt, x ?? 0);
   if (!payCost(g, pid, cost)) return `法術力不足（需要 ${costToString(cost)}）`;
+  const wl = wardLifeTax(g, pid, targets);
+  if (wl) {
+    log(g, `守護：支付${wl}點生命`, pid, 'life');
+    loseLife(g, pid, wl);
+  }
   if (def.addCost?.life) {
     p.life -= def.addCost.life;
     p.lifeLostThisTurn += def.addCost.life;
@@ -531,12 +587,18 @@ function doActivate(g: GameState, pid: PID, a: Extract<PriorityAction, { type: '
   cost.generic += wardTax(g, pid, targets);
   if (!payCost(g, pid, cost, ab.cost.tap ? c.id : undefined)) return '法術力不足';
   const lki = stats(g, c).p;
+  const wl = wardLifeTax(g, pid, targets);
+  if (wl) {
+    log(g, `守護：支付${wl}點生命`, pid, 'life');
+    loseLife(g, pid, wl);
+  }
   if (ab.cost.tap) c.tapped = true;
   if (ab.cost.life) {
     g.players[pid].life -= ab.cost.life;
     g.players[pid].lifeLostThisTurn += ab.cost.life;
   }
   if (ab.oncePerTurn) c.usedThisTurn.push(1000 + a.ability);
+  if (ab.oncePerGame) (c.exhausted ??= []).push(a.ability);
   if (ab.cost.loyalty !== undefined) {
     c.loyalty = (c.loyalty ?? 0) + ab.cost.loyalty;
     c.usedThisTurn.push(LOYALTY_USED);

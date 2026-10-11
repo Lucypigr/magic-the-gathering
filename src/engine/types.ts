@@ -172,7 +172,15 @@ export type Cond =
   /** 這是你的第 n 個或更早的回合 */
   | { c: 'myTurnLte'; n: number }
   /** 你本回合已失去 n 點或更多生命 */
-  | { c: 'lostLifeGte'; n: number };
+  | { c: 'lostLifeGte'; n: number }
+  /** 死亡：本回合有生物死去 */
+  | { c: 'morbid' }
+  /** 譫妄：你墳墓場中的牌有四種或更多類別 */
+  | { c: 'delirium' }
+  /** 慶典：本回合有兩個或更多非地永久物在你的操控下進戰場 */
+  | { c: 'celebration' }
+  /** 下潛：本回合有永久物牌置入你的墳墓場 */
+  | { c: 'descended' };
 
 export interface ExtraCost {
   mana?: string;
@@ -223,6 +231,8 @@ export type Effect =
   | { e: 'removeCounters'; what: Ref; n: number }
   /** 大地彎折（簡化）：派出一個 0/0 具敏捷的大地元素，並放上 n 個 +1/+1 指示物 */
   | { e: 'earthbend'; n: Amt }
+  /** 堅忍 n：在此永久物上放置 n 個 +1/+1 指示物；它不在戰場上時改為派出一個 0/0 白色精靈並放上 n 個指示物 */
+  | { e: 'endure'; n: Amt }
   | { e: 'mill'; n: Amt; who?: Ref }
   | { e: 'scry'; n: number }
   | { e: 'surveil'; n: number }
@@ -322,6 +332,8 @@ export interface ActivatedAbility {
   effects: Effect[];
   sorcery?: boolean;
   oncePerTurn?: boolean;
+  /** 竭力：每場遊戲只能起動一次 */
+  oncePerGame?: boolean;
   cond?: Cond;
   /** 按鈕上顯示的簡短描述 */
   label: string;
@@ -394,6 +406,14 @@ export interface CardDef {
   /** 進戰場時帶有 X 個 +1/+1 指示物（X 為施放時決定的值） */
   etbCountersX?: boolean;
   ward?: number;
+  /** 守護—支付 n 點生命 */
+  wardLife?: number;
+  /** 循環：從手上支付費用、棄掉此牌，然後抓一張牌（有 search 時改為搜尋符合條件的牌） */
+  cycling?: { cost: string; search?: Filter };
+  /** 變形者：具有所有生物類別 */
+  changeling?: boolean;
+  /** 此咒語不能被反擊 */
+  uncounterable?: boolean;
   /** 不能被力量小於等於 n 的生物阻擋 */
   evadePowLte?: number;
   spell?: SpellSpec;
@@ -466,6 +486,8 @@ export interface Card {
   lore?: number;
   /** 在下一個結束步驟開始時犧牲（動員派出的衍生物） */
   sacAtEnd?: boolean;
+  /** 已起動過的竭力異能 */
+  exhausted?: number[];
   /** 攻擊中的生物所攻擊的鵬洛客（沒有就是攻擊玩家） */
   attackTarget?: number | null;
 }
@@ -485,6 +507,10 @@ export interface Player {
   lifeGainedThisTurn: number;
   lifeLostThisTurn: number;
   drawsThisTurn: number;
+  /** 本回合在你的操控下進戰場的非地永久物數量 */
+  nonlandEtbThisTurn?: number;
+  /** 本回合有永久物牌置入你的墳墓場 */
+  permToGyThisTurn?: boolean;
   drewFromEmpty: boolean;
   lost: boolean;
   cantGainLife: boolean;
@@ -495,7 +521,8 @@ export interface Player {
 export type TargetRef = { p: PID } | { c: number };
 
 /** 特殊的施放方式 */
-export type CastAlt = 'adventure' | 'flashback' | 'back';
+/** cycle：循環（從手上支付費用並棄掉此牌） */
+export type CastAlt = 'adventure' | 'flashback' | 'back' | 'cycle';
 
 export interface StackItem {
   sid: number;
@@ -608,6 +635,8 @@ export interface GameState {
   version: number;
   /** 本回合是否已經有生物宣告攻擊 */
   attackedThisTurn: boolean;
+  /** 本回合有生物死去 */
+  creatureDiedThisTurn?: boolean;
   maxTurns: number;
   /** 最近的畫面事件（模擬用的複本不記錄） */
   shows: Show[];

@@ -438,6 +438,19 @@ function* runEffect(g: GameState, ctx: Ctx, ef: Effect): SubFlow {
       log(g, `大地彎折 ${n}`, me);
       break;
     }
+    case 'endure': {
+      const n = amount(g, ctx, ef.n);
+      if (src && src.zone === 'battlefield') {
+        src.counters += n;
+        log(g, `${cardName(src)} 堅忍 ${n}`, me);
+      } else {
+        const t = createToken(g, 'tok-spirit-endure', me);
+        t.counters = n;
+        log(g, `堅忍 ${n}：派出 ${n}/${n} 精靈`, me);
+      }
+      g.version++;
+      break;
+    }
     case 'doubleCounters':
       for (const c of resolveRef(g, ctx, ef.what).cards) {
         if (c.zone !== 'battlefield' || c.counters <= 0) continue;
@@ -533,6 +546,10 @@ function* runEffect(g: GameState, ctx: Ctx, ef: Effect): SubFlow {
     case 'counter': {
       for (const c of resolveRef(g, ctx, ef.what).cards) {
         if (c.zone !== 'stack') continue;
+        if (c.def.uncounterable) {
+          log(g, `${cardName(c)} 不能被反擊`, c.controller);
+          continue;
+        }
         log(g, `${cardName(c)} 被反擊`, c.controller, 'cast');
         moveCard(g, c, counteredZone(g, c));
       }
@@ -540,7 +557,7 @@ function* runEffect(g: GameState, ctx: Ctx, ef: Effect): SubFlow {
     }
     case 'counterUnless': {
       for (const c of resolveRef(g, ctx, ef.what).cards) {
-        if (c.zone !== 'stack') continue;
+        if (c.zone !== 'stack' || c.def.uncounterable) continue;
         const payer = c.controller;
         const cost = { ...parseCost(''), generic: ef.pay };
         let paid = false;

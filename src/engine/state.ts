@@ -296,8 +296,8 @@ export function matches(g: GameState, f: Filter | undefined, c: Card, pov: PID, 
     if (f.color && !asArr(f.color).some((x) => cols.includes(x))) return false;
     if (f.nonColor && asArr(f.nonColor).some((x) => cols.includes(x))) return false;
   }
-  if (f.sub && !asArr(f.sub).some((s) => d.subtypes?.includes(s))) return false;
-  if (f.nonSub && asArr(f.nonSub).some((s) => d.subtypes?.includes(s))) return false;
+  if (f.sub && !(d.changeling && d.types.includes('Creature')) && !asArr(f.sub).some((s) => d.subtypes?.includes(s))) return false;
+  if (f.nonSub && (d.changeling || asArr(f.nonSub).some((s) => d.subtypes?.includes(s)))) return false;
   if (f.legendary !== undefined && !!d.supertypes?.includes('Legendary') !== f.legendary) return false;
   if (f.basic !== undefined && !!d.supertypes?.includes('Basic') !== f.basic) return false;
   if (f.mvMax !== undefined && manaValue(d) > f.mvMax) return false;
@@ -400,6 +400,17 @@ export function checkCond(
       return me.spellsThisTurn >= cond.n;
     case 'secondSpell':
       return me.spellsThisTurn === 2;
+    case 'morbid':
+      return !!g.creatureDiedThisTurn;
+    case 'delirium': {
+      const types = new Set<string>();
+      for (const id of me.graveyard) for (const t of g.cards[id].def.types) types.add(t);
+      return types.size >= 4;
+    }
+    case 'celebration':
+      return (me.nonlandEtbThisTurn ?? 0) >= 2;
+    case 'descended':
+      return !!me.permToGyThisTurn;
     case 'gyCount': {
       let n = 0;
       for (const id of me.graveyard) if (matches(g, cond.filter, g.cards[id], controller, sourceId)) n++;

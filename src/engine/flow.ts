@@ -390,9 +390,12 @@ function* turn(g: GameState): SubFlow {
     p.instSorcThisTurn = 0;
     p.lifeGainedThisTurn = 0;
     p.drawsThisTurn = 0;
+    p.nonlandEtbThisTurn = 0;
+    p.permToGyThisTurn = false;
     p.lifeLostThisTurn = 0;
   }
   g.attackedThisTurn = false;
+  g.creatureDiedThisTurn = false;
   for (const id of g.battlefield) g.cards[id].usedThisTurn = [];
   log(g, `—— 第 ${g.turn} 回合：${pl.name} ——`, a, 'turn');
   if (g.turn > g.maxTurns) {
