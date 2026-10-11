@@ -62,6 +62,8 @@ interface Draft {
   stage: 'targets' | 'sac';
   label: string;
   alt?: CastAlt;
+  /** X 咒語選定的 X */
+  x?: number;
 }
 
 const SPEED_MS = { slow: 1100, normal: 650, fast: 250 } as const;
@@ -106,6 +108,8 @@ export function Battle(props: Props) {
   const [showLog, setShowLog] = useState(false);
   const [confirmConcede, setConfirmConcede] = useState(false);
   const [menu, setMenu] = useState(false);
+  /** X 咒語：選擇 X 的對話框 */
+  const [xPick, setXPick] = useState<{ draft: Draft; max: number; value: number } | null>(null);
   const [detail, setDetail] = useState<number | null>(null);
   const [seq, setSeq] = useState(0);
   const ended = useRef(false);
@@ -330,7 +334,7 @@ export function Battle(props: Props) {
     }
     const a: PriorityAction =
       dr.kind === 'cast'
-        ? { type: 'cast', card: dr.source, targets: dr.targets, mode: dr.mode, sac: dr.sac, alt: dr.alt }
+        ? { type: 'cast', card: dr.source, targets: dr.targets, mode: dr.mode, sac: dr.sac, alt: dr.alt, x: dr.x }
         : { type: 'activate', card: dr.source, ability: dr.ability!, targets: dr.targets, sac: dr.sac };
     submitAction(a);
   }
@@ -365,6 +369,11 @@ export function Battle(props: Props) {
       stage: 'targets',
       label: o.label,
     };
+    // X 咒語：先決定 X
+    if (o.kind === 'cast' && o.maxX !== undefined) {
+      setXPick({ draft: dr, max: o.maxX, value: o.maxX });
+      return;
+    }
     proceed(dr);
   }
 
@@ -840,6 +849,32 @@ export function Battle(props: Props) {
       )}
       {pile != null && !gySpec && (
         <PileModal g={g} title={`${g.players[pile].name}的墳墓場`} ids={[...g.players[pile].graveyard].reverse()} onClose={() => setPile(null)} />
+      )}
+      {xPick && (
+        <Modal title={`決定 X 的值`} onClose={() => setXPick(null)}>
+          <div className="x-pick">
+            <p className="muted small">{xPick.draft.label}：X 越大效果越強，但要多付 X 點法術力。你現在最多能付 X = {xPick.max}。</p>
+            <div className="x-row">
+              <button className="btn" disabled={xPick.value <= 0} onClick={() => setXPick({ ...xPick, value: xPick.value - 1 })} aria-label="減少">
+                −
+              </button>
+              <span className="x-val">X = {xPick.value}</span>
+              <button className="btn" disabled={xPick.value >= xPick.max} onClick={() => setXPick({ ...xPick, value: xPick.value + 1 })} aria-label="增加">
+                ＋
+              </button>
+            </div>
+            <button
+              className="btn btn-primary btn-block"
+              onClick={() => {
+                const dr = { ...xPick.draft, x: xPick.value };
+                setXPick(null);
+                proceed(dr);
+              }}
+            >
+              確定
+            </button>
+          </div>
+        </Modal>
       )}
       {detail != null && (
         <Modal title="卡牌詳細資訊" onClose={() => setDetail(null)} wide>

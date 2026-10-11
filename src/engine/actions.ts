@@ -137,9 +137,10 @@ export function modeCount(def: CardDef): number {
   return def.spell?.modes?.length ?? 1;
 }
 
-export function spellCost(g: GameState, c: Card, pid: PID, mode?: number, targets?: (TargetRef | null)[], alt?: CastAlt): ManaCost {
+export function spellCost(g: GameState, c: Card, pid: PID, mode?: number, targets?: (TargetRef | null)[], alt?: CastAlt, x = 0): ManaCost {
   const def = castDef(c.def, alt);
   let cost = parseCost(def.spell?.modes?.[mode ?? 0]?.cost ?? def.cost);
+  if (cost.x) cost.generic += Math.max(0, x) * cost.x;
   const cr = def.costReduce;
   if (cr) {
     if (cr.perGy) {
@@ -223,6 +224,41 @@ function sacCandidates(g: GameState, pid: PID, f: Filter, sourceId?: number): Ca
     .filter((c) => c.controller === pid && matches(g, f, c, pid, sourceId));
 }
 
+/**
+ * 駕駛：挑選要橫置的生物（總力量至少 n）。
+ * 優先用剛進場（本來就不能攻擊）的生物，並盡量少浪費力量。找不到回傳 null。
+ */
+export function crewChoice(g: GameState, pid: PID, vehicle: Card, n: number): number[] | null {
+  const cands = g.battlefield
+    .map((id) => g.cards[id])
+    .filter((c) => c.controller === pid && c.id !== vehicle.id && isCreature(c) && !c.tapped && stats(g, c).p > 0);
+  const pow = (c: Card) => stats(g, c).p;
+  const cost = (c: Card) => pow(c) + (c.sick && !hasKw(g, c, 'haste') ? 0 : 3);
+  if (cands.length <= 12) {
+    let best: Card[] | null = null;
+    let bestCost = Infinity;
+    for (let mask = 1; mask < 1 << cands.length; mask++) {
+      const pick = cands.filter((_, i) => mask & (1 << i));
+      if (pick.reduce((s, c) => s + pow(c), 0) < n) continue;
+      const k = pick.reduce((s, c) => s + cost(c), 0);
+      if (k < bestCost) {
+        bestCost = k;
+        best = pick;
+      }
+    }
+    return best ? best.map((c) => c.id) : null;
+  }
+  const sorted = [...cands].sort((a, b) => cost(a) - cost(b));
+  const out: number[] = [];
+  let sum = 0;
+  for (const c of sorted) {
+    if (sum >= n) break;
+    out.push(c.id);
+    sum += pow(c);
+  }
+  return sum >= n ? out : null;
+}
+
 /** usedThisTurn 中代表「本回合已起動過忠誠異能」的記號 */
 const LOYALTY_USED = 2000;
 
@@ -237,6 +273,7 @@ export function canActivate(g: GameState, pid: PID, c: Card, idx: number): boole
     if (ab.cost.loyalty < 0 && (c.loyalty ?? 0) < -ab.cost.loyalty) return false;
   }
   if (ab.cond && !checkCond(g, ab.cond, pid, c.id, [])) return false;
+  if (ab.cost.crew !== undefined && crewChoice(g, pid, c, ab.cost.crew) == null) return false;
   if (ab.cost.tap) {
     if (c.tapped) return false;
     if (isCreature(c) && c.sick && !hasKw(g, c, 'haste')) return false;
@@ -275,6 +312,17 @@ export interface PlayOption {
   alt?: CastAlt;
   /** 施放時的效果（AI 用） */
   effects?: Effect[];
+  /** X 咒語：目前付得起的最大 X */
+  maxX?: number;
+}
+
+/** X 咒語目前付得起的最大 X（不是 X 咒語回傳 undefined） */
+export function maxXFor(g: GameState, pid: PID, c: Card, mode?: number, alt?: CastAlt): number | undefined {
+  const def = castDef(c.def, alt);
+  if (!parseCost(def.spell?.modes?.[mode ?? 0]?.cost ?? def.cost).x) return undefined;
+  let x = 0;
+  while (x < 20 && canPayCost(g, pid, spellCost(g, c, pid, mode, undefined, alt, x + 1))) x++;
+  return x;
 }
 
 export function castableCards(g: GameState, pid: PID): Card[] {
@@ -328,6 +376,7 @@ function castOptionsAs(g: GameState, pid: PID, c: Card, alt: CastAlt | undefined
       sacFilter: def.addCost?.sac,
       alt,
       effects: spellEffects(def, mode),
+      maxX: maxXFor(g, pid, c, mode, alt),
       label:
         alt === 'adventure'
           ? `冒險：${name}`
@@ -419,7 +468,8 @@ function doCast(g: GameState, pid: PID, a: Extract<PriorityAction, { type: 'cast
       return '請選擇要棄掉的牌';
   }
   if (def.addCost?.life && p.life < def.addCost.life) return '生命不足';
-  const cost = spellCost(g, c, pid, mode, targets, alt);
+  const x = parseCost(def.spell?.modes?.[mode ?? 0]?.cost ?? def.cost).x ? Math.max(0, Math.floor(a.x ?? 0)) : undefined;
+  const cost = spellCost(g, c, pid, mode, targets, alt, x ?? 0);
   if (!payCost(g, pid, cost)) return `法術力不足（需要 ${costToString(cost)}）`;
   if (def.addCost?.life) {
     p.life -= def.addCost.life;
@@ -444,13 +494,14 @@ function doCast(g: GameState, pid: PID, a: Extract<PriorityAction, { type: 'cast
     text: def.text,
     modeIndex: mode,
     alt,
+    x,
   });
   show(g, { kind: 'spell', player: pid, card: c.id, targets });
   if (sacCard) sacrifice(g, sacCard);
   p.spellsThisTurn++;
   if (def.types.includes('Instant') || def.types.includes('Sorcery')) p.instSorcThisTurn++;
   const how = alt === 'adventure' ? '施放冒險 ' : alt === 'flashback' ? '返照施放 ' : '施放 ';
-  log(g, `${how}${alt === 'adventure' ? (def.zh ?? def.name) : displayName(def)}${modeText}${describeTargets(g, targets)}`, pid, 'cast');
+  log(g, `${how}${alt === 'adventure' ? (def.zh ?? def.name) : displayName(def)}${x !== undefined ? `（X=${x}）` : ''}${modeText}${describeTargets(g, targets)}`, pid, 'cast');
   emit(g, { type: 'cast', card: c.id, player: pid, opponentTurn: g.active !== pid });
   for (const t of targets) if (t && 'c' in t && g.cards[t.c].zone === 'battlefield') emit(g, { type: 'targeted', card: t.c, by: pid, spell: true });
   return null;
@@ -489,6 +540,11 @@ function doActivate(g: GameState, pid: PID, a: Extract<PriorityAction, { type: '
   if (ab.cost.loyalty !== undefined) {
     c.loyalty = (c.loyalty ?? 0) + ab.cost.loyalty;
     c.usedThisTurn.push(LOYALTY_USED);
+  }
+  if (ab.cost.crew !== undefined) {
+    const crew = crewChoice(g, pid, c, ab.cost.crew) ?? [];
+    for (const id of crew) g.cards[id].tapped = true;
+    log(g, `${crew.map((id) => cardName(g.cards[id])).join('、')} 駕駛 ${cardName(c)}`, pid);
   }
   g.stack.push({
     sid: g.nextSid++,

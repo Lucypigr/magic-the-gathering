@@ -196,6 +196,7 @@ export function* resolveTop(g: GameState): SubFlow {
     targets: legal,
     ev: item.ev,
     lkiPower: item.lkiPower,
+    x: item.x,
   };
   if (item.kind === 'spell') {
     const def = src.def;
@@ -227,6 +228,7 @@ export function* resolveTop(g: GameState): SubFlow {
         log(g, `${cardName(src)} 進入戰場`, item.controller);
       } else {
         enterBattlefield(g, src, item.controller);
+        if (def.etbCountersX && item.x) src.counters += item.x;
         log(g, `${cardName(src)} 進入戰場`, item.controller);
       }
     } else {

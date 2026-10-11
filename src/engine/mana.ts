@@ -12,6 +12,8 @@ export interface ManaCost {
   C: number;
   /** 混色法術力，例如 'WB' 代表 {W/B}（可用其中任一色支付） */
   hyb?: string[];
+  /** 費用中 {X} 的數量（施放時由玩家決定 X） */
+  x?: number;
 }
 
 const costCache = new Map<string, ManaCost>();
@@ -30,6 +32,7 @@ export function parseCost(cost: string | undefined): ManaCost {
   while ((m = re.exec(cost))) {
     const sym = m[1];
     if (/^\d+$/.test(sym)) out.generic += parseInt(sym, 10);
+    else if (sym === 'X') out.x = (out.x ?? 0) + 1;
     else if (sym === 'W' || sym === 'U' || sym === 'B' || sym === 'R' || sym === 'G' || sym === 'C') out[sym] += 1;
     else if (/^[WUBRG]\/[WUBRG]$/.test(sym)) (out.hyb ??= []).push(sym[0] + sym[2]);
     // {2/R}：簡化為該顏色的一點法術力

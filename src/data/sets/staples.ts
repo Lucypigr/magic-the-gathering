@@ -456,3 +456,18 @@ sorc('SOS', 'U', 'Daydream', '{W}', '放逐目標由你操控的生物，然後�
   targets: [MY_CR],
   effects: [{ e: 'flicker', what: 'T0', counters: 1 }],
 }, { flashback: '{2}{W}' });
+
+// ---------------- X 咒語 ----------------
+const X: { x: true } = { x: true };
+sorc('TLA', 'R', 'Day of Black Sun', '{X}{B}{B}', '消滅每個法術力值等於或小於X的生物。\n（簡化：沒有「失去所有異能」）', {
+  effects: [{ e: 'destroy', what: { all: { type: 'Creature' } }, mvMaxX: true }],
+});
+sorc('WOE', 'R', 'Song of Totentanz', '{X}{R}', '派出X個1/1黑色，具有「此衍生物不能阻擋。」的老鼠衍生生物。由你操控的生物獲得敏捷異能直到回合結束。', {
+  effects: [{ e: 'token', token: 'tok-rat', n: X }, { e: 'pump', what: { all: { type: 'Creature', ctrl: 'you' } }, p: 0, t: 0, kw: ['haste'] }],
+});
+cr('FRA', 'R', 'Guiding Hydra', '{X}{W}', 'Hydra Horror', 1, 0, '此生物進戰場時帶有X個+1/+1指示物。\n（簡化：沒有戰鬥開始時移動指示物的異能）', { etbCountersX: true });
+cr('WOE', 'R', 'Elusive Otter', '{U}', 'Otter', 1, 1, '勇行\n冒險—《Grove\'s Bounty》{X}{G}（法術）：在目標由你操控的生物上放置X個+1/+1指示物。\n（你可以改為施放這個冒險法術。結算後此牌會被放逐，之後你可以從放逐區施放本體。）\n（簡化：沒有閃避阻擋的異能；指示物只放在一個生物上）', {
+  keywords: ['prowess'],
+  adventure: { name: "Grove's Bounty", cost: '{X}{G}', types: ['Sorcery'], text: '在目標由你操控的生物上放置X個+1/+1指示物。', spell: { targets: [MY_CR], effects: [{ e: 'counters', what: 'T0', n: X }] } },
+  imageName: "Elusive Otter // Grove's Bounty",
+});

@@ -224,6 +224,12 @@ export class AIPlayer {
         }
       } else if (o.kind === 'activate') {
         const ab = activatedAbilities(def)[o.ability!];
+        // 駕駛：只在自己的第一主要階段、載具能攻擊時才駕駛
+        if (ab.cost.crew !== undefined) {
+          if (!myTurn || g.phase !== 'main1' || g.stack.length || c.sick || c.tapped || isCreature(c)) continue;
+          bonus += 0.5;
+          threshold = 0;
+        }
         const isFetch = ab.effects.some((e) => e.e === 'searchLand');
         if (isFetch) {
           bonus += 0.8;
@@ -269,7 +275,7 @@ export class AIPlayer {
     const out: PriorityAction[] = [];
     for (const targets of combos) {
       if (validateTargets(g, specs, targets, me, c.id)) continue;
-      if (o.kind === 'cast') out.push({ type: 'cast', card: c.id, targets, mode: o.mode, sac, alt: o.alt });
+      if (o.kind === 'cast') out.push({ type: 'cast', card: c.id, targets, mode: o.mode, sac, alt: o.alt, x: o.maxX });
       else out.push({ type: 'activate', card: c.id, ability: o.ability!, targets, sac });
     }
     return out;
@@ -327,7 +333,7 @@ export class AIPlayer {
     }
     const action: PriorityAction =
       o.kind === 'cast'
-        ? { type: 'cast', card: c.id, targets, mode: o.mode, sac, alt: o.alt }
+        ? { type: 'cast', card: c.id, targets, mode: o.mode, sac, alt: o.alt, x: o.maxX }
         : { type: 'activate', card: c.id, ability: o.ability!, targets, sac };
     const g2 = cloneGame(g);
     return performAction(g2, me, action) ? PASS : action;
