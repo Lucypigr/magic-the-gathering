@@ -51,7 +51,7 @@ function triggerMatches(g: GameState, c: Card, ab: TriggeredAbility, ev: GameEve
     }
     case 'anyEtb': {
       if (ev.type !== 'etb' || ev.card === c.id) return false;
-      return isCreature(g.cards[ev.card]);
+      return isCreature(g.cards[ev.card]) && matches(g, ab.filter, g.cards[ev.card], pov, c.id);
     }
     case 'allyDies': {
       if (ev.type !== 'dies' || ev.controller !== pov) return false;
@@ -157,6 +157,8 @@ function resetPermanentState(c: Card): void {
   c.attachedTo = null;
   c.usedThisTurn = [];
   c.loyalty = undefined;
+  c.lore = undefined;
+  c.sacAtEnd = undefined;
   c.attackTarget = undefined;
   if (c.baseDef) {
     c.def = c.baseDef;
@@ -236,7 +238,29 @@ export function enterBattlefield(g: GameState, c: Card, controller: PID, tapped 
   c.playableTurn = undefined;
   g.version++;
   emit(g, { type: 'etb', card: c.id, controller });
+  if (c.def.saga) addLore(g, c, 1);
 }
+
+/** 在傳奇上放置傳奇指示物，並觸發新到達的章節 */
+export function addLore(g: GameState, c: Card, n: number): void {
+  const chapters = c.def.saga?.chapters;
+  if (!chapters || c.zone !== 'battlefield') return;
+  for (let i = 0; i < n; i++) {
+    c.lore = (c.lore ?? 0) + 1;
+    const ch = chapters[c.lore - 1];
+    if (!ch) continue;
+    log(g, `${cardName(c)}：第 ${ROMAN[c.lore - 1]} 章`, c.controller);
+    g.pending.push({
+      source: c.id,
+      controller: c.controller,
+      ability: { kind: 'trigger', on: 'etb', effects: ch.effects, targets: ch.targets },
+      abilityIndex: 3000 + c.lore,
+      ev: { type: 'etb', card: c.id, controller: c.controller },
+    });
+  }
+  g.version++;
+}
+export const ROMAN = ['I', 'II', 'III', 'IV', 'V', 'VI'];
 
 /** 以背面進戰場（模式雙面牌施放背面、轉化後放回戰場） */
 export function enterBattlefieldBack(g: GameState, c: Card, controller: PID, tapped = false): void {

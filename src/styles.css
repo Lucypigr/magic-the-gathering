@@ -4193,3 +4193,19 @@ button {
     min-width: 20px;
   }
 }
+
+/* 傳奇的章節 */
+.perm-lore {
+  position: absolute;
+  left: 3px;
+  top: 3px;
+  padding: 1px 6px;
+  border-radius: 4px;
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 12px;
+  color: #f3e6c4;
+  background: rgba(60, 40, 90, 0.9);
+  border: 1px solid rgba(227, 196, 125, 0.6);
+  z-index: 2;
+}

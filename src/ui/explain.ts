@@ -12,6 +12,10 @@ export interface Term {
 
 /** 機制與術語（說明頁也使用這份清單） */
 export const MECHANICS: Term[] = [
+  { term: '探險', match: ['探險'], desc: '展示你牌庫頂的牌：是地就放到手上；不是地的話，在探險的生物上放一個 +1/+1 指示物，你可以選擇把那張牌置入墳墓場或留在牌庫頂。' },
+  { term: '動員 N', match: ['動員'], desc: '這個生物攻擊時，派出 N 個橫置且已經在攻擊的 1/1 紅色戰士。它們只存在到這回合的結束步驟就會被犧牲。' },
+  { term: '地圖', match: ['地圖衍生物'], desc: '一種神器衍生物：支付 {1} 並橫置、犧牲它，讓你的一個生物探險。只能在你的主要階段使用。' },
+  { term: '傳奇（Saga）', match: ['傳奇：', '傳奇指示物'], desc: '分章節的結界。進場時觸發第一章，之後每個你的回合抓牌後前進一章；最後一章結束後犧牲。' },
   { term: '忠誠', match: ['忠誠'], desc: '鵬洛客的「血量」。起動 +N 異能會增加、−N 異能會減少，受到傷害也會減少；歸零時鵬洛客被置入墳墓場。' },
   {
     term: '強化傑斯 N',
@@ -177,6 +181,12 @@ export function lineNotes(def: CardDef): LineNote[] {
       out.push({ kind: 'mode', text: line, desc: '可以選擇的其中一個效果。' });
       continue;
     }
+    // 傳奇的章節：「第一章—…」「第二章、第三章—…」
+    const chap = line.match(/^((?:第[一二三四五六]章、?)+)—(.+)$/);
+    if (chap) {
+      out.push({ kind: 'triggered', text: line, effect: chap[2], desc: `${chap[1]}：傳奇翻到這一章時，自動發生後面的效果。` });
+      continue;
+    }
     // 鵬洛客的忠誠異能：「+1：…」「−2：…」「0：…」
     const loy = line.match(/^([+−-]\d+|0)：(.+)$/);
     if (loy && def.types.includes('Planeswalker')) {
@@ -251,6 +261,8 @@ export function termNotes(def: CardDef): Term[] {
 export function typeNote(def: CardDef): string {
   const t = def.types;
   if (t.includes('Land')) return '地：每回合可以打出一張（不算施放），主要用來產生法術力。';
+  if (def.saga)
+    return `傳奇（Saga）：像一本分章節的故事書。進場時觸發第一章，之後每到你的抓牌步驟結束就翻到下一章並觸發效果；共 ${def.saga.chapters.length} 章，最後一章結束後就會被犧牲。${t.includes('Creature') ? '這張同時也是生物，可以攻擊和阻擋。' : ''}`;
   if (t.includes('Planeswalker'))
     return '鵬洛客：你的強力盟友。進場時帶著右下角數字的忠誠，每回合可以用一個忠誠異能（+N 增加忠誠、−N 消耗忠誠）。對手可以用生物攻擊它，或用傷害咒語打它，受到的傷害會扣忠誠，歸零就被置入墳墓場。';
   if (t.includes('Creature')) return '生物：施放後留在戰場上，可以攻擊與阻擋。剛進場的回合不能攻擊（召喚失調），除非有敏捷。';

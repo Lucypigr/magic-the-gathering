@@ -73,9 +73,9 @@ cr('EOE', 'U', 'Starfield Shepherd', '{3}{W}{W}', 'Angel', 3, 2, '飛行\n當此
   keywords: ['flying'],
   abilities: [etb([{ e: 'tutor', filter: { or: [{ type: 'Land', sub: 'Plains', basic: true }, { type: 'Creature', mvMax: 1 }] } }])],
 });
-inst('LCI', 'R', 'Get Lost', '{1}{W}', '消滅目標生物或結界。其操控者派出兩個線索衍生物。\n（簡化：原本是地圖衍生物）', {
-  targets: [{ kind: 'permanent', filter: { type: ['Creature', 'Enchantment'] }, prompt: '選擇生物或結界' }],
-  effects: [{ e: 'token', token: 'tok-clue', n: 2, who: 'T0ctrl' }, { e: 'destroy', what: 'T0' }],
+inst('LCI', 'R', 'Get Lost', '{1}{W}', '消滅目標生物、結界或鵬洛客。其操控者派出兩個地圖衍生物。（地圖：{1}，{T}，犧牲：目標由你操控的生物探險。只能於法術時機起動。）', {
+  targets: [{ kind: 'permanent', filter: { type: ['Creature', 'Enchantment', 'Planeswalker'] }, prompt: '選擇生物、結界或鵬洛客' }],
+  effects: [{ e: 'token', token: 'tok-map', n: 2, who: 'T0ctrl' }, { e: 'destroy', what: 'T0' }],
 });
 sorc('TDM', 'R', 'United Battlefront', '{3}{W}', '檢視你牌庫頂的七張牌。將其中至多兩張法術力值3或更少的非生物非地永久物牌放進戰場。其餘的置於你的牌庫底。', {
   effects: [{ e: 'dig', n: 7, take: 2, filter: { nonType: ['Creature', 'Land', 'Instant', 'Sorcery'], mvMax: 3 }, rest: 'bottom', to: 'battlefield' }],
@@ -379,3 +379,80 @@ arti('ECL', 'C', 'Firdoch Core', '{3}', '{T}：加一點任意顏色的法術力
   produces: ALL5,
   abilities: [act({ mana: '{4}' }, [{ e: 'animate', what: 'self', p: 4, t: 4 }], '變成 4/4 生物')],
 });
+
+// ---------------- 探險、動員與其他常用卡 ----------------
+const EXPLORE_NOTE = '（探險：展示你牌庫頂的牌；是地就放到手上，否則在此生物上放一個+1/+1指示物，並可以把那張牌置入墳墓場。）';
+const MOBILIZE = (n: number) => trig('attacks', [{ e: 'token', token: 'tok-warrior-r11', n, tapped: true, attacking: true, temp: true }]);
+const MOBILIZE_TEXT = (n: number) => `動員${n}（每當此生物攻擊時，派出${n === 1 ? '一' : '兩'}個橫置且進行攻擊的1/1紅色戰士衍生生物。在下一個結束步驟開始時犧牲它們。）`;
+cr('LCI', 'R', 'Amalia Benavides Aguirre', '{W}{B}', 'Vampire Scout', 2, 2, `每當你獲得生命時，阿瑪莉亞探險。${EXPLORE_NOTE}\n（簡化：沒有守護，也沒有力量為20時消滅其他生物的效果）`, {
+  supertypes: ['Legendary'],
+  abilities: [trig('lifegain', [{ e: 'explore', what: 'self' }])],
+});
+cr('TDM', 'R', 'Voice of Victory', '{1}{W}', 'Human Bard', 1, 3, `${MOBILIZE_TEXT(2)}\n（簡化：沒有「對手不能在你的回合施放咒語」）`, { abilities: [MOBILIZE(2)] });
+cr('TDM', 'R', 'Stadium Headliner', '{R}', 'Goblin Warrior', 1, 1, `${MOBILIZE_TEXT(1)}\n{1}{R}，犧牲此生物：它對目標生物造成等同於你操控的生物數量的傷害。`, {
+  abilities: [
+    MOBILIZE(1),
+    act({ mana: '{1}{R}', sacSelf: true }, [{ e: 'damage', n: { count: { type: 'Creature', ctrl: 'you' } }, to: 'T0' }], '依生物數造成傷害', { targets: [CR] }),
+  ],
+});
+inst('BLB', 'C', 'Cache Grab', '{1}{G}', '檢視你牌庫頂的四張牌。你可以將其中一張永久物牌置於你手上，其餘的置入你的墳墓場。\n（簡化：沒有松鼠的食物效果）', {
+  effects: [{ e: 'dig', n: 4, take: 1, filter: { nonType: ['Instant', 'Sorcery'] }, rest: 'graveyard' }],
+});
+cr('FRA', 'R', 'Vraska, the Cutting Glare', '{B}{B}{G}', 'Gorgon Assassin', 4, 4, '死觸\n當薇拉絲卡進戰場時，若你操控六個或更多地，消滅目標由對手操控的永久物。其操控者派出一個珍寶衍生物。', {
+  supertypes: ['Legendary'],
+  keywords: ['deathtouch'],
+  abilities: [
+    etb([{ e: 'token', token: 'tok-treasure', who: 'T0ctrl' }, { e: 'destroy', what: 'T0' }], {
+      cond: { c: 'controls', filter: { type: 'Land' }, n: 6 },
+      targets: [{ kind: 'permanent', filter: { ctrl: 'opp' }, prompt: '選擇對手的永久物' }],
+    }),
+  ],
+});
+ench('LCI', 'R', 'Corpses of the Lost', '{2}{B}', '由你操控的骷髏得+1/+0且具有敏捷異能。\n當此結界進戰場時，派出一個2/2黑色骷髏海盜衍生生物。\n（簡化：不能付生命移回手上）', {
+  abilities: [
+    { kind: 'static', anthem: { filter: { type: 'Creature', ctrl: 'you', sub: 'Skeleton' }, grant: { p: 1, kw: ['haste'] } } },
+    etb([{ e: 'token', token: 'tok-skeleton-pirate' }]),
+  ],
+});
+cr('OTJ', 'U', 'Forsaken Miner', '{B}', 'Skeleton Rogue', 2, 2, '此生物不能阻擋。\n（簡化：沒有犯罪時從墳墓場返回的異能）', {
+  abilities: [{ kind: 'static', self: { grant: { cantBlock: true } } }],
+});
+sorc('SPM', 'U', "Heroes' Hangout", '{R}', '選擇一項：\n• 約會之夜～放逐你牌庫頂的牌。本回合你可以使用它。\n• 巡邏之夜～至多兩個目標生物各得+1/+0並獲得先攻異能直到回合結束。\n（簡化：約會之夜只放逐一張，且只到本回合）', {
+  modes: [
+    { text: '放逐牌庫頂，本回合可用', effects: [{ e: 'impulse', n: 1 }] },
+    {
+      text: '兩個生物 +1/+0 先攻',
+      targets: [CR, { ...CR, optional: true }],
+      effects: [{ e: 'pump', what: 'T0', p: 1, t: 0, kw: ['first_strike'] }, { e: 'pump', what: 'T1', p: 1, t: 0, kw: ['first_strike'] }],
+    },
+  ],
+});
+cr('WOE', 'R', 'Likeness Looter', '{U}{B}', 'Faerie Shapeshifter', 1, 1, '飛行\n{T}：抓一張牌，然後棄一張牌。\n（簡化：沒有變成墳墓場生物複製品的異能）', {
+  keywords: ['flying'],
+  abilities: [act({ tap: true }, [{ e: 'draw', n: 1 }, { e: 'discard', n: 1, who: 'you' }], '抓一棄一')],
+});
+cr('EOE', 'R', 'Biotech Specialist', '{R}{G}', 'Insect Scientist', 1, 3, '當此生物進戰場時，派出一個登陸器衍生物。（{2}，{T}，犧牲：搜尋一張基本地，橫置放進戰場。）\n每當你犧牲一個神器時，此生物對每位對手各造成2點傷害。', {
+  abilities: [etb([{ e: 'token', token: 'tok-lander' }]), trig('sacrifice', [dmg(2, 'opp')], { filter: { type: 'Artifact', ctrl: 'you' } })],
+});
+sorc('TDM', 'C', 'Wild Ride', '{R}', '目標生物得+3/+0並獲得敏捷異能直到回合結束。\n（簡化：沒有協奏）', {
+  targets: [CR],
+  effects: [{ e: 'pump', what: 'T0', p: 3, t: 0, kw: ['haste'] }],
+});
+ench('MKM', 'R', 'Case of the Uneaten Feast', '{W}', '每當一個生物在你的操控下進戰場時，你獲得1點生命。\n（簡化：沒有破案與破案後的效果）', {
+  subtypes: ['Case'],
+  abilities: [trig('allyEtb', [{ e: 'gain', n: 1 }])],
+});
+cr('TDM', 'R', 'Sarkhan, Dragon Ascendant', '{1}{R}', 'Human Druid', 2, 2, '當薩卡進戰場時，若你操控龍，派出一個珍寶衍生物。\n每當一個龍在你的操控下進戰場時，在薩卡上放置一個+1/+1指示物，他獲得飛行異能直到回合結束。\n（簡化：注視龍只看戰場上的龍）', {
+  supertypes: ['Legendary'],
+  abilities: [
+    etb([{ e: 'token', token: 'tok-treasure' }], { cond: { c: 'controls', filter: { sub: 'Dragon' } } }),
+    trig('allyEtb', [{ e: 'counters', what: 'self', n: 1 }, { e: 'pump', what: 'self', p: 0, t: 0, kw: ['flying'] }], { filter: { sub: 'Dragon' } }),
+  ],
+});
+ench('FDN', 'R', 'Authority of the Consuls', '{W}', '每當一個由對手操控的生物進戰場時，橫置它，你獲得1點生命。\n（簡化：「橫置進戰場」改為進場後橫置）', {
+  abilities: [trig('anyEtb', [{ e: 'tap', what: 'trig' }, { e: 'gain', n: 1 }], { filter: { ctrl: 'opp' } })],
+});
+sorc('SOS', 'U', 'Daydream', '{W}', '放逐目標由你操控的生物，然後將它在擁有者的操控下放回戰場，並在其上放置一個+1/+1指示物。\n返照{2}{W}', {
+  targets: [MY_CR],
+  effects: [{ e: 'flicker', what: 'T0', counters: 1 }],
+}, { flashback: '{2}{W}' });

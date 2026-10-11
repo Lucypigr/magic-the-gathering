@@ -2,6 +2,7 @@ import { activatedAbilities, manaSources } from '../../engine/actions';
 import { cardName, isCreature, isLand, stats } from '../../engine/state';
 import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import type { Card, CardDef, GameState, Keyword, PID } from '../../engine/types';
+import { ROMAN } from '../../engine/zones';
 import { Art, CardBack, CardFace, frameClass } from '../CardView';
 import { KW_ICON, KW_ZH, PHASE_ZH, SUB_ZH } from '../i18n';
 import { ManaSymbol } from '../Mana';
@@ -61,6 +62,11 @@ export function Permanent({ g, c, marks, onCard, onHover }: { g: GameState; c: C
                 {KW_ICON[k]}
               </span>
             ))}
+          </div>
+        )}
+        {c.def.saga && (
+          <div className="perm-lore" title="傳奇的章節：進場與你的抓牌步驟後各前進一章，最後一章結束後犧牲">
+            {ROMAN[(c.lore ?? 1) - 1] ?? c.lore}/{ROMAN[c.def.saga.chapters.length - 1]}
           </div>
         )}
         {c.def.types.includes('Planeswalker') && !cr && (

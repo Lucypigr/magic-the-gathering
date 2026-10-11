@@ -123,13 +123,13 @@ describe('職業牌組常用卡', () => {
     expect(keep.zone).toBe('battlefield');
   });
 
-  it('迷失：對手的生物被消滅並得到兩個線索', () => {
+  it('迷失：對手的生物被消滅並得到兩個地圖', () => {
     const g = mk();
     const src = put(g, 0, 'plains');
     const bear = put(g, 1, 'hinterland-sanctifier');
     run(g, src, getDef('get-lost').spell!.effects!, [{ c: bear.id }]);
     expect(bear.zone).toBe('graveyard');
-    expect(g.battlefield.filter((id) => g.cards[id].def.id === 'tok-clue' && g.cards[id].controller === 1)).toHaveLength(2);
+    expect(g.battlefield.filter((id) => g.cards[id].def.id === 'tok-map' && g.cards[id].controller === 1)).toHaveLength(2);
   });
 
   it('巔峰星籠：放逐法術力值2或更少的生物，離場後歸還', () => {

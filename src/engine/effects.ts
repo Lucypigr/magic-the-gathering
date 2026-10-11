@@ -444,7 +444,11 @@ function* runEffect(g: GameState, ctx: Ctx, ef: Effect): SubFlow {
       const n = amount(g, ctx, ef.n ?? 1);
       for (const p of resolveRef(g, ctx, ef.who ?? 'you').players) {
         const host = ef.attachTo ? resolveRef(g, ctx, ef.attachTo).cards.find((c) => c.zone === 'battlefield' && isCreature(c)) : undefined;
-        for (let i = 0; i < n; i++) ctx.created = createToken(g, ef.token, p, { tapped: ef.tapped, attacking: ef.attacking, attachTo: host?.id }).id;
+        for (let i = 0; i < n; i++) {
+          const t = createToken(g, ef.token, p, { tapped: ef.tapped, attacking: ef.attacking, attachTo: host?.id });
+          if (ef.temp) t.sacAtEnd = true;
+          ctx.created = t.id;
+        }
         log(g, `派出 ${n} 個衍生物`, p);
       }
       break;
@@ -485,7 +489,7 @@ function* runEffect(g: GameState, ctx: Ctx, ef: Effect): SubFlow {
         } else moveCard(g, g.cards[id], 'hand');
       }
       for (const id of top) {
-        if (picked.includes(id)) continue;
+        if (picked.includes(id) || ef.rest === 'top') continue;
         moveCard(g, g.cards[id], ef.rest === 'bottom' ? 'library' : 'graveyard', true);
       }
       break;
@@ -693,6 +697,34 @@ function* runEffect(g: GameState, ctx: Ctx, ef: Effect): SubFlow {
       for (const id of ids) {
         log(g, `將 ${cardName(g.cards[id])} 放進戰場`, me);
         enterBattlefield(g, g.cards[id], me);
+      }
+      break;
+    }
+    case 'explore': {
+      for (const c of resolveRef(g, ctx, ef.what).cards) {
+        if (c.zone !== 'battlefield') continue;
+        const lib = g.players[c.controller].library;
+        if (!lib.length) continue;
+        const top = g.cards[lib[0]];
+        log(g, `${cardName(c)} 探險：展示 ${cardName(top)}`, c.controller);
+        if (isLand(top)) {
+          moveCard(g, top, 'hand');
+          continue;
+        }
+        if (isCreature(c)) c.counters += 1;
+        const gy = yield* choose(g, c.controller, `探險：要把 ${cardName(top)} 置入墳墓場嗎？（不選則留在牌庫頂）`, [top.id], 0, 1, 'surveilGy', true);
+        if (gy.length) moveCard(g, top, 'graveyard');
+      }
+      g.version++;
+      break;
+    }
+    case 'flicker': {
+      for (const c of resolveRef(g, ctx, ef.what).cards) {
+        if (c.zone !== 'battlefield' || c.token) continue;
+        log(g, `${cardName(c)} 被放逐後回到戰場`, c.owner);
+        moveCard(g, c, 'exile');
+        enterBattlefield(g, c, c.owner);
+        if (ef.counters) c.counters += ef.counters;
       }
       break;
     }
