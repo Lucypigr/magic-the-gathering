@@ -183,6 +183,8 @@ export type Cond =
   | { c: 'descended' }
   /** 此坐騎本回合已騎乘 */
   | { c: 'saddled' }
+  /** 虛空 */
+  | { c: 'void' }
   /** 此生物不是已準備 */
   | { c: 'notPrepared' }
   /** 你的速度已達最高（4） */
@@ -247,6 +249,8 @@ export type Effect =
   | { e: 'saddle' }
   /** 此生物成為已準備 */
   | { e: 'prepare' }
+  /** 懷疑：該生物具有威懾且不能阻擋 */
+  | { e: 'suspect'; what: Ref }
   | { e: 'mill'; n: Amt; who?: Ref }
   | { e: 'scry'; n: number }
   | { e: 'surveil'; n: number }
@@ -350,6 +354,8 @@ export interface ActivatedAbility {
   oncePerTurn?: boolean;
   /** 竭力：每場遊戲只能起動一次 */
   oncePerGame?: boolean;
+  /** 強化：每場遊戲只能起動一次；此永久物本回合才進場時，費用減去其法術力費用 */
+  powerUp?: boolean;
   /** 特殊動作：不使用堆疊，立即生效（例如把面朝下的生物翻成正面） */
   special?: boolean;
   /** 從墳墓場起動，代價包含放逐此牌 */
@@ -379,6 +385,8 @@ export interface Mode {
   text: string;
   /** 取代原本費用（用於增幅等） */
   cost?: string;
+  /** 交易：施放這個模式時要犧牲符合條件的永久物 */
+  sac?: Filter;
   targets?: TargetSpec[];
   effects: Effect[];
 }
@@ -415,6 +423,16 @@ export interface CardDef {
   adventure?: { name: string; zh?: string; cost: string; types: CardType[]; text: string; spell: SpellSpec };
   /** 準備：此生物附帶的咒語；已準備時可以施放它的複製（之後取消準備） */
   prepare?: { name: string; zh?: string; cost: string; types: CardType[]; text: string; spell: SpellSpec };
+  /** 折躍：可以用此費用從手上施放，下一個結束步驟開始時放逐，之後的回合可以從放逐區施放 */
+  warp?: string;
+  /** 子嗣：可以多付此費用，進戰場時派出一個 1/1 的衍生物複製 */
+  offspring?: string;
+  /** 騷亂：本回合棄掉此牌後，可以用此費用從墳墓場施放 */
+  mayhem?: string;
+  /** 和聲：可以用此費用從墳墓場施放（可以橫置一個生物，減少等同其力量的費用），之後放逐 */
+  harmonize?: string;
+  /** 召集：你的生物可以幫忙支付此咒語 */
+  convoke?: boolean;
   /** 此生物以已準備的狀態進戰場 */
   etbPrepared?: boolean;
   /** 返照：可以支付此費用從墳墓場施放，之後放逐 */
@@ -518,6 +536,14 @@ export interface Card {
   lore?: number;
   /** 在下一個結束步驟開始時犧牲（動員派出的衍生物） */
   sacAtEnd?: boolean;
+  /** 折躍：在下一個結束步驟開始時放逐 */
+  exileAtEnd?: boolean;
+  /** 因折躍被放逐的回合（之後的回合可以從放逐區施放） */
+  warpExiled?: number;
+  /** 被棄掉的回合（騷亂） */
+  discardedTurn?: number;
+  /** 被懷疑：具有威懾且不能阻擋 */
+  suspected?: boolean;
   /** 已準備（可以施放附帶咒語的複製） */
   prepared?: boolean;
   /** 面朝下時，真正的牌 */
@@ -568,7 +594,8 @@ export type TargetRef = { p: PID } | { c: number };
 /** cycle：循環（從手上支付費用並棄掉此牌） */
 /** disguise：面朝下施放；plot：預謀（付費放逐）；plotted：免費施放預謀的牌 */
 /** prepared：施放已準備的生物附帶咒語的複製 */
-export type CastAlt = 'adventure' | 'flashback' | 'back' | 'cycle' | 'disguise' | 'plot' | 'plotted' | 'prepared';
+/** warp：折躍；offspring：子嗣（多付費用）；mayhem／harmonize：從墳墓場施放 */
+export type CastAlt = 'adventure' | 'flashback' | 'back' | 'cycle' | 'disguise' | 'plot' | 'plotted' | 'prepared' | 'warp' | 'offspring' | 'mayhem' | 'harmonize';
 
 export interface StackItem {
   sid: number;
@@ -684,6 +711,8 @@ export interface GameState {
   attackedThisTurn: boolean;
   /** 本回合有生物死去 */
   creatureDiedThisTurn?: boolean;
+  /** 虛空：本回合有非地永久物離開戰場，或有咒語以折躍施放 */
+  voidThisTurn?: boolean;
   maxTurns: number;
   /** 最近的畫面事件（模擬用的複本不記錄） */
   shows: Show[];

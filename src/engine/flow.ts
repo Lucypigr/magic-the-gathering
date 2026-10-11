@@ -16,6 +16,7 @@ import {
   isCreature,
   isPermanentDef,
   log,
+  newCard,
   other,
   randInt,
   show,
@@ -187,7 +188,7 @@ export function* resolveTop(g: GameState): SubFlow {
   );
   if (hadTargets && legal.every((t) => !t)) {
     log(g, `${cardName(src)} 因目標不合法而無效`, item.controller);
-    if (item.kind === 'spell' && src.zone === 'stack') moveCard(g, src, item.alt === 'flashback' ? 'exile' : 'graveyard');
+    if (item.kind === 'spell' && src.zone === 'stack') moveCard(g, src, item.alt === 'flashback' || item.alt === 'harmonize' ? 'exile' : 'graveyard');
     return;
   }
   const ctx: Ctx = {
@@ -200,7 +201,7 @@ export function* resolveTop(g: GameState): SubFlow {
   };
   if (item.kind === 'spell') {
     const def = src.def;
-    if (item.alt === 'adventure' || item.alt === 'flashback') {
+    if (item.alt === 'adventure' || item.alt === 'flashback' || (item.alt === 'harmonize' && !isPermanentDef(def))) {
       // 冒險：結算後放逐，之後可以施放本體；返照：結算後放逐
       yield* runEffects(g, ctx, item.effects);
       if (src.zone === 'stack' && item.alt === 'flashback' && def.flashbackTransform && def.back) {
@@ -230,6 +231,14 @@ export function* resolveTop(g: GameState): SubFlow {
         enterBattlefield(g, src, item.controller);
         if (def.etbCountersX && item.x) src.counters += item.x;
         log(g, `${cardName(src)} 進入戰場`, item.controller);
+        if (item.alt === 'warp') src.exileAtEnd = true;
+        if (item.alt === 'offspring') {
+          // 子嗣：派出一個 1/1 的衍生物複製
+          const t = newCard(g, { ...def, power: 1, toughness: 1 }, item.controller, true);
+          t.zone = 'exile';
+          enterBattlefield(g, t, item.controller);
+          log(g, `子嗣：派出 1/1 的 ${cardName(t)} 衍生物`, item.controller);
+        }
       }
     } else {
       yield* runEffects(g, ctx, item.effects);
@@ -396,6 +405,7 @@ function* turn(g: GameState): SubFlow {
   }
   g.attackedThisTurn = false;
   g.creatureDiedThisTurn = false;
+  g.voidThisTurn = false;
   for (const id of g.battlefield) g.cards[id].usedThisTurn = [];
   log(g, `—— 第 ${g.turn} 回合：${pl.name} ——`, a, 'turn');
   if (g.turn > g.maxTurns) {
@@ -440,6 +450,12 @@ function* turn(g: GameState): SubFlow {
   for (const id of [...g.battlefield]) {
     const c = g.cards[id];
     if (c.sacAtEnd) sacrifice(g, c);
+    else if (c.exileAtEnd && c.zone === 'battlefield') {
+      // 折躍：放逐，之後的回合可以從放逐區施放
+      log(g, `${cardName(c)} 折躍結束，被放逐（之後的回合可以再施放）`, c.controller);
+      moveCard(g, c, 'exile');
+      c.warpExiled = g.turn;
+    }
   }
   emit(g, { type: 'step', step: 'endStep', player: a });
   yield* priorityStep(g);

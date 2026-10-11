@@ -572,9 +572,9 @@ export function Battle(props: Props) {
 
   const hand = g.players[0].hand.map((id) => g.cards[id]);
   const exiled = [
-    ...g.players[0].exile.map((id) => g.cards[id]).filter((c) => (c.playableTurn === g.turn && c.playableBy === 0) || c.onAdventure || c.plottedTurn !== undefined),
+    ...g.players[0].exile.map((id) => g.cards[id]).filter((c) => (c.playableTurn === g.turn && c.playableBy === 0) || c.onAdventure || c.plottedTurn !== undefined || (c.warpExiled !== undefined && c.warpExiled < g.turn)),
     // 有返照或墳墓場異能的牌在墳墓場也能使用
-    ...g.players[0].graveyard.map((id) => g.cards[id]).filter((c) => c.def.flashback || c.def.abilities?.some((a) => a.kind === 'activated' && a.fromGraveyard)),
+    ...g.players[0].graveyard.map((id) => g.cards[id]).filter((c) => c.def.flashback || c.def.harmonize || (c.def.mayhem && c.discardedTurn === g.turn) || c.def.abilities?.some((a) => a.kind === 'activated' && a.fromGraveyard)),
   ];
   const gySpec = draft?.stage === 'targets' && draft.specs[draft.targets.length]?.kind === 'gyCard';
 
@@ -686,10 +686,16 @@ export function Battle(props: Props) {
                         ? c.plottedTurn < g.turn
                           ? '預謀中：可以於法術時機免費施放'
                           : '預謀中：下個回合起可以免費施放'
+                        : c.warpExiled !== undefined
+                          ? '折躍後被放逐：可以從放逐區施放'
                         : c.zone === 'graveyard'
                           ? c.def.flashback
                             ? `在墳墓場，可用返照 ${c.def.flashback} 施放`
-                            : '在墳墓場，可以起動墳墓場異能'
+                            : c.def.harmonize
+                              ? `在墳墓場，可用和聲 ${c.def.harmonize} 施放`
+                              : c.def.mayhem && c.discardedTurn === g.turn
+                                ? `本回合棄掉，可用騷亂 ${c.def.mayhem} 施放`
+                                : '在墳墓場，可以起動墳墓場異能'
                           : ex
                             ? '在放逐區，本回合可以使用'
                             : undefined
@@ -697,7 +703,21 @@ export function Battle(props: Props) {
                 >
                   {ex && (
                     <span className={`exile-tag ${c.onAdventure ? 'adv' : c.zone === 'graveyard' ? 'fb' : ''}`}>
-                      {c.onAdventure ? '冒險' : c.plottedTurn !== undefined ? '預謀' : c.zone === 'graveyard' ? (c.def.flashback ? '返照' : '墳墓場') : '放逐'}
+                      {c.onAdventure
+                        ? '冒險'
+                        : c.plottedTurn !== undefined
+                          ? '預謀'
+                          : c.warpExiled !== undefined
+                            ? '折躍'
+                            : c.zone === 'graveyard'
+                              ? c.def.flashback
+                                ? '返照'
+                                : c.def.harmonize
+                                  ? '和聲'
+                                  : c.def.mayhem && c.discardedTurn === g.turn
+                                    ? '騷亂'
+                                    : '墳墓場'
+                              : '放逐'}
                     </span>
                   )}
                 </CardFace>

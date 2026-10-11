@@ -6,8 +6,8 @@ import type { CardDef } from '../src/engine/types';
 
 // 用新機制的卡組成套牌，AI 互打確認不會卡住或出錯
 const NEW = (d: CardDef) =>
-  !!(d.disguise || d.plot || d.cycling || d.startEngines || d.changeling || d.wardLife ||
-    d.abilities?.some((a) => (a.kind === 'activated' && (a.oncePerGame || a.fromGraveyard || a.effects.some((e) => e.e === 'saddle'))) ||
+  !!(d.disguise || d.plot || d.cycling || d.warp || d.offspring || d.convoke || d.harmonize || d.mayhem || d.prepare || d.startEngines || d.changeling || d.wardLife ||
+    d.abilities?.some((a) => (a.kind === 'activated' && (a.oncePerGame || a.fromGraveyard || a.powerUp || a.effects.some((e) => e.e === 'saddle'))) ||
       (a.kind === 'trigger' && a.effects.some((e) => e.e === 'manifestDread' || e.e === 'cloak' || e.e === 'endure'))) ||
     d.spell?.modes?.some((m) => m.cost) ||
     d.spell?.effects?.some((e) => e.e === 'manifestDread'));

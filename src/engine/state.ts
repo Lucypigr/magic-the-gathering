@@ -239,6 +239,10 @@ export function stats(g: GameState, c: Card, ignoreEot = false): Stats {
     cantBlock: false,
   };
   if (c.zone !== 'battlefield') return st;
+  if (c.suspected) {
+    st.kw.add('menace');
+    st.cantBlock = true;
+  }
   st.p += c.counters;
   st.t += c.counters;
   const apply = (gr: Grant) => {
@@ -400,6 +404,8 @@ export function checkCond(
       return me.spellsThisTurn >= cond.n;
     case 'secondSpell':
       return me.spellsThisTurn === 2;
+    case 'void':
+      return !!g.voidThisTurn;
     case 'notPrepared':
       return sourceId != null && !g.cards[sourceId]?.prepared;
     case 'saddled':

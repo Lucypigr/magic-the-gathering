@@ -1,5 +1,5 @@
 import { displayName } from '../data/names';
-import { costToString, findPayment, manaValue, parseCost, reduceCost, type ManaCost, type ManaSource } from './mana';
+import { addCosts, colorsOf, costToString, findPayment, manaValue, parseCost, reduceCost, type ManaCost, type ManaSource } from './mana';
 import {
   cardName,
   checkCond,
@@ -33,8 +33,17 @@ import { faceDownDef, turnFaceUp } from './facedown';
 // ------------------------------------------------------------
 // 法術力
 // ------------------------------------------------------------
-export function manaSources(g: GameState, pid: PID, exclude?: number): ManaSource[] {
+export function manaSources(g: GameState, pid: PID, exclude?: number, convoke = false): ManaSource[] {
   const out: ManaSource[] = [];
+  if (convoke) {
+    // 召集：未橫置的生物可以支付 {1} 或一點與它同色的法術力（排在最後才用）
+    for (const id of g.battlefield) {
+      const c = g.cards[id];
+      if (c.controller !== pid || c.tapped || !isCreature(c) || id === exclude || c.def.produces) continue;
+      const cols = colorsOf(c.def);
+      out.push({ id, produces: cols.length ? cols : ['C'], isCreature: true, sac: false, convoke: true });
+    }
+  }
   for (const id of g.battlefield) {
     const c = g.cards[id];
     if (c.controller !== pid || c.tapped || !c.def.produces || id === exclude) continue;
@@ -56,12 +65,12 @@ export function extraLandDrops(g: GameState, pid: PID): number {
   return n;
 }
 
-export function canPayCost(g: GameState, pid: PID, cost: ManaCost, exclude?: number): boolean {
-  return findPayment(cost, manaSources(g, pid, exclude)) !== null;
+export function canPayCost(g: GameState, pid: PID, cost: ManaCost, exclude?: number, convoke = false): boolean {
+  return findPayment(cost, manaSources(g, pid, exclude, convoke)) !== null;
 }
 
-export function payCost(g: GameState, pid: PID, cost: ManaCost, exclude?: number): boolean {
-  const pay = findPayment(cost, manaSources(g, pid, exclude));
+export function payCost(g: GameState, pid: PID, cost: ManaCost, exclude?: number, convoke = false): boolean {
+  const pay = findPayment(cost, manaSources(g, pid, exclude, convoke));
   if (!pay) return false;
   for (const p of pay) g.cards[p.id].tapped = true;
   for (const p of pay) if (g.cards[p.id].def.painMana && p.mana !== 'C') loseLife(g, pid, 1);
@@ -118,6 +127,14 @@ export function castDef(def: CardDef, alt?: CastAlt): CardDef {
     };
   } else if (alt === 'back' && def.back) {
     d = def.back;
+  } else if (alt === 'warp' && def.warp) {
+    d = { ...def, cost: def.warp };
+  } else if (alt === 'offspring' && def.offspring) {
+    d = { ...def, cost: costToString(addCosts(parseCost(def.cost), parseCost(def.offspring))) };
+  } else if (alt === 'mayhem' && def.mayhem) {
+    d = { ...def, cost: def.mayhem };
+  } else if (alt === 'harmonize' && def.harmonize) {
+    d = { ...def, cost: def.harmonize };
   } else if (alt === 'prepared' && def.prepare) {
     const a = def.prepare;
     d = { id: def.id, name: a.name, zh: a.zh, set: def.set, rarity: def.rarity, cost: a.cost, types: a.types, spell: a.spell, text: a.text, imageName: def.imageName };
@@ -147,6 +164,8 @@ export function castAlts(g: GameState, pid: PID, c: Card): (CastAlt | undefined)
   if (c.zone === 'hand' && c.owner === pid) {
     const base: (CastAlt | undefined)[] = def.adventure ? [undefined, 'adventure'] : def.mdfc && def.back ? [undefined, 'back'] : [undefined];
     if (def.disguise) base.push('disguise');
+    if (def.warp) base.push('warp');
+    if (def.offspring) base.push('offspring');
     if (def.plot) base.push('plot');
     return def.cycling ? [...base, 'cycle'] : base;
   }
@@ -154,7 +173,14 @@ export function castAlts(g: GameState, pid: PID, c: Card): (CastAlt | undefined)
   if (c.zone === 'battlefield' && c.controller === pid && c.prepared && def.prepare) return ['prepared'];
   if (c.zone === 'exile' && c.owner === pid && c.onAdventure) return [undefined];
   if (c.zone === 'exile' && c.playableTurn === g.turn && c.playableBy === pid) return def.adventure ? [undefined, 'adventure'] : [undefined];
-  if (c.zone === 'graveyard' && c.owner === pid && def.flashback) return ['flashback'];
+  if (c.zone === 'exile' && c.owner === pid && c.warpExiled !== undefined && c.warpExiled < g.turn) return [undefined];
+  if (c.zone === 'graveyard' && c.owner === pid) {
+    const out: CastAlt[] = [];
+    if (def.flashback) out.push('flashback');
+    if (def.harmonize) out.push('harmonize');
+    if (def.mayhem && c.discardedTurn === g.turn) out.push('mayhem');
+    return out;
+  }
   return [];
 }
 
@@ -204,8 +230,24 @@ export function spellCost(g: GameState, c: Card, pid: PID, mode?: number, target
       }
     }
   }
+  if (alt === 'harmonize') {
+    const h = harmonizeTapper(g, pid);
+    if (h) cost = reduceCost(cost, { ...parseCost(''), generic: h.p });
+  }
   if (targets) cost.generic += wardTax(g, pid, targets);
   return cost;
+}
+
+/** 和聲：選一個未橫置、力量最大的生物來橫置減費 */
+export function harmonizeTapper(g: GameState, pid: PID): { id: number; p: number } | null {
+  let best: { id: number; p: number } | null = null;
+  for (const id of g.battlefield) {
+    const c = g.cards[id];
+    if (c.controller !== pid || c.tapped || !isCreature(c)) continue;
+    const p = stats(g, c).p;
+    if (p > 0 && (!best || p > best.p)) best = { id, p };
+  }
+  return best;
 }
 
 /** 守護—支付生命：以對手的永久物為目標時要支付的生命 */
@@ -340,6 +382,7 @@ export function canActivate(g: GameState, pid: PID, c: Card, idx: number): boole
       }
       cost.generic = Math.max(0, cost.generic - best);
     }
+    if (ab.powerUp && c.enteredTurn === g.turn) Object.assign(cost, reduceCost(cost, parseCost(c.def.cost)));
     if (!canPayCost(g, pid, cost, ab.cost.tap ? c.id : undefined)) return false;
   }
   if (!hasTargetsAvailable(g, ab.targets ?? [], pid, c.id)) return false;
@@ -370,7 +413,7 @@ export function maxXFor(g: GameState, pid: PID, c: Card, mode?: number, alt?: Ca
   const def = castDef(c.def, alt);
   if (!parseCost(def.spell?.modes?.[mode ?? 0]?.cost ?? def.cost).x) return undefined;
   let x = 0;
-  while (x < 20 && canPayCost(g, pid, spellCost(g, c, pid, mode, undefined, alt, x + 1))) x++;
+  while (x < 20 && canPayCost(g, pid, spellCost(g, c, pid, mode, undefined, alt, x + 1), undefined, !!def.convoke)) x++;
   return x;
 }
 
@@ -383,11 +426,11 @@ export function castableCards(g: GameState, pid: PID): Card[] {
   }
   for (const id of p.graveyard) {
     const c = g.cards[id];
-    if (c.def.flashback) out.push(c);
+    if (c.def.flashback || c.def.harmonize || (c.def.mayhem && c.discardedTurn === g.turn)) out.push(c);
   }
   for (const id of p.exile) {
     const c = g.cards[id];
-    if (c.plottedTurn !== undefined && c.plottedTurn < g.turn) out.push(c);
+    if ((c.plottedTurn !== undefined && c.plottedTurn < g.turn) || (c.warpExiled !== undefined && c.warpExiled < g.turn)) out.push(c);
   }
   return out;
 }
@@ -430,15 +473,18 @@ function castOptionsAs(g: GameState, pid: PID, c: Card, alt: CastAlt | undefined
     const mode = def.spell?.modes ? m : undefined;
     const specs = castTargetSpecs(def, mode);
     if (!hasTargetsAvailable(g, specs, pid, c.id)) continue;
+    const msac = def.spell?.modes?.[m]?.sac;
+    if (msac && sacCandidates(g, pid, msac).length === 0) continue;
     const cost = spellCost(g, c, pid, mode, undefined, alt);
-    if (!canPayCost(g, pid, cost)) continue;
+    const tapper = alt === 'harmonize' ? harmonizeTapper(g, pid)?.id : undefined;
+    if (!canPayCost(g, pid, cost, tapper, !!def.convoke)) continue;
     const name = alt === 'adventure' ? (def.zh ?? def.name) : displayName(def);
     out.push({
       kind: 'cast',
       card: c.id,
       mode,
       specs,
-      sacFilter: def.addCost?.sac,
+      sacFilter: msac ?? def.addCost?.sac,
       alt,
       effects: spellEffects(def, mode),
       maxX: alt === 'plotted' || alt === 'disguise' ? undefined : maxXFor(g, pid, c, mode, alt),
@@ -449,6 +495,14 @@ function castOptionsAs(g: GameState, pid: PID, c: Card, alt: CastAlt | undefined
             ? `返照：${name}`
             : alt === 'back'
               ? `施放背面：${def.name}`
+            : alt === 'warp'
+              ? `折躍 ${def.cost}`
+            : alt === 'offspring'
+              ? `子嗣：施放 ${name}（${def.cost}）`
+            : alt === 'mayhem'
+              ? `騷亂：從墳墓場施放 ${name}`
+            : alt === 'harmonize'
+              ? `和聲：從墳墓場施放 ${name}`
             : alt === 'prepared'
               ? `施放準備的咒語：${def.zh ?? def.name}${def.spell?.modes ? `（${def.spell.modes[m].text}）` : ''}`
             : alt === 'disguise'
@@ -581,9 +635,10 @@ function doCast(g: GameState, pid: PID, a: Extract<PriorityAction, { type: 'cast
   if (err) return err;
   const p = g.players[pid];
   let sacCard: Card | undefined;
-  if (def.addCost?.sac) {
+  const sacF = (mode !== undefined ? def.spell?.modes?.[mode]?.sac : undefined) ?? def.addCost?.sac;
+  if (sacF) {
     sacCard = a.sac != null ? g.cards[a.sac] : undefined;
-    if (!sacCard || sacCard.zone !== 'battlefield' || sacCard.controller !== pid || !matches(g, def.addCost.sac, sacCard, pid))
+    if (!sacCard || sacCard.zone !== 'battlefield' || sacCard.controller !== pid || !matches(g, sacF, sacCard, pid))
       return '請選擇要犧牲的永久物';
   }
   let discardCard: Card | undefined;
@@ -595,7 +650,13 @@ function doCast(g: GameState, pid: PID, a: Extract<PriorityAction, { type: 'cast
   if (def.addCost?.life && p.life < def.addCost.life) return '生命不足';
   const x = parseCost(def.spell?.modes?.[mode ?? 0]?.cost ?? def.cost).x ? Math.max(0, Math.floor(a.x ?? 0)) : undefined;
   const cost = spellCost(g, c, pid, mode, targets, alt, x ?? 0);
-  if (!payCost(g, pid, cost)) return `法術力不足（需要 ${costToString(cost)}）`;
+  const tapper = alt === 'harmonize' ? harmonizeTapper(g, pid) : null;
+  if (!payCost(g, pid, cost, tapper?.id, !!def.convoke)) return `法術力不足（需要 ${costToString(cost)}）`;
+  if (tapper) {
+    g.cards[tapper.id].tapped = true;
+    log(g, `和聲：橫置 ${cardName(g.cards[tapper.id])}，費用減少 {${tapper.p}}`, pid);
+  }
+  if (alt === 'warp') g.voidThisTurn = true;
   const wl = wardLifeTax(g, pid, targets);
   if (wl) {
     log(g, `守護：支付${wl}點生命`, pid, 'life');
@@ -663,6 +724,7 @@ function doActivate(g: GameState, pid: PID, a: Extract<PriorityAction, { type: '
     const d = t && 'c' in t ? g.cards[t.c]?.def.equipDiscount ?? 0 : 0;
     cost.generic = Math.max(0, cost.generic - d);
   }
+  if (ab.powerUp && c.enteredTurn === g.turn) Object.assign(cost, reduceCost(cost, parseCost(c.def.cost)));
   cost.generic += wardTax(g, pid, targets);
   if (!payCost(g, pid, cost, ab.cost.tap ? c.id : undefined)) return '法術力不足';
   if (ab.special) {

@@ -49,7 +49,7 @@ KW = {
 # Scryfall keywords 欄位中可以接受的（其餘機制一律略過整張卡）
 OK_KEYWORDS = {k.title() for k in KW} | {'First strike', 'Double strike', 'Ward', 'Scry', 'Surveil', 'Mill', 'Fight', 'Landfall', 'Enchant', 'Equip', 'Treasure', 'Investigate', 'Food', 'Clue', 'Earthbend', 'Flashback', 'Role token', 'Craft', 'Transform', 'Empower Jace', 'Explore', 'Map', 'Mobilize', 'Crew',
                'Cycling', 'Basic landcycling', 'Plainscycling', 'Islandcycling', 'Swampcycling', 'Mountaincycling', 'Forestcycling', 'Landcycling',
-               'Prepared', 'Disguise', 'Manifest', 'Manifest dread', 'Cloak', 'Plot', 'Saddle', 'Max speed', 'Start your engines!', 'Typecycling', 'Affinity', 'Connive', 'Endure', 'Kicker', 'Gift', 'Spree', 'Exhaust', 'Changeling', 'Raid', 'Threshold', 'Delirium', 'Morbid', 'Celebration', 'Descend'}
+               'Renew', 'Job select', 'Warp', 'Offspring', 'Mayhem', 'Harmonize', 'Convoke', 'Power-up', 'Bargain', 'Suspect', 'Valiant', 'Flurry', 'Void', 'Prepared', 'Disguise', 'Manifest', 'Manifest dread', 'Cloak', 'Plot', 'Saddle', 'Max speed', 'Start your engines!', 'Typecycling', 'Affinity', 'Connive', 'Endure', 'Kicker', 'Gift', 'Spree', 'Exhaust', 'Changeling', 'Raid', 'Threshold', 'Delirium', 'Morbid', 'Celebration', 'Descend'}
 
 NUM = {'a': 1, 'an': 1, 'one': 1, 'two': 2, 'three': 3, 'four': 4, 'five': 5, 'six': 6, 'seven': 7, 'eight': 8}
 ZHN = {1: '一', 2: '二', 3: '三', 4: '四', 5: '五', 6: '六', 7: '七', 8: '八', 9: '九', 10: '十'}
@@ -276,6 +276,7 @@ CONDS = [
     (r'you descended this turn', lambda m: ({'c': 'descended'}, '你本回合下潛過（有永久物牌置入你的墳墓場）')),
     (r'you(?:\'ve)? gained life this turn', lambda m: ({'c': 'gainedLifeGte', 'n': 1}, '你本回合獲得過生命')),
     (r'you control a Mount or Vehicle', lambda m: ({'c': 'controls', 'filter': {'sub': ['Mount', 'Vehicle']}}, '你操控坐騎或載具')),
+    (r'a nonland permanent left the battlefield this turn or a spell was warped this turn', lambda m: ({'c': 'void'}, '本回合有非地永久物離開戰場或有咒語以折躍施放')),
     (r"SELF isn't prepared", lambda m: ({'c': 'notPrepared'}, '此生物不是已準備')),
     (r'an opponent lost life this turn', lambda m: ({'c': 'oppLostLife'}, '本回合有對手失去過生命')),
     (r"you(?:'ve)? drawn two or more cards this turn", lambda m: ({'c': 'drawsGte', 'n': 2}, '你本回合已抓了兩張或更多牌')),
@@ -295,7 +296,7 @@ def parse_cond(s):
     raise Unsupported('cond ' + s)
 
 
-ABILITY_WORDS = {'Raid': '襲擊', 'Threshold': '門檻', 'Delirium': '譫妄', 'Morbid': '死亡', 'Celebration': '慶典', 'Descend 4': '下潛4', 'Descend 8': '下潛8'}
+ABILITY_WORDS = {'Renew': '再生', 'Valiant': '英勇', 'Flurry': '疾風', 'Void': '虛空', 'Raid': '襲擊', 'Threshold': '門檻', 'Delirium': '譫妄', 'Morbid': '死亡', 'Celebration': '慶典', 'Descend 4': '下潛4', 'Descend 8': '下潛8'}
 
 
 def add_costs(a, b):
@@ -347,6 +348,10 @@ def sentence(s, ctx):
         a, b = int(m.group(2)), int(m.group(3))
         return [{'e': 'lose', 'n': a, 'who': ref}, {'e': 'gain', 'n': b}], f'{z}失去{a}點生命，且你獲得{b}點生命'
     # 傷害
+    m = re.match(r'^(?:SELF|it) deals (\d+) damage(?: to (?:that creature|that permanent|it))?$', s)
+    if m and ctx.last:
+        n = int(m.group(1))
+        return [{'e': 'damage', 'n': n, 'to': ctx.last}], f'對{ctx.last_zh}造成{n}點傷害'
     m = re.match(r'^(?:SELF|it) deals (\d+) damage to (.+?)$', s)
     if m:
         n = int(m.group(1))
@@ -369,7 +374,7 @@ def sentence(s, ctx):
         ref, z = tgt(ctx, dest)
         return [{'e': 'damage', 'n': n, 'to': ref}], f'{src}對{z}造成{n}點傷害'
     # 消滅／放逐／移回
-    m = re.match(r'^destroy (target .+|up to one target .+)$', low)
+    m = re.match(r'^destroy (target .+|up to one target .+|that creature|that permanent)$', low)
     if m:
         ref, z = tgt(ctx, m.group(1))
         return [{'e': 'destroy', 'what': ref}], f'消滅{z}'
@@ -387,7 +392,7 @@ def sentence(s, ctx):
     if m:
         return [{'e': 'destroy', 'what': {'all': {'type': 'Creature'}}}], '消滅所有生物'
     # 增益
-    m = re.match(r'^(target .+?|up to one target .+?|another target .+?|SELF|it|creatures you control|other creatures you control|creatures your opponents control) gets? ([+-]\d+/[+-]\d+)(?: and gains? (.+?))? until end of turn$', s, flags=re.I)
+    m = re.match(r'^(target .+?|up to one target .+?|another target .+?|SELF|it|that creature|creatures you control|other creatures you control|creatures your opponents control) gets? ([+-]\d+/[+-]\d+)(?: and gains? (.+?))? until end of turn$', s, flags=re.I)
     if m:
         who, ptxt, kws = m.groups()
         p, t = pt(ptxt)
@@ -475,6 +480,14 @@ def sentence(s, ctx):
         return [{'e': 'cloak'}], '將你牌庫頂的牌' + CL
     if s == 'cloak the top card of your library, then attach SELF to it' and ctx.self_zh == '此武具':
         return [{'e': 'cloak'}, {'e': 'attach', 'what': 'created'}], '將你牌庫頂的牌' + CL + '，然後將此武具貼附在它上面'
+    m = re.match(r'^suspect (it|SELF|target creature(?: an opponent controls)?|up to one target creature(?: an opponent controls)?)$', s, flags=re.I)
+    if m:
+        w = m.group(1)
+        if w in ('it', 'SELF') and ctx.card_kind == 'permanent' and not ctx.targets:
+            ref, z = 'self', ctx.self_zh
+        else:
+            ref, z = tgt(ctx, w.lower())
+        return [{'e': 'suspect', 'what': ref}], f'懷疑{z}（被懷疑的生物具有威懾且不能阻擋）'
     if s in ('SELF becomes prepared', 'it becomes prepared') and ctx.card_kind == 'permanent':
         return [{'e': 'prepare'}], f'{ctx.self_zh}成為已準備'
     m = re.match(r'^untap (?:it|SELF)$', s)
@@ -804,6 +817,8 @@ TRIGGERS = [
     (r'^Whenever another creature dies, (.+)$', 'otherDies', '每當另一個生物死去時，'),
     (r'^Whenever an opponent casts a noncreature spell, (.+)$', 'castNoncreature!', '每當對手施放非生物咒語時，'),
     (r'^Whenever SELF enters or attacks, (.+)$', 'etb+attacks', '每當{self}進戰場或攻擊時，'),
+    (r'^Whenever SELF becomes the target of a spell or ability you control for the first time each turn, (.+)$', 'targeted^', '每當{self}每回合第一次成為你的咒語或異能的目標時，'),
+    (r'^Whenever you cast your second spell each turn, (.+)$', 'castAny@secondSpell', '每當你施放你本回合的第二個咒語時，'),
     (r'^When SELF is turned face up, (.+)$', 'turnedFaceUp', '當{self}翻成正面時，'),
     (r'^When SELF enters or is turned face up, (.+)$', 'etb+turnedFaceUp', '當{self}進戰場或翻成正面時，'),
     (r'^Whenever SELF attacks while saddled, (.+)$', 'attacks@saddled', '每當{self}在已騎乘時攻擊，'),
@@ -838,6 +853,9 @@ def parse_trigger(par, self_zh):
                 flags['includeSelf'] = True
             if o.endswith('!'):
                 raise Unsupported('opp cast')
+            if o.endswith('^'):
+                o = o[:-1]
+                flags['oncePerTurn'] = True
             if '@' in o:
                 o, cname = o.split('@')
                 if cond:
@@ -1393,7 +1411,8 @@ def convert_face(c, dfc=False, back=False):
     if any(t in tl for t in SKIP_TYPES):
         raise Unsupported('type ' + tl)
     for k in c.get('keywords') or []:
-        if k not in OK_KEYWORDS:
+        # 有名字的裝備異能（例如「Gae Bolg — Equip {4}」），名字也會被列成關鍵字
+        if k not in OK_KEYWORDS and not re.search(r'(?m)^' + re.escape(k) + r' — Equip', c.get('oracle_text') or ''):
             raise Unsupported('keyword ' + k)
     cost = c.get('mana_cost') or ''
     if re.search(r'\{[^}]*(P|S)[^}]*\}', cost) or re.search(r'\{[^}X]*X[^}]+\}|\{[^}]+X[^}]*\}', cost) or not cost and 'Land' not in tl and not back:
@@ -1421,6 +1440,11 @@ def convert_face(c, dfc=False, back=False):
     if short != name and 'Legendary' in supertypes:
         text = re.sub(r'\b' + re.escape(short) + r'\b', 'SELF', text)
     text = re.sub(r'\bthis (creature|spell|enchantment|artifact|Aura|Equipment|land|Vehicle)\b', 'SELF', text)
+    # 傳奇角色用 he／she 指自己
+    if 'Legendary' in supertypes and 'Creature' in types:
+        text = re.sub(r'\b(?:he|she)\b', 'it', text)
+        text = re.sub(r'\b(?:He|She)\b', 'It', text)
+        text = re.sub(r'\b(?:him|her)\b(?! own)', 'it', text)
     text = re.sub(r'\bThis (creature|spell|enchantment|artifact|Aura|Equipment|land|Vehicle)\b', 'SELF', text)
     self_zh = self_noun(types, subtypes)
     d = {
@@ -1452,6 +1476,7 @@ def convert_face(c, dfc=False, back=False):
     equip_grant = None
     spell_pars = []
     kicker = None
+    bargain = False
     gift = None
     spree = None
     spell_aw = ''
@@ -1464,7 +1489,7 @@ def convert_face(c, dfc=False, back=False):
         par = pars[i]
         i += 1
         # 能力詞（襲擊、門檻、譫妄……）：去掉前綴，中文行補上能力詞
-        mw = re.match(r'^(Raid|Threshold|Delirium|Morbid|Celebration|Descend [48]) — (.+)$', par)
+        mw = re.match(r'^(Renew|Valiant|Flurry|Void|Raid|Threshold|Delirium|Morbid|Celebration|Descend [48]) — (.+)$', par)
         if mw:
             par = mw.group(2)
             if is_spell:
@@ -1523,6 +1548,48 @@ def convert_face(c, dfc=False, back=False):
             a['label'] = ('竭力：' + a['label'])[:18]
             abilities.append(a)
             zh_lines.append(f'竭力—{r[1]}（每場遊戲只能起動一次。）')
+            continue
+        m = re.fullmatch(r'Warp ((?:\{(?:[0-9WUBRGC]|[WUBRG]/[WUBRG])\})+)', par)
+        if m and not is_spell:
+            d['warp'] = m.group(1)
+            zh_lines.append(f'折躍{m.group(1)}（你可以從手上以折躍費用施放此牌。下一個結束步驟開始時將它放逐，之後的回合你可以從放逐區施放它。）')
+            continue
+        m = re.fullmatch(r'Offspring ((?:\{(?:[0-9WUBRGC]|[WUBRG]/[WUBRG])\})+)', par)
+        if m and 'Creature' in types:
+            d['offspring'] = m.group(1)
+            zh_lines.append(f'子嗣{m.group(1)}（你施放此咒語時可以額外支付{m.group(1)}。若你如此作，它進戰場時派出一個它的1/1衍生物複製。）')
+            continue
+        m = re.fullmatch(r'Mayhem ((?:\{(?:[0-9WUBRGC]|[WUBRG]/[WUBRG])\})+)', par)
+        if m:
+            d['mayhem'] = m.group(1)
+            zh_lines.append(f'騷亂{m.group(1)}（若你本回合棄掉此牌，你可以支付{m.group(1)}從墳墓場施放它。）')
+            continue
+        m = re.fullmatch(r'Harmonize ((?:\{(?:[0-9WUBRGC]|[WUBRG]/[WUBRG])\})+)', par)
+        if m:
+            d['harmonize'] = m.group(1)
+            zh_lines.append(f'和聲{m.group(1)}（你可以支付和聲費用從墳墓場施放此牌，並可以橫置一個由你操控的生物來減少等同其力量的費用。之後將它放逐。）')
+            continue
+        if par == 'Convoke':
+            d['convoke'] = True
+            zh_lines.append('召集（你的生物可以幫忙施放此咒語。每橫置一個生物可以支付{1}或一點該生物顏色的法術力。）')
+            continue
+        if par == 'Bargain':
+            if not is_spell:
+                raise Unsupported('bargain permanent')
+            bargain = True
+            zh_lines.append('交易（你施放此咒語時可以犧牲一個神器、結界或衍生物。）')
+            continue
+        m = re.fullmatch(r'Power-up — (.+)', par)
+        if m and not is_spell:
+            r = parse_activated(m.group(1), self_zh, 'Creature' in types)
+            if not r or r[0][0] != 'ability' or not r[0][1]['cost'].get('mana'):
+                raise Unsupported('power-up')
+            a = r[0][1]
+            a['powerUp'] = True
+            a['oncePerGame'] = True
+            a['label'] = ('強化：' + a['label'])[:18]
+            abilities.append(a)
+            zh_lines.append(f'強化—{r[1]}（每個強化異能只能起動一次。若此永久物本回合才進戰場，費用減去它的法術力費用。）')
             continue
         m = re.fullmatch(r'Disguise ((?:\{(?:[0-9WUBRGC]|[WUBRG]/[WUBRG])\})+)', par)
         if m and 'Creature' in types:
@@ -1670,7 +1737,12 @@ def convert_face(c, dfc=False, back=False):
                 z += f'且具有{kzh}異能'
             zh_lines.append(z + '。')
             continue
-        m = re.fullmatch(r'Equip (\{\d+\})', par)
+        if par == 'Job select' and 'Equipment' in subtypes:
+            hero = token_for(1, 1, ['colorless'], ['Hero'], [])
+            abilities.append({'kind': 'trigger', 'on': 'etb', 'effects': [{'e': 'token', 'token': hero}, {'e': 'attach', 'what': 'created'}]})
+            zh_lines.append('職業選擇（當此武具進戰場時，派出一個1/1無色的英雄衍生生物，然後將此武具貼附在它上面。）')
+            continue
+        m = re.fullmatch(r"(?:[A-Z][\w' ,-]+ — )?Equip (\{\d+\})", par)
         if m and 'Equipment' in subtypes:
             equip_cost = m.group(1)
             zh_lines.append(f'裝備{equip_cost}')
@@ -1758,20 +1830,52 @@ def convert_face(c, dfc=False, back=False):
                     mo['targets'] = ctx.targets
                 modes.append(mo)
             d['spell'] = {'modes': modes}
-        elif spell_pars and (kicker or gift):
+        elif spell_pars and (kicker or gift or bargain):
             if modes:
                 raise Unsupported('modes + text')
             text = ' '.join(spell_pars)
-            pat = r'\s*If SELF was kicked, (.+)$' if kicker else r"\s*If the gift was promised, (.+)$"
+            pat = r'\s*If SELF was kicked, (.+)$' if kicker else r'\s*If SELF was bargained, (.+)$' if bargain else r"\s*If the gift was promised, (.+)$"
             mk = re.search(pat, text)
             base, extra = (text[: mk.start()], mk.group(1)) if mk else (text, '')
-            if 'instead' in extra or 'SELF was kicked' in base or 'gift was' in base or 'gift was' in extra:
+            if 'SELF was kicked' in base or 'bargained' in base or 'gift was' in base or 'gift was' in extra:
                 raise Unsupported('kicker/gift instead')
             ctx = Ctx('spell', '此咒語')
             effs_b, zb = effects_of(base, ctx) if base.strip() else ([], '')
             nb = len(ctx.targets)
-            effs_x, zx = effects_of(extra[0].upper() + extra[1:], ctx) if extra else ([], '')
-            if kicker:
+            # 「改為……」：額外模式的效果取代原本的效果
+            replace = None
+            mi = re.match(r'^instead,? (.+)$', extra)
+            if mi:
+                # 整句換掉：另外解析一次（目標各自獨立）
+                ctx2 = Ctx('spell', '此咒語')
+                body = mi.group(1)
+                effs_x, zx = effects_of(body[0].upper() + body[1:], ctx2)
+                replace = (effs_x, ctx2.targets)
+                zx = '改為' + zx
+            elif re.search(r'\binstead\.?$', extra):
+                # 針對同一個目標換掉其中一個效果（例如「它改為造成 4 點傷害」）
+                body = re.sub(r',? instead\.?$', '.', extra)
+                effs_x, zx = effects_of(body[0].upper() + body[1:], ctx)
+                if len(ctx.targets) != nb:
+                    raise Unsupported('instead new target')
+                new = list(effs_b)
+                for e in effs_x:
+                    key = lambda x: (x.get('to') or x.get('what'))
+                    idx = [i for i, b in enumerate(new) if b['e'] == e['e'] and key(b) == key(e)] or [i for i, b in enumerate(new) if key(b) == key(e) and key(e) is not None]
+                    if len(idx) != 1:
+                        raise Unsupported('instead match')
+                    new[idx[0]] = e
+                replace = (new, ctx.targets)
+                zx = '改為' + zx
+            else:
+                effs_x, zx = effects_of(extra[0].upper() + extra[1:], ctx) if extra else ([], '')
+            if bargain:
+                if not extra:
+                    raise Unsupported('bargain without bonus')
+                m0 = {'text': '不交易', 'effects': effs_b}
+                m1 = {'text': '交易', 'sac': {'or': [{'type': 'Artifact'}, {'type': 'Enchantment'}, {'token': True}]}, 'effects': effs_b + effs_x}
+                zh_lines.append(spell_aw + zb + f'若已交易，{zx}')
+            elif kicker:
                 m0 = {'text': '不增幅', 'effects': effs_b}
                 m1 = {'text': f'增幅 {kicker}', 'cost': add_costs(cost, kicker), 'effects': effs_b + effs_x}
                 zh_lines.append(spell_aw + zb + (f'若此咒語已增幅，{zx}' if zx else ''))
@@ -1785,6 +1889,11 @@ def convert_face(c, dfc=False, back=False):
                 m0['targets'] = ctx.targets[:nb]
             if ctx.targets:
                 m1['targets'] = ctx.targets
+            if replace:
+                m1['effects'] = ([m1['effects'][0]] if gift else []) + replace[0]
+                m1.pop('targets', None)
+                if replace[1]:
+                    m1['targets'] = replace[1]
             if not effs_b and not m0.get('targets'):
                 raise Unsupported('empty base mode')
             d['spell'] = {'modes': [m0, m1]}

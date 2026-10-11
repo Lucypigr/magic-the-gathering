@@ -160,6 +160,8 @@ function resetPermanentState(c: Card): void {
   c.usedThisTurn = [];
   c.exhausted = undefined;
   c.prepared = undefined;
+  c.exileAtEnd = undefined;
+  c.suspected = undefined;
   c.loyalty = undefined;
   c.lore = undefined;
   c.sacAtEnd = undefined;
@@ -172,6 +174,8 @@ function resetPermanentState(c: Card): void {
 
 export function moveCard(g: GameState, c: Card, to: Zone, bottom = false): void {
   const wasOnBf = c.zone === 'battlefield';
+  if (wasOnBf && !c.def.types.includes('Land')) g.voidThisTurn = true;
+  c.warpExiled = undefined;
   if (wasOnBf) {
     c.lastPower = stats(g, c).p;
     g.eot = g.eot.filter((e) => e.card !== c.id);
@@ -356,6 +360,7 @@ export function drawCards(g: GameState, pid: PID, n: number): void {
 export function discard(g: GameState, c: Card): void {
   log(g, `棄掉 ${cardName(c)}`, c.owner);
   moveCard(g, c, 'graveyard');
+  c.discardedTurn = g.turn;
 }
 
 export function gainLife(g: GameState, pid: PID, n: number): void {

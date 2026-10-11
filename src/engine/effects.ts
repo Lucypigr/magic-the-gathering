@@ -163,7 +163,7 @@ export function amount(g: GameState, ctx: Ctx, a: Amt): number {
 // ------------------------------------------------------------
 /** 被反擊的咒語去哪裡：返照施放的咒語會被放逐 */
 function counteredZone(g: GameState, c: Card): 'graveyard' | 'exile' {
-  return g.stack.some((s) => s.kind === 'spell' && s.cardId === c.id && s.alt === 'flashback') ? 'exile' : 'graveyard';
+  return g.stack.some((s) => s.kind === 'spell' && s.cardId === c.id && (s.alt === 'flashback' || s.alt === 'harmonize')) ? 'exile' : 'graveyard';
 }
 
 export function* runEffects(g: GameState, ctx: Ctx, effects: Effect[]): SubFlow {
@@ -458,6 +458,14 @@ function* runEffect(g: GameState, ctx: Ctx, ef: Effect): SubFlow {
       log(g, '斗篷：牌庫頂的牌面朝下進入戰場', me);
       break;
     }
+    case 'suspect':
+      for (const c of resolveRef(g, ctx, ef.what).cards) {
+        if (c.zone !== 'battlefield' || !isCreature(c)) continue;
+        c.suspected = true;
+        log(g, `${cardName(c)} 被懷疑（威懾、不能阻擋）`, me);
+        g.version++;
+      }
+      break;
     case 'prepare':
       if (src && src.zone === 'battlefield' && src.def.prepare) {
         src.prepared = true;
