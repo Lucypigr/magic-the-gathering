@@ -4209,3 +4209,28 @@ button {
   border: 1px solid rgba(227, 196, 125, 0.6);
   z-index: 2;
 }
+
+/* X 咒語 */
+.x-pick {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 260px;
+}
+.x-row {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+}
+.x-val {
+  font-family: var(--font-display);
+  font-size: 26px;
+  font-weight: 700;
+  min-width: 90px;
+  text-align: center;
+}
+.perm-pt.perm-pt-idle {
+  opacity: 0.55;
+  filter: grayscale(0.6);
+}

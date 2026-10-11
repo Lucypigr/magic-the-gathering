@@ -38,6 +38,8 @@ export interface Ctx {
   targets: (TargetRef | null)[];
   ev?: GameEvent;
   lkiPower?: number;
+  /** 施放時決定的 X */
+  x?: number;
 }
 
 // ------------------------------------------------------------
@@ -141,6 +143,7 @@ export function amount(g: GameState, ctx: Ctx, a: Amt): number {
     return 0;
   }
   if ('hand' in a) return g.players[ctx.controller].hand.length;
+  if ('x' in a) return ctx.x ?? 0;
   if ('spellsCast' in a) return g.players[ctx.controller].spellsThisTurn;
   if ('selfCounters' in a) return Math.max(0, g.cards[ctx.source]?.counters ?? 0);
   if ('colors' in a) {
@@ -250,6 +253,8 @@ function* runEffect(g: GameState, ctx: Ctx, ef: Effect): SubFlow {
     }
     case 'destroy': {
       const r = resolveRef(g, ctx, ef.what);
+      // 只消滅法術力值 X 或更少的
+      if (ef.mvMaxX) r.cards = r.cards.filter((c) => manaValue(c.def) <= (ctx.x ?? 0));
       if (ef.sameName) {
         const names = new Set(r.cards.filter((c) => c.zone === 'battlefield').map((c) => c.def.name));
         for (const id of g.battlefield) if (names.has(g.cards[id].def.name) && !r.cards.includes(g.cards[id])) r.cards.push(g.cards[id]);

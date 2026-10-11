@@ -47,7 +47,7 @@ KW = {
     'prowess': ('prowess', '勇行'),
 }
 # Scryfall keywords 欄位中可以接受的（其餘機制一律略過整張卡）
-OK_KEYWORDS = {k.title() for k in KW} | {'First strike', 'Double strike', 'Ward', 'Scry', 'Surveil', 'Mill', 'Fight', 'Landfall', 'Enchant', 'Equip', 'Treasure', 'Investigate', 'Food', 'Clue', 'Earthbend', 'Flashback', 'Role token', 'Craft', 'Transform', 'Empower Jace', 'Explore', 'Map', 'Mobilize'}
+OK_KEYWORDS = {k.title() for k in KW} | {'First strike', 'Double strike', 'Ward', 'Scry', 'Surveil', 'Mill', 'Fight', 'Landfall', 'Enchant', 'Equip', 'Treasure', 'Investigate', 'Food', 'Clue', 'Earthbend', 'Flashback', 'Role token', 'Craft', 'Transform', 'Empower Jace', 'Explore', 'Map', 'Mobilize', 'Crew'}
 
 NUM = {'a': 1, 'an': 1, 'one': 1, 'two': 2, 'three': 3, 'four': 4, 'five': 5, 'six': 6, 'seven': 7}
 ZHN = {1: '一', 2: '二', 3: '三', 4: '四', 5: '五', 6: '六', 7: '七', 8: '八', 9: '九', 10: '十'}
@@ -266,7 +266,7 @@ def sentence(s, ctx):
     SELF = 'SELF'
 
     # 抓牌
-    m = re.match(r'^(?:you )?draw (a|one|two|three|four) cards?$', low)
+    m = re.match(r'^(?:you )?draw (a|one|two|three|four|\d+) cards?$', low)
     if m:
         n = num(m.group(1))
         return [{'e': 'draw', 'n': n}], f'抓{zhn(n, True)}張牌'
@@ -368,7 +368,7 @@ def sentence(s, ctx):
             ref, z = tgt(ctx, wl)
         return [{'e': 'pump', 'what': ref, 'p': 0, 't': 0, 'kw': kw}], f'{z}獲得{kzh}異能直到回合結束'
     # 指示物
-    m = re.match(r'^put (a|an|one|two|three|four) \+1/\+1 counters? on (.+)$', s, flags=re.I)
+    m = re.match(r'^put (a|an|one|two|three|four|\d+) \+1/\+1 counters? on (.+)$', s, flags=re.I)
     if m:
         n = num(m.group(1))
         dest = m.group(2)
@@ -551,7 +551,7 @@ def sentence(s, ctx):
         z += '，將其餘的牌以隨機順序置於你的牌庫底' if rest == 'bottom' else '，將其餘的牌置入你的墳墓場'
         return [e], z
     # 衍生物
-    m = re.match(r'^[Cc]reate (a|an|one|two|three|four) (\d+)/(\d+) ((?:white|blue|black|red|green|colorless)(?:(?:,| and) (?:white|blue|black|red|green))*) ([A-Z][a-z]+(?: [A-Z][a-z]+)*) (?:artifact )?creature tokens?(?: with (.+?))?$', s)
+    m = re.match(r'^[Cc]reate (a|an|one|two|three|four|\d+) (\d+)/(\d+) ((?:white|blue|black|red|green|colorless)(?:(?:,| and) (?:white|blue|black|red|green))*) ([A-Z][a-z]+(?: [A-Z][a-z]+)*) (?:artifact )?creature tokens?(?: with (.+?))?$', s)
     if m:
         n = num(m.group(1))
         p, t = int(m.group(2)), int(m.group(3))
@@ -814,7 +814,7 @@ def parse_static(par, self_zh, d):
     if re.fullmatch(r'SELF enters tapped\.', par):
         d['etbTapped'] = True
         return f'{self_zh}橫置進戰場。'
-    m = re.fullmatch(r'SELF enters with (a|one|two|three|four) ([+-])1/[+-]1 counters? on it\.', par)
+    m = re.fullmatch(r'SELF enters with (a|one|two|three|four|\d+) ([+-])1/[+-]1 counters? on it\.', par)
     if m:
         n = num(m.group(1))
         sign = m.group(2)
@@ -922,7 +922,7 @@ def land_par(par, d, produces):
 # ------------------------------------------------------------
 # 整張卡
 # ------------------------------------------------------------
-SKIP_TYPES = ['Planeswalker', 'Battle', 'Vehicle', 'Saga', 'Class', 'Case', 'Room', 'Kindred', 'Spacecraft', 'Siege', 'Background', 'Shrine', 'Planet']
+SKIP_TYPES = ['Planeswalker', 'Battle', 'Saga', 'Class', 'Case', 'Room', 'Kindred', 'Spacecraft', 'Siege', 'Background', 'Shrine', 'Planet']
 
 
 def self_noun(types, subtypes):
@@ -934,6 +934,8 @@ def self_noun(types, subtypes):
         return '此靈氣'
     if 'Equipment' in subtypes:
         return '此武具'
+    if 'Vehicle' in subtypes:
+        return '此載具'
     if 'Enchantment' in types:
         return '此結界'
     if 'Artifact' in types:
@@ -952,6 +954,33 @@ def convert(c):
     if c['layout'] in ('transform', 'modal_dfc'):
         return convert_dfc(c)
     return convert_face(c)
+
+
+XSENT = 919
+X_AMT_KEYS = {'n', 'p', 't'}
+
+
+def x_fix(d):
+    """把暫代 X 的數字換回 {'x': True}；出現在不能用 X 的地方就整張略過"""
+    def walk(v, key=None):
+        if isinstance(v, dict):
+            return {k: walk(x, k) for k, x in v.items()}
+        if isinstance(v, list):
+            return [walk(x, key) for x in v]
+        if v == XSENT or v == -XSENT:
+            if key in X_AMT_KEYS and v > 0:
+                return {'x': True}
+            raise Unsupported('X position ' + str(key))
+        return v
+    if d.get('etbCounters') == XSENT:
+        d = dict(d)
+        d.pop('etbCounters')
+        d['etbCountersX'] = True
+    out = walk({k: v for k, v in d.items() if k != 'text'})
+    out['text'] = d.get('text', '').replace(str(XSENT), 'X')
+    if str(XSENT) in json.dumps(out, ensure_ascii=False):
+        raise Unsupported('X leftover')
+    return out
 
 
 ROMAN = ['I', 'II', 'III', 'IV', 'V', 'VI']
@@ -1145,8 +1174,14 @@ def convert_face(c, dfc=False, back=False):
         if k not in OK_KEYWORDS:
             raise Unsupported('keyword ' + k)
     cost = c.get('mana_cost') or ''
-    if re.search(r'\{[^}]*(X|P|S)[^}]*\}', cost) or not cost and 'Land' not in tl and not back:
+    if re.search(r'\{[^}]*(P|S)[^}]*\}', cost) or re.search(r'\{[^}X]*X[^}]+\}|\{[^}]+X[^}]*\}', cost) or not cost and 'Land' not in tl and not back:
         raise Unsupported('cost ' + cost)
+    has_x = '{X}' in cost
+    if has_x:
+        raw = c.get('oracle_text') or ''
+        if re.search(r'where X is|X is the|X can|X can\'t|of X\b', raw):
+            raise Unsupported('cost X defined')
+        c = dict(c, oracle_text=re.sub(r'\bX\b', str(XSENT), raw))
     left, _, right = tl.partition('—')
     words = left.split()
     supertypes = [w for w in words if w in ('Legendary',)]
@@ -1163,8 +1198,8 @@ def convert_face(c, dfc=False, back=False):
     text = text.replace(name, 'SELF')
     if short != name and 'Legendary' in supertypes:
         text = re.sub(r'\b' + re.escape(short) + r'\b', 'SELF', text)
-    text = re.sub(r'\bthis (creature|spell|enchantment|artifact|Aura|Equipment|land)\b', 'SELF', text)
-    text = re.sub(r'\bThis (creature|spell|enchantment|artifact|Aura|Equipment|land)\b', 'SELF', text)
+    text = re.sub(r'\bthis (creature|spell|enchantment|artifact|Aura|Equipment|land|Vehicle)\b', 'SELF', text)
+    text = re.sub(r'\bThis (creature|spell|enchantment|artifact|Aura|Equipment|land|Vehicle)\b', 'SELF', text)
     self_zh = self_noun(types, subtypes)
     d = {
         'set': c['set'].upper(),
@@ -1177,7 +1212,7 @@ def convert_face(c, dfc=False, back=False):
         d['supertypes'] = supertypes
     if subtypes:
         d['subtypes'] = subtypes
-    if 'Creature' in types:
+    if 'Creature' in types or 'Vehicle' in subtypes:
         if not (c.get('power') or '').isdigit() or not (c.get('toughness') or '').isdigit():
             raise Unsupported('pt')
         d['power'] = int(c['power'])
@@ -1219,6 +1254,12 @@ def convert_face(c, dfc=False, back=False):
             continue
         except Unsupported:
             pass
+        m = re.fullmatch(r'Crew (\d+)', par)
+        if m and 'Vehicle' in subtypes:
+            n = int(m.group(1))
+            abilities.append({'kind': 'activated', 'cost': {'crew': n}, 'effects': [{'e': 'animate', 'what': 'self', 'p': d['power'], 't': d['toughness']}], 'label': f'駕駛{n}'})
+            zh_lines.append(f'駕駛{n}（橫置任意數量總力量為{n}或更多的未橫置生物：此載具成為神器生物直到回合結束。）')
+            continue
         m = re.fullmatch(r'Mobilize (\d+)', par)
         if m and 'Creature' in types:
             n = int(m.group(1))
@@ -1361,9 +1402,13 @@ def convert_face(c, dfc=False, back=False):
         d['produces'] = produces
     if 'Land' in types and not produces and not abilities:
         raise Unsupported('land without mana')
+    if 'Vehicle' in subtypes and not any(a.get('cost', {}).get('crew') for a in abilities):
+        raise Unsupported('vehicle without crew')
     if not is_spell and 'Creature' not in types and 'Land' not in types and not abilities and not d.get('abilities') and 'Aura' not in subtypes and 'Equipment' not in subtypes and not produces:
         raise Unsupported('permanent without effect')
     d['text'] = '\n'.join(z for z in zh_lines if z)
+    if has_x:
+        d = x_fix(d)
     # 雙面、混色：顏色由費用推得
     return d
 

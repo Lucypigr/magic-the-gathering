@@ -129,7 +129,9 @@ export type Amt =
   /** 來源上的指示物數量 */
   | { selfCounters: true }
   /** 你本回合施放過的咒語數量 */
-  | { spellsCast: true };
+  | { spellsCast: true }
+  /** 施放時決定的 X */
+  | { x: true };
 
 export interface Grant {
   p?: number;
@@ -189,7 +191,7 @@ export type Effect =
   | { e: 'gain'; n: Amt; who?: Ref }
   | { e: 'lose'; n: Amt; who: Ref }
   /** sameName：連同所有與它同名的其他永久物一起消滅 */
-  | { e: 'destroy'; what: Ref; sameName?: boolean }
+  | { e: 'destroy'; what: Ref; sameName?: boolean; mvMaxX?: boolean }
   | { e: 'exile'; what: Ref }
   | { e: 'exileLinked'; what: Ref }
   | { e: 'bounce'; what: Ref }
@@ -314,7 +316,8 @@ export interface TriggeredAbility {
 export interface ActivatedAbility {
   kind: 'activated';
   /** loyalty：忠誠異能（+N 放置、-N 移除忠誠指示物；每個鵬洛客每回合只能起動一次，只能於法術時機） */
-  cost: { mana?: string; tap?: boolean; sacSelf?: boolean; sacOther?: Filter; life?: number; craft?: Filter; craftCount?: number; loyalty?: number };
+  /** crew：駕駛 N（橫置總力量 N 或更多的其他未橫置生物） */
+  cost: { mana?: string; tap?: boolean; sacSelf?: boolean; sacOther?: Filter; life?: number; craft?: Filter; craftCount?: number; loyalty?: number; crew?: number };
   targets?: TargetSpec[];
   effects: Effect[];
   sorcery?: boolean;
@@ -388,6 +391,8 @@ export interface CardDef {
   mdfc?: boolean;
   etbTappedUnless?: Cond;
   etbCounters?: number;
+  /** 進戰場時帶有 X 個 +1/+1 指示物（X 為施放時決定的值） */
+  etbCountersX?: boolean;
   ward?: number;
   /** 不能被力量小於等於 n 的生物阻擋 */
   evadePowLte?: number;
@@ -509,6 +514,8 @@ export interface StackItem {
   lkiPower?: number;
   /** 以冒險或返照的方式施放 */
   alt?: CastAlt;
+  /** 施放時決定的 X */
+  x?: number;
 }
 
 export interface EotEffect {
@@ -646,7 +653,7 @@ export type ChoosePurpose =
 export type PriorityAction =
   | { type: 'pass' }
   | { type: 'play'; card: number }
-  | { type: 'cast'; card: number; targets: (TargetRef | null)[]; mode?: number; sac?: number; discard?: number; alt?: CastAlt }
+  | { type: 'cast'; card: number; targets: (TargetRef | null)[]; mode?: number; sac?: number; discard?: number; alt?: CastAlt; x?: number }
   | { type: 'activate'; card: number; ability: number; targets: (TargetRef | null)[]; sac?: number };
 
 export type Response =

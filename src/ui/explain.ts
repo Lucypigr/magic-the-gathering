@@ -12,6 +12,8 @@ export interface Term {
 
 /** 機制與術語（說明頁也使用這份清單） */
 export const MECHANICS: Term[] = [
+  { term: '駕駛 N', match: ['駕駛'], desc: '橫置你的其他生物，力量加起來至少 N，載具就會變成生物直到回合結束。本遊戲會自動挑選最划算的生物來駕駛（優先用剛進場、本來就不能攻擊的生物）。' },
+  { term: 'X', match: ['X'], desc: '費用中有 {X} 的咒語：施放時由你決定 X 是多少，要多付 X 點法術力，X 越大效果越強。' },
   { term: '探險', match: ['探險'], desc: '展示你牌庫頂的牌：是地就放到手上；不是地的話，在探險的生物上放一個 +1/+1 指示物，你可以選擇把那張牌置入墳墓場或留在牌庫頂。' },
   { term: '動員 N', match: ['動員'], desc: '這個生物攻擊時，派出 N 個橫置且已經在攻擊的 1/1 紅色戰士。它們只存在到這回合的結束步驟就會被犧牲。' },
   { term: '地圖', match: ['地圖衍生物'], desc: '一種神器衍生物：支付 {1} 並橫置、犧牲它，讓你的一個生物探險。只能在你的主要階段使用。' },
@@ -269,6 +271,8 @@ export function typeNote(def: CardDef): string {
   if (t.includes('Instant')) return '瞬間：任何時候都能施放，包括對手的回合和戰鬥中，用完進入墳墓場。';
   if (t.includes('Sorcery')) return '法術：只能在你的主要階段、堆疊是空的時候施放，用完進入墳墓場。';
   if (t.includes('Enchantment')) return def.aura ? '靈氣（結界）：施放時貼在一個目標上，給它效果。' : '結界：施放後留在戰場上，持續提供效果。';
+  if (def.subtypes?.includes('Vehicle'))
+    return '載具（神器）：平常只是神器，不能攻擊或阻擋。使用「駕駛 N」橫置你其他總力量至少 N 的生物，它就會變成生物直到回合結束，可以攻擊或阻擋。剛進場的回合不能攻擊。';
   if (t.includes('Artifact')) return def.equip ? '武具（神器）：留在戰場上，支付裝備費用把它貼到你的生物上。' : '神器：施放後留在戰場上，持續提供效果或異能。';
   return '';
 }

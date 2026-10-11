@@ -2,3 +2,4 @@
 import { add } from '../../dsl';
 
 add({"set": "TMT", "rarity": "U", "name": "Casey Jones, Jury-Rig Justiciar", "cost": "{1}{R}", "types": ["Creature"], "supertypes": ["Legendary"], "subtypes": ["Human", "Berserker"], "power": 2, "toughness": 1, "keywords": ["haste"], "abilities": [{"kind": "trigger", "on": "etb", "effects": [{"e": "dig", "n": 4, "take": 1, "rest": "bottom", "filter": {"type": "Artifact"}}]}], "text": "敏捷\n當此生物進戰場時，檢視你牌庫頂的四張牌。你可以展示其中一張神器牌並置於你手上，將其餘的牌以隨機順序置於你的牌庫底。"});
+add({"set": "TMT", "rarity": "U", "name": "Turtle Blimp", "cost": "{5}", "types": ["Artifact"], "subtypes": ["Vehicle"], "power": 3, "toughness": 4, "keywords": ["flying"], "abilities": [{"kind": "trigger", "on": "etb", "effects": [{"e": "token", "token": "tok-mutant"}]}, {"kind": "activated", "cost": {"crew": 2}, "effects": [{"e": "animate", "what": "self", "p": 3, "t": 4}], "label": "駕駛2"}], "text": "飛行\n當此載具進戰場時，派出一個2/2紅色的變種人衍生生物。\n駕駛2（橫置任意數量總力量為2或更多的未橫置生物：此載具成為神器生物直到回合結束。）"});

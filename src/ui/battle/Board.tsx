@@ -74,6 +74,9 @@ export function Permanent({ g, c, marks, onCard, onHover }: { g: GameState; c: C
             {c.loyalty ?? 0}
           </div>
         )}
+        {!cr && c.def.subtypes?.includes('Vehicle') && (
+          <div className="perm-pt perm-pt-idle" title="載具：駕駛後才會成為生物">{`${c.def.power ?? 0}/${c.def.toughness ?? 0}`}</div>
+        )}
         {cr && <div className={`perm-pt ${st.p > (c.def.power ?? 0) || st.t > (c.def.toughness ?? 0) ? 'up' : st.p < (c.def.power ?? 0) || st.t < (c.def.toughness ?? 0) ? 'down' : ''}`}>{`${st.p}/${st.t}`}</div>}
         <div className="perm-badges">
           {c.counters !== 0 && <span className="b-counter">{c.counters > 0 ? `+${c.counters}` : c.counters}</span>}
