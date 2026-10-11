@@ -5,6 +5,32 @@ import { GEN_TOKENS } from './sets/gen/tokens';
 const T = (d: Omit<CardDef, 'set' | 'rarity' | 'token'>): CardDef => ({ ...d, set: 'TOK', rarity: 'T', token: true });
 
 export const TOKENS: CardDef[] = [
+  T({ id: 'tok-doombot', name: 'Doombot', zh: '末日機器人', colors: [], types: ['Artifact', 'Creature'], subtypes: ['Robot', 'Villain'], power: 3, toughness: 3, text: '' }),
+  T({ id: 'tok-treefolk-reach', name: 'Treefolk', zh: '樹妖', colors: ['G'], types: ['Creature'], subtypes: ['Treefolk'], power: 3, toughness: 4, keywords: ['reach'], text: '延勢' }),
+  T({ id: 'tok-cadet', name: 'Cadet', zh: '學員', colors: [], types: ['Creature'], subtypes: ['Wizard', 'Soldier'], power: 2, toughness: 2, text: '' }),
+  T({
+    id: 'tok-construct-x',
+    name: 'Construct',
+    zh: '構裝體',
+    colors: [],
+    types: ['Artifact', 'Creature'],
+    subtypes: ['Construct'],
+    power: 0,
+    toughness: 0,
+    abilities: [
+      { kind: 'static', self: { cond: { c: 'controls', filter: { type: 'Artifact' }, n: 1 }, grant: { p: 1, t: 1 } } },
+      { kind: 'static', self: { cond: { c: 'controls', filter: { type: 'Artifact' }, n: 2 }, grant: { p: 1, t: 1 } } },
+      { kind: 'static', self: { cond: { c: 'controls', filter: { type: 'Artifact' }, n: 3 }, grant: { p: 1, t: 1 } } },
+      { kind: 'static', self: { cond: { c: 'controls', filter: { type: 'Artifact' }, n: 4 }, grant: { p: 1, t: 1 } } },
+      { kind: 'static', self: { cond: { c: 'controls', filter: { type: 'Artifact' }, n: 5 }, grant: { p: 1, t: 1 } } },
+      { kind: 'static', self: { cond: { c: 'controls', filter: { type: 'Artifact' }, n: 6 }, grant: { p: 1, t: 1 } } },
+      { kind: 'static', self: { cond: { c: 'controls', filter: { type: 'Artifact' }, n: 7 }, grant: { p: 1, t: 1 } } },
+      { kind: 'static', self: { cond: { c: 'controls', filter: { type: 'Artifact' }, n: 8 }, grant: { p: 1, t: 1 } } },
+      { kind: 'static', self: { cond: { c: 'controls', filter: { type: 'Artifact' }, n: 9 }, grant: { p: 1, t: 1 } } },
+      { kind: 'static', self: { cond: { c: 'controls', filter: { type: 'Artifact' }, n: 10 }, grant: { p: 1, t: 1 } } },
+    ],
+    text: '你每操控一個神器，此衍生物便得+1/+1（最多計算到十個）。',
+  }),
   T({ id: 'tok-spider-reach', name: 'Spider', zh: '蜘蛛', colors: ['G'], types: ['Creature'], subtypes: ['Spider'], power: 2, toughness: 1, keywords: ['reach'], text: '延勢' }),
   T({
     id: 'tok-treasure',

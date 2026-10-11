@@ -43,7 +43,7 @@ export function Home({ profile, go, update }: { profile: Profile; go: (s: Screen
           <p className="eyebrow">天梯配對 · 開包 · 自由組牌 · 標準賽</p>
           <h2 className="hero-title">挑戰環境套牌</h2>
           <p className="hero-sub">
-            用入門套牌出發，贏下對戰賺取金幣，買補充包擴充收藏，組出屬於你的套牌。標準模式收錄 18 個現行標準賽系列，AI 會使用 2026 年 9 月標準賽的熱門套路。
+            用入門套牌出發，贏下對戰賺取金幣，買補充包擴充收藏，組出屬於你的套牌。標準模式收錄 19 個現行標準賽系列，AI 會使用 2026 年 9 月標準賽的熱門套路。
           </p>
           {tutDone === 0 && wins + losses === 0 && (
             <div className="newbie-callout">

@@ -250,6 +250,10 @@ function* runEffect(g: GameState, ctx: Ctx, ef: Effect): SubFlow {
     }
     case 'destroy': {
       const r = resolveRef(g, ctx, ef.what);
+      if (ef.sameName) {
+        const names = new Set(r.cards.filter((c) => c.zone === 'battlefield').map((c) => c.def.name));
+        for (const id of g.battlefield) if (names.has(g.cards[id].def.name) && !r.cards.includes(g.cards[id])) r.cards.push(g.cards[id]);
+      }
       destroyCards(g, r.cards);
       break;
     }
@@ -469,11 +473,17 @@ function* runEffect(g: GameState, ctx: Ctx, ef: Effect): SubFlow {
       break;
     }
     case 'dig': {
-      const top = g.players[me].library.slice(0, ef.n);
+      const top = g.players[me].library.slice(0, amount(g, ctx, ef.n));
       const opts = top.filter((id) => matches(g, ef.filter, g.cards[id], me));
       const take = ef.take ?? 1;
-      const picked = yield* choose(g, me, `選擇 ${take} 張牌置於手上`, opts, Math.min(take, opts.length), take, 'dig', true);
-      for (const id of picked) moveCard(g, g.cards[id], 'hand');
+      const toBf = ef.to === 'battlefield';
+      const picked = yield* choose(g, me, toBf ? `選擇至多 ${take} 張牌放進戰場` : `選擇 ${take} 張牌置於手上`, opts, toBf ? 0 : Math.min(take, opts.length), take, 'dig', true);
+      for (const id of picked) {
+        if (toBf) {
+          log(g, `將 ${cardName(g.cards[id])} 放進戰場`, me);
+          enterBattlefield(g, g.cards[id], me);
+        } else moveCard(g, g.cards[id], 'hand');
+      }
       for (const id of top) {
         if (picked.includes(id)) continue;
         moveCard(g, g.cards[id], ef.rest === 'bottom' ? 'library' : 'graveyard', true);

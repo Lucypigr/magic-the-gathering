@@ -14,7 +14,7 @@ import os
 import re
 import sys
 
-SETS = ['WOE', 'LCI', 'MKM', 'OTJ', 'BLB', 'DSK', 'FDN', 'DFT', 'TDM', 'FIN', 'EOE', 'SPM', 'TLA', 'ECL', 'TMT', 'SOS', 'MSH', 'HOB']
+SETS = ['WOE', 'LCI', 'MKM', 'OTJ', 'BLB', 'DSK', 'FDN', 'DFT', 'TDM', 'FIN', 'EOE', 'SPM', 'TLA', 'ECL', 'TMT', 'SOS', 'MSH', 'HOB', 'FRA']
 RARITY = {'common': 'C', 'uncommon': 'U', 'rare': 'R', 'mythic': 'M'}
 OUT = os.path.join(os.path.dirname(__file__), '..', 'src', 'data', 'sets', 'gen')
 
