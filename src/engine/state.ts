@@ -147,7 +147,7 @@ export function cloneGame(g: GameState): GameState {
   const cards: Record<number, Card> = {};
   for (const k in g.cards) {
     const c = g.cards[k];
-    cards[k] = { ...c, blockedBy: c.blockedBy.slice(), usedThisTurn: c.usedThisTurn.slice() };
+    cards[k] = { ...c, blockedBy: c.blockedBy.slice(), usedThisTurn: c.usedThisTurn.slice(), exhausted: c.exhausted?.slice() };
   }
   const cp = (p: Player): Player => ({
     ...p,
@@ -400,6 +400,10 @@ export function checkCond(
       return me.spellsThisTurn >= cond.n;
     case 'secondSpell':
       return me.spellsThisTurn === 2;
+    case 'saddled':
+      return sourceId != null && g.cards[sourceId]?.saddledTurn === g.turn;
+    case 'maxSpeed':
+      return (me.speed ?? 0) >= 4;
     case 'morbid':
       return !!g.creatureDiedThisTurn;
     case 'delirium': {

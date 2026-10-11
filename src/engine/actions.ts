@@ -27,6 +27,7 @@ import type {
   TargetSpec,
 } from './types';
 import { discard, emit, enterBattlefield, loseLife, moveCard, removeFromZone, sacrifice } from './zones';
+import { faceDownDef, turnFaceUp } from './facedown';
 
 // ------------------------------------------------------------
 // 法術力
@@ -116,6 +117,12 @@ export function castDef(def: CardDef, alt?: CastAlt): CardDef {
     };
   } else if (alt === 'back' && def.back) {
     d = def.back;
+  } else if (alt === 'disguise' && def.disguise) {
+    d = faceDownDef(def, true);
+  } else if (alt === 'plot' && def.plot) {
+    d = { ...def, cost: def.plot, types: ['Sorcery'], spell: { effects: [] }, addCost: undefined, costReduce: undefined };
+  } else if (alt === 'plotted') {
+    d = def;
   } else if (alt === 'cycle' && def.cycling) {
     // 循環是起動式異能：任何時候都能起動，不是施放咒語
     d = { ...def, cost: def.cycling.cost, types: ['Instant'], spell: { effects: cycleEffects(def) }, addCost: undefined, costReduce: undefined };
@@ -135,8 +142,11 @@ export function castAlts(g: GameState, pid: PID, c: Card): (CastAlt | undefined)
   const def = c.def;
   if (c.zone === 'hand' && c.owner === pid) {
     const base: (CastAlt | undefined)[] = def.adventure ? [undefined, 'adventure'] : def.mdfc && def.back ? [undefined, 'back'] : [undefined];
+    if (def.disguise) base.push('disguise');
+    if (def.plot) base.push('plot');
     return def.cycling ? [...base, 'cycle'] : base;
   }
+  if (c.zone === 'exile' && c.owner === pid && c.plottedTurn !== undefined && c.plottedTurn < g.turn) return ['plotted'];
   if (c.zone === 'exile' && c.owner === pid && c.onAdventure) return [undefined];
   if (c.zone === 'exile' && c.playableTurn === g.turn && c.playableBy === pid) return def.adventure ? [undefined, 'adventure'] : [undefined];
   if (c.zone === 'graveyard' && c.owner === pid && def.flashback) return ['flashback'];
@@ -149,7 +159,17 @@ export function modeCount(def: CardDef): number {
 
 export function spellCost(g: GameState, c: Card, pid: PID, mode?: number, targets?: (TargetRef | null)[], alt?: CastAlt, x = 0): ManaCost {
   const def = castDef(c.def, alt);
-  if (alt === 'cycle') return parseCost(def.cost);
+  if (alt === 'cycle' || alt === 'plot') return parseCost(def.cost);
+  if (alt === 'disguise') {
+    const cost = parseCost('{3}');
+    if (targets) cost.generic += wardTax(g, pid, targets);
+    return cost;
+  }
+  if (alt === 'plotted') {
+    const cost = parseCost('');
+    if (targets) cost.generic += wardTax(g, pid, targets);
+    return cost;
+  }
   let cost = parseCost(def.spell?.modes?.[mode ?? 0]?.cost ?? def.cost);
   if (cost.x) cost.generic += Math.max(0, x) * cost.x;
   const cr = def.costReduce;
@@ -286,7 +306,8 @@ const LOYALTY_USED = 2000;
 
 export function canActivate(g: GameState, pid: PID, c: Card, idx: number): boolean {
   const ab = activatedAbilities(c.def)[idx];
-  if (!ab || c.zone !== 'battlefield' || c.controller !== pid) return false;
+  if (!ab) return false;
+  if (ab.fromGraveyard ? c.zone !== 'graveyard' || c.owner !== pid : c.zone !== 'battlefield' || c.controller !== pid) return false;
   if (ab.sorcery && !sorceryTiming(g, pid)) return false;
   if (ab.oncePerTurn && c.usedThisTurn.includes(1000 + idx)) return false;
   if (ab.oncePerGame && c.exhausted?.includes(idx)) return false;
@@ -359,6 +380,10 @@ export function castableCards(g: GameState, pid: PID): Card[] {
     const c = g.cards[id];
     if (c.def.flashback) out.push(c);
   }
+  for (const id of p.exile) {
+    const c = g.cards[id];
+    if (c.plottedTurn !== undefined && c.plottedTurn < g.turn) out.push(c);
+  }
   return out;
 }
 
@@ -371,6 +396,7 @@ export function castOptionsFor(g: GameState, pid: PID, c: Card): PlayOption[] {
   if (isLand(c)) {
     if (c.zone !== 'graveyard' && canPlayLand(g, pid)) out.push({ kind: 'play', card: c.id, specs: [], label: `打出 ${displayName(c.def)}` });
     if (c.def.cycling && c.zone === 'hand' && c.owner === pid) out.push(...castOptionsAs(g, pid, c, 'cycle'));
+    if (c.def.plot && c.zone === 'hand' && c.owner === pid) out.push(...castOptionsAs(g, pid, c, 'plot'));
     return out;
   }
   for (const alt of castAlts(g, pid, c)) out.push(...castOptionsAs(g, pid, c, alt));
@@ -385,6 +411,11 @@ function castOptionsAs(g: GameState, pid: PID, c: Card, alt: CastAlt | undefined
     const search = c.def.cycling?.search;
     return [{ kind: 'cast', card: c.id, specs: [], alt, effects: cycleEffects(c.def), label: `${search ? '尋地循環' : '循環'} ${def.cost}` }];
   }
+  if (alt === 'plot') {
+    if (!sorceryTiming(g, pid) || !canPayCost(g, pid, parseCost(def.cost))) return out;
+    return [{ kind: 'cast', card: c.id, specs: [], alt, effects: [], label: `預謀 ${def.cost}` }];
+  }
+  if (alt === 'plotted' && !sorceryTiming(g, pid)) return out;
   if (!instantSpeed(def) && !sorceryTiming(g, pid)) return out;
   if (def.addCost?.life && g.players[pid].life < def.addCost.life) return out;
   if (def.addCost?.sac && sacCandidates(g, pid, def.addCost.sac).length === 0) return out;
@@ -405,7 +436,7 @@ function castOptionsAs(g: GameState, pid: PID, c: Card, alt: CastAlt | undefined
       sacFilter: def.addCost?.sac,
       alt,
       effects: spellEffects(def, mode),
-      maxX: maxXFor(g, pid, c, mode, alt),
+      maxX: alt === 'plotted' || alt === 'disguise' ? undefined : maxXFor(g, pid, c, mode, alt),
       label:
         alt === 'adventure'
           ? `冒險：${name}`
@@ -413,6 +444,10 @@ function castOptionsAs(g: GameState, pid: PID, c: Card, alt: CastAlt | undefined
             ? `返照：${name}`
             : alt === 'back'
               ? `施放背面：${def.name}`
+            : alt === 'disguise'
+              ? `偽裝：面朝下施放 {3}`
+            : alt === 'plotted'
+              ? `免費施放（預謀）${def.spell?.modes ? `：${def.spell.modes[m].text}` : ''}`
             : def.spell?.modes
               ? def.spell.modes[m].text
               : `施放 ${name}`,
@@ -424,9 +459,10 @@ function castOptionsAs(g: GameState, pid: PID, c: Card, alt: CastAlt | undefined
 export function playOptions(g: GameState, pid: PID): PlayOption[] {
   const out: PlayOption[] = [];
   for (const c of castableCards(g, pid)) out.push(...castOptionsFor(g, pid, c));
-  for (const id of g.battlefield) {
+  const gyAbility = g.players[pid].graveyard.filter((id) => activatedAbilities(g.cards[id].def).some((a) => a.fromGraveyard));
+  for (const id of [...g.battlefield, ...gyAbility]) {
     const c = g.cards[id];
-    if (c.controller !== pid) continue;
+    if (c.zone === 'battlefield' ? c.controller !== pid : c.owner !== pid) continue;
     const abs = activatedAbilities(c.def);
     for (let i = 0; i < abs.length; i++) {
       if (!canActivate(g, pid, c, i)) continue;
@@ -493,13 +529,25 @@ function doCycle(g: GameState, pid: PID, c: Card): string | null {
   return null;
 }
 
+function doPlot(g: GameState, pid: PID, c: Card): string | null {
+  if (!c.def.plot || c.zone !== 'hand' || c.owner !== pid) return '無法預謀這張牌';
+  if (!sorceryTiming(g, pid)) return '只能在你的主要階段且堆疊為空時預謀';
+  const cost = parseCost(c.def.plot);
+  if (!payCost(g, pid, cost)) return `法術力不足（需要 ${costToString(cost)}）`;
+  moveCard(g, c, 'exile');
+  c.plottedTurn = g.turn;
+  log(g, `預謀 ${cardName(c)}（之後的回合可以免費施放）`, pid, 'cast');
+  return null;
+}
+
 function doCast(g: GameState, pid: PID, a: Extract<PriorityAction, { type: 'cast' }>): string | null {
   const c = g.cards[a.card];
   const alt = a.alt;
   if (c && alt === 'cycle') return doCycle(g, pid, c);
+  if (c && alt === 'plot') return doPlot(g, pid, c);
   if (!c || isLand(c) || !inCastableZone(g, pid, c, alt)) return '無法施放這張牌';
   const def = castDef(c.def, alt);
-  if (!instantSpeed(def) && !sorceryTiming(g, pid)) return '只能在你的主要階段且堆疊為空時施放';
+  if ((alt === 'plotted' || !instantSpeed(def)) && !sorceryTiming(g, pid)) return '只能在你的主要階段且堆疊為空時施放';
   const mode = def.spell?.modes ? Math.max(0, Math.min(def.spell.modes.length - 1, a.mode ?? 0)) : undefined;
   const specs = castTargetSpecs(def, mode);
   const targets = specs.map((_, i) => a.targets?.[i] ?? null);
@@ -535,6 +583,11 @@ function doCast(g: GameState, pid: PID, a: Extract<PriorityAction, { type: 'cast
   if (discardCard) discard(g, discardCard);
   removeFromZone(g, c);
   c.onAdventure = false;
+  c.plottedTurn = undefined;
+  if (alt === 'disguise') {
+    c.hidden = c.def;
+    c.def = def;
+  }
   c.zone = 'stack';
   c.controller = pid;
   c.playableTurn = undefined;
@@ -586,7 +639,12 @@ function doActivate(g: GameState, pid: PID, a: Extract<PriorityAction, { type: '
   }
   cost.generic += wardTax(g, pid, targets);
   if (!payCost(g, pid, cost, ab.cost.tap ? c.id : undefined)) return '法術力不足';
-  const lki = stats(g, c).p;
+  if (ab.special) {
+    // 翻成正面：特殊動作，立即生效
+    turnFaceUp(g, c);
+    return null;
+  }
+  const lki = c.zone === 'battlefield' ? stats(g, c).p : 0;
   const wl = wardLifeTax(g, pid, targets);
   if (wl) {
     log(g, `守護：支付${wl}點生命`, pid, 'life');
@@ -598,7 +656,7 @@ function doActivate(g: GameState, pid: PID, a: Extract<PriorityAction, { type: '
     g.players[pid].lifeLostThisTurn += ab.cost.life;
   }
   if (ab.oncePerTurn) c.usedThisTurn.push(1000 + a.ability);
-  if (ab.oncePerGame) (c.exhausted ??= []).push(a.ability);
+  if (ab.oncePerGame) c.exhausted = [...(c.exhausted ?? []), a.ability];
   if (ab.cost.loyalty !== undefined) {
     c.loyalty = (c.loyalty ?? 0) + ab.cost.loyalty;
     c.usedThisTurn.push(LOYALTY_USED);
@@ -606,7 +664,8 @@ function doActivate(g: GameState, pid: PID, a: Extract<PriorityAction, { type: '
   if (ab.cost.crew !== undefined) {
     const crew = crewChoice(g, pid, c, ab.cost.crew) ?? [];
     for (const id of crew) g.cards[id].tapped = true;
-    log(g, `${crew.map((id) => cardName(g.cards[id])).join('、')} 駕駛 ${cardName(c)}`, pid);
+    const saddle = ab.effects.some((e) => e.e === 'saddle');
+    log(g, `${crew.map((id) => cardName(g.cards[id])).join('、')} ${saddle ? '騎乘' : '駕駛'} ${cardName(c)}`, pid);
   }
   g.stack.push({
     sid: g.nextSid++,
@@ -623,6 +682,7 @@ function doActivate(g: GameState, pid: PID, a: Extract<PriorityAction, { type: '
   log(g, `起動 ${cardName(c)}：${ab.label}${describeTargets(g, targets)}`, pid, 'cast');
   if (sacCard) sacrifice(g, sacCard);
   if (ab.cost.sacSelf) sacrifice(g, c);
+  if (ab.fromGraveyard && c.zone === 'graveyard') moveCard(g, c, 'exile');
   if (ab.cost.craft) {
     for (const m of craftMaterials(g, pid, ab.cost.craft, c.id, ab.cost.craftCount) ?? []) {
       log(g, `工藝：放逐 ${cardName(g.cards[m])}`, pid);

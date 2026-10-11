@@ -176,6 +176,7 @@ export const SUB_ZH: Record<string, string> = {
   Survivor: '倖存者',
   Symbiote: '共生體',
   Thopter: '機械鳥',
+  Servo: '機僕',
   Thrull: '鞭屍怪',
   Town: '城鎮',
   Toy: '玩具',

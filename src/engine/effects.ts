@@ -29,6 +29,7 @@ import {
   enterBattlefieldBack,
   transformCard,
 } from './zones';
+import { putFaceDown } from './facedown';
 
 export interface Ctx {
   controller: PID;
@@ -438,6 +439,31 @@ function* runEffect(g: GameState, ctx: Ctx, ef: Effect): SubFlow {
       log(g, `大地彎折 ${n}`, me);
       break;
     }
+    case 'manifestDread': {
+      const top = g.players[me].library.slice(0, 2);
+      if (!top.length) break;
+      const [pick] = yield* choose(g, me, '顯化恐懼：選擇要面朝下放進戰場的牌（另一張置入墳墓場）', top, 1, 1, 'dig', false);
+      const c = g.cards[pick ?? top[0]];
+      putFaceDown(g, c, me, false);
+      ctx.created = c.id;
+      log(g, '顯化恐懼：一張牌面朝下進入戰場', me);
+      for (const id of top) if (id !== c.id) moveCard(g, g.cards[id], 'graveyard');
+      break;
+    }
+    case 'cloak': {
+      const id = g.players[me].library[0];
+      if (id == null) break;
+      putFaceDown(g, g.cards[id], me, true);
+      ctx.created = id;
+      log(g, '斗篷：牌庫頂的牌面朝下進入戰場', me);
+      break;
+    }
+    case 'saddle':
+      if (src && src.zone === 'battlefield') {
+        src.saddledTurn = g.turn;
+        g.version++;
+      }
+      break;
     case 'endure': {
       const n = amount(g, ctx, ef.n);
       if (src && src.zone === 'battlefield') {
@@ -446,7 +472,7 @@ function* runEffect(g: GameState, ctx: Ctx, ef: Effect): SubFlow {
       } else {
         const t = createToken(g, 'tok-spirit-endure', me);
         t.counters = n;
-        log(g, `堅忍 ${n}：派出 ${n}/${n} 精靈`, me);
+        log(g, `堅忍 ${n}：派出 ${n}/${n} 精怪`, me);
       }
       g.version++;
       break;

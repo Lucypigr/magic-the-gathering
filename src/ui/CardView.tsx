@@ -36,7 +36,7 @@ export function glyphFor(def: CardDef): string {
 export function useCardImage(def: CardDef, special = false) {
   useImageVersion();
   const enabled = useContext(ImagesEnabled);
-  if (!enabled || def.token) return null;
+  if (!enabled || def.token || def.faceDown) return null;
   const name = def.imageName ?? def.name;
   return special ? specialImageFor(name) : imageFor(name);
 }
@@ -74,7 +74,7 @@ export function CardFace({ def, size = 'md', pt, showText, className = '', onCli
   const ptCls = pt ? (pt.p > (def.power ?? 0) || pt.t > (def.toughness ?? 0) ? 'up' : pt.p < (def.power ?? 0) || pt.t < (def.toughness ?? 0) ? 'down' : '') : '';
   return (
     <div
-      className={`card card-${size} ${frameClass(def)} ${special ? 'card-special' : ''} ${className}`}
+      className={`card card-${size} ${frameClass(def)} ${def.faceDown ? 'card-facedown' : ''} ${special ? 'card-special' : ''} ${className}`}
       onClick={onClick}
       onDoubleClick={onDoubleClick}
       onMouseEnter={onMouseEnter}

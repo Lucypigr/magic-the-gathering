@@ -93,6 +93,8 @@ function triggerMatches(g: GameState, c: Card, ab: TriggeredAbility, ev: GameEve
     }
     case 'drawSecond':
       return ev.type === 'drawSecond' && ev.player === pov;
+    case 'turnedFaceUp':
+      return ev.type === 'turnedFaceUp' && ev.card === c.id;
   }
 }
 
@@ -183,6 +185,13 @@ export function moveCard(g: GameState, c: Card, to: Zone, bottom = false): void 
   c.controller = c.owner;
   c.playableTurn = undefined;
   c.onAdventure = false;
+  // 面朝下的牌離開戰場後亮出真正的牌
+  if (c.hidden) {
+    c.def = c.hidden;
+    c.hidden = undefined;
+  }
+  c.plottedTurn = undefined;
+  c.saddledTurn = undefined;
   // 雙面牌離開戰場後回到正面
   if (c.front) {
     c.def = c.front;
@@ -239,6 +248,10 @@ export function enterBattlefield(g: GameState, c: Card, controller: PID, tapped 
   if (c.def.types.includes('Planeswalker')) c.loyalty = c.def.loyalty ?? 0;
   c.playableTurn = undefined;
   g.version++;
+  if (c.def.startEngines && !g.players[controller].speed) {
+    g.players[controller].speed = 1;
+    log(g, '發動引擎！速度變為 1', controller);
+  }
   if (!c.def.types.includes('Land')) g.players[controller].nonlandEtbThisTurn = (g.players[controller].nonlandEtbThisTurn ?? 0) + 1;
   emit(g, { type: 'etb', card: c.id, controller });
   if (c.def.saga) addLore(g, c, 1);
@@ -360,6 +373,13 @@ export function loseLife(g: GameState, pid: PID, n: number): void {
   p.life -= n;
   p.lifeLostThisTurn += n;
   g.version++;
+  // 速度：你的回合中對手失去生命時，每回合提升一次（最高 4）
+  const act = g.players[g.active];
+  if (pid !== g.active && act.speed && act.speed < 4 && act.speedUpTurn !== g.turn) {
+    act.speed++;
+    act.speedUpTurn = g.turn;
+    log(g, act.speed >= 4 ? '速度達到最高（4）！' : `速度提升為 ${act.speed}`, g.active);
+  }
   emit(g, { type: 'lifeloss', player: pid, amount: n });
 }
 

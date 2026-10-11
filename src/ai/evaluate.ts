@@ -90,6 +90,9 @@ export function evaluate(g: GameState, me: PID, opts: EvalOpts = {}): number {
   const landVal = (n: number) => Math.min(n, 6) * 1.1 + Math.max(0, n - 6) * 0.25;
   s += landVal(lands[me]) - landVal(lands[opp]);
   s += Math.min(pm.hand.length, 8) * 1.1 - Math.min(po.hand.length, 8) * 1.1;
+  // 預謀的牌：之後可以免費施放，價值比手牌高一點
+  const plotted = (pid: PID) => g.players[pid].exile.filter((id) => g.cards[id].plottedTurn !== undefined).length;
+  s += (plotted(me) - plotted(opp)) * 1.6;
   if (pm.library.length === 0) s -= 30;
   if (po.library.length === 0) s += 30;
   if (pm.cantGainLife) s -= 1;

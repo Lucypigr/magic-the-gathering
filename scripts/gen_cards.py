@@ -49,7 +49,7 @@ KW = {
 # Scryfall keywords 欄位中可以接受的（其餘機制一律略過整張卡）
 OK_KEYWORDS = {k.title() for k in KW} | {'First strike', 'Double strike', 'Ward', 'Scry', 'Surveil', 'Mill', 'Fight', 'Landfall', 'Enchant', 'Equip', 'Treasure', 'Investigate', 'Food', 'Clue', 'Earthbend', 'Flashback', 'Role token', 'Craft', 'Transform', 'Empower Jace', 'Explore', 'Map', 'Mobilize', 'Crew',
                'Cycling', 'Basic landcycling', 'Plainscycling', 'Islandcycling', 'Swampcycling', 'Mountaincycling', 'Forestcycling', 'Landcycling',
-               'Typecycling', 'Affinity', 'Connive', 'Endure', 'Kicker', 'Gift', 'Spree', 'Exhaust', 'Changeling', 'Raid', 'Threshold', 'Delirium', 'Morbid', 'Celebration', 'Descend'}
+               'Disguise', 'Manifest', 'Manifest dread', 'Cloak', 'Plot', 'Saddle', 'Max speed', 'Start your engines!', 'Typecycling', 'Affinity', 'Connive', 'Endure', 'Kicker', 'Gift', 'Spree', 'Exhaust', 'Changeling', 'Raid', 'Threshold', 'Delirium', 'Morbid', 'Celebration', 'Descend'}
 
 NUM = {'a': 1, 'an': 1, 'one': 1, 'two': 2, 'three': 3, 'four': 4, 'five': 5, 'six': 6, 'seven': 7, 'eight': 8}
 ZHN = {1: '一', 2: '二', 3: '三', 4: '四', 5: '五', 6: '六', 7: '七', 8: '八', 9: '九', 10: '十'}
@@ -238,6 +238,8 @@ def tgt(ctx, s):
         return ctx.target(m.group(1))
     if s in ('it', 'that creature', 'that permanent') and ctx.last:
         return ctx.last, ctx.last_zh
+    if s == 'it' and ctx.card_kind == 'permanent' and not ctx.targets:
+        return 'self', ctx.self_zh
     raise Unsupported('ref ' + s)
 
 
@@ -390,7 +392,7 @@ def sentence(s, ctx):
         p, t = pt(ptxt)
         kw, kzh = kw_list(kws) if kws else ([], '')
         wl = who.lower()
-        if who == SELF:
+        if who == SELF or (wl == 'it' and ctx.card_kind == 'permanent' and not ctx.targets):
             ref, z = 'self', ctx.self_zh
         elif wl == 'creatures you control':
             ref, z = {'all': {'type': 'Creature', 'ctrl': 'you'}}, '由你操控的生物'
@@ -462,6 +464,19 @@ def sentence(s, ctx):
         else:
             ref, z = tgt(ctx, m.group(1).lower())
         return [{'e': 'pump', 'what': ref, 'p': 0, 't': 0, 'kw': ['unblockable']}], f'{z}本回合不能被阻擋'
+    MD = '顯化恐懼（檢視你牌庫頂的兩張牌，將其中一張面朝下放進戰場成為2/2生物，另一張置入你的墳墓場。若它是生物牌，可以隨時支付其法術力費用將它翻成正面。）'
+    CL = '斗篷（面朝下放進戰場，成為具有守護{2}的2/2生物。若它是生物牌，可以隨時支付其法術力費用將它翻成正面。）'
+    if low == 'manifest dread':
+        return [{'e': 'manifestDread'}], MD
+    if s in ('manifest dread, then attach SELF to that creature',) and ctx.self_zh == '此武具':
+        return [{'e': 'manifestDread'}, {'e': 'attach', 'what': 'created'}], MD + '，然後將此武具貼附在該生物上'
+    if low == 'cloak the top card of your library':
+        return [{'e': 'cloak'}], '將你牌庫頂的牌' + CL
+    if s == 'cloak the top card of your library, then attach SELF to it' and ctx.self_zh == '此武具':
+        return [{'e': 'cloak'}, {'e': 'attach', 'what': 'created'}], '將你牌庫頂的牌' + CL + '，然後將此武具貼附在它上面'
+    m = re.match(r'^untap (?:it|SELF)$', s)
+    if m and ctx.card_kind == 'permanent' and not ctx.targets:
+        return [{'e': 'untap', 'what': 'self'}], f'重置{ctx.self_zh}'
     m = re.match(r'^(SELF|target creature you control|target creature) connives$', s, flags=re.I)
     if m:
         if m.group(1) == SELF:
@@ -472,7 +487,7 @@ def sentence(s, ctx):
     m = re.match(r'^(?:SELF|it) endures (\d+)$', s)
     if m and ctx.card_kind == 'permanent':
         n = int(m.group(1))
-        return [{'e': 'endure', 'n': n}], f'{ctx.self_zh}堅忍{n}（在它上面放置{n}個+1/+1指示物；若它不在戰場上，改為派出一個{n}/{n}白色精靈衍生生物）'
+        return [{'e': 'endure', 'n': n}], f'{ctx.self_zh}堅忍{n}（在它上面放置{n}個+1/+1指示物；若它不在戰場上，改為派出一個{n}/{n}白色精怪衍生生物）'
     m = re.match(r'^attach (?:it|SELF) to (target creature you control|up to one target creature you control)$', s)
     if m and ctx.self_zh == '此武具':
         ref, z = tgt(ctx, m.group(1))
@@ -786,6 +801,9 @@ TRIGGERS = [
     (r'^Whenever another creature dies, (.+)$', 'otherDies', '每當另一個生物死去時，'),
     (r'^Whenever an opponent casts a noncreature spell, (.+)$', 'castNoncreature!', '每當對手施放非生物咒語時，'),
     (r'^Whenever SELF enters or attacks, (.+)$', 'etb+attacks', '每當{self}進戰場或攻擊時，'),
+    (r'^When SELF is turned face up, (.+)$', 'turnedFaceUp', '當{self}翻成正面時，'),
+    (r'^When SELF enters or is turned face up, (.+)$', 'etb+turnedFaceUp', '當{self}進戰場或翻成正面時，'),
+    (r'^Whenever SELF attacks while saddled, (.+)$', 'attacks@saddled', '每當{self}在已騎乘時攻擊，'),
 ]
 
 
@@ -817,6 +835,11 @@ def parse_trigger(par, self_zh):
                 flags['includeSelf'] = True
             if o.endswith('!'):
                 raise Unsupported('opp cast')
+            if '@' in o:
+                o, cname = o.split('@')
+                if cond:
+                    raise Unsupported('two conds')
+                cond = ({'c': cname}, '')
             a = {'kind': 'trigger', 'on': o, 'effects': effs, **flags}
             if cond:
                 a['cond'] = cond[0]
@@ -825,7 +848,7 @@ def parse_trigger(par, self_zh):
             if may:
                 a['may'] = zh.rstrip('。') + '？'
             abil.append(a)
-        return abil, prefix + (f'若{cond[1]}，' if cond else '') + ('你可以' if may else '') + zh
+        return abil, prefix + (f'若{cond[1]}，' if cond and cond[1] else '') + ('你可以' if may else '') + zh
     return None
 
 
@@ -855,6 +878,9 @@ def parse_cost(c, self_zh, is_creature):
             f, z = SAC_OTHER[part]
             cost['sacOther'] = f
             zparts.append(z)
+        elif part == 'Exile this card from your graveyard':
+            cost['fromGy'] = True
+            zparts.append('從你的墳墓場放逐此牌')
         elif re.fullmatch(r'Pay (\d+) life', part):
             cost['life'] = int(re.fullmatch(r'Pay (\d+) life', part).group(1))
             zparts.append(f"支付{cost['life']}點生命")
@@ -886,7 +912,12 @@ def parse_activated(par, self_zh, is_creature):
         return ('mana', ['W', 'U', 'B', 'R', 'G']), f'{zcost}：加一點任意顏色的法術力。'
     ctx = Ctx('permanent', self_zh)
     effs, zh = effects_of(body, ctx)
+    gy = cost.pop('fromGy', False)
     a = {'kind': 'activated', 'cost': cost, 'effects': effs, 'label': zh.rstrip('。')[:18]}
+    if gy:
+        if cost.get('tap') or cost.get('sacSelf'):
+            raise Unsupported('gy cost')
+        a['fromGraveyard'] = True
     if ctx.targets:
         a['targets'] = ctx.targets
     if sorcery:
@@ -1432,6 +1463,62 @@ def convert_face(c, dfc=False, back=False):
             abilities.append(a)
             zh_lines.append(f'竭力—{r[1]}（每場遊戲只能起動一次。）')
             continue
+        m = re.fullmatch(r'Disguise ((?:\{[0-9WUBRGC]\})+)', par)
+        if m and 'Creature' in types:
+            d['disguise'] = m.group(1)
+            zh_lines.append(f'偽裝{m.group(1)}（你可以支付{{3}}將此牌面朝下施放，成為具有守護{{2}}的2/2生物。之後可以隨時支付偽裝費用將它翻成正面。）')
+            continue
+        m = re.fullmatch(r'Plot ((?:\{[0-9WUBRGC]\})+)', par)
+        if m:
+            d['plot'] = m.group(1)
+            zh_lines.append(f'預謀{m.group(1)}（你可以支付{m.group(1)}並從手上放逐此牌。在之後的回合中，你可以於法術時機施放它且不需支付其法術力費用。只能於法術時機預謀。）')
+            continue
+        m = re.fullmatch(r'Saddle (\d+)', par)
+        if m and 'Creature' in types:
+            n = int(m.group(1))
+            abilities.append({'kind': 'activated', 'cost': {'crew': n}, 'effects': [{'e': 'saddle'}], 'sorcery': True, 'label': f'騎乘{n}'})
+            zh_lines.append(f'騎乘{n}（橫置任意數量總力量為{n}或更多的其他未橫置生物：此坐騎本回合成為已騎乘。只能於法術時機騎乘。）')
+            continue
+        if par == 'Start your engines!':
+            d['startEngines'] = True
+            zh_lines.append('發動引擎！（若你沒有速度，速度變為1。你的回合中有對手失去生命時，速度每回合提升1，最高為4。）')
+            continue
+        m = re.fullmatch(r'Max speed — (.+)', par)
+        if m:
+            rest = m.group(1)
+            cond = {'c': 'maxSpeed'}
+            r = parse_trigger(rest, self_zh)
+            if r:
+                for a in r[0]:
+                    if a.get('cond'):
+                        raise Unsupported('two conds')
+                    a['cond'] = cond
+                abilities += r[0]
+                zh_lines.append('最高速度—' + r[1])
+                continue
+            r = parse_activated(rest, self_zh, 'Creature' in types)
+            if r and r[0][0] == 'ability':
+                r[0][1]['cond'] = cond
+                abilities.append(r[0][1])
+                zh_lines.append('最高速度—' + r[1])
+                continue
+            ms = re.fullmatch(r'SELF (?:gets ([+-]\d+/[+-]\d+)(?: and has (.+?))?|has (.+?))\.', rest)
+            if ms:
+                grant = {}
+                z = ''
+                if ms.group(1):
+                    p, t = pt(ms.group(1))
+                    grant.update(p=p, t=t)
+                    z = f'得{fmt_pt(p, t)}'
+                mkw = ms.group(2) or ms.group(3)
+                if mkw:
+                    kw, kzh = kw_list(mkw)
+                    grant['kw'] = kw
+                    z += ('且' if z else '') + f'具有{kzh}異能'
+                abilities.append({'kind': 'static', 'self': {'cond': cond, 'grant': grant}})
+                zh_lines.append(f'最高速度—{self_zh}{z}。')
+                continue
+            raise Unsupported('max speed ' + rest)
         m = re.fullmatch(r'Affinity for (artifacts|enchantments|creatures|lands)', par)
         if m:
             t = m.group(1)[:-1].capitalize()

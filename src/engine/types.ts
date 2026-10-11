@@ -180,7 +180,11 @@ export type Cond =
   /** 慶典：本回合有兩個或更多非地永久物在你的操控下進戰場 */
   | { c: 'celebration' }
   /** 下潛：本回合有永久物牌置入你的墳墓場 */
-  | { c: 'descended' };
+  | { c: 'descended' }
+  /** 此坐騎本回合已騎乘 */
+  | { c: 'saddled' }
+  /** 你的速度已達最高（4） */
+  | { c: 'maxSpeed' };
 
 export interface ExtraCost {
   mana?: string;
@@ -233,6 +237,12 @@ export type Effect =
   | { e: 'earthbend'; n: Amt }
   /** 堅忍 n：在此永久物上放置 n 個 +1/+1 指示物；它不在戰場上時改為派出一個 0/0 白色精靈並放上 n 個指示物 */
   | { e: 'endure'; n: Amt }
+  /** 顯化恐懼：檢視牌庫頂兩張，一張面朝下放進戰場成為 2/2 生物，另一張置入墳墓場 */
+  | { e: 'manifestDread' }
+  /** 斗篷：將牌庫頂的牌面朝下放進戰場，成為具有守護{2}的 2/2 生物 */
+  | { e: 'cloak' }
+  /** 騎乘：此坐騎本回合成為已騎乘 */
+  | { e: 'saddle' }
   | { e: 'mill'; n: Amt; who?: Ref }
   | { e: 'scry'; n: number }
   | { e: 'surveil'; n: number }
@@ -301,7 +311,9 @@ export type TriggerOn =
   /** 每當你在由你操控的生物上放置 +1/+1 指示物時 */
   | 'allyCounters'
   /** 每當由你操控的生物成為對手的咒語或異能的目標時 */
-  | 'allyTargeted';
+  | 'allyTargeted'
+  /** 當此生物翻成正面時 */
+  | 'turnedFaceUp';
 
 export interface TriggeredAbility {
   kind: 'trigger';
@@ -334,6 +346,10 @@ export interface ActivatedAbility {
   oncePerTurn?: boolean;
   /** 竭力：每場遊戲只能起動一次 */
   oncePerGame?: boolean;
+  /** 特殊動作：不使用堆疊，立即生效（例如把面朝下的生物翻成正面） */
+  special?: boolean;
+  /** 從墳墓場起動，代價包含放逐此牌 */
+  fromGraveyard?: boolean;
   cond?: Cond;
   /** 按鈕上顯示的簡短描述 */
   label: string;
@@ -414,6 +430,14 @@ export interface CardDef {
   changeling?: boolean;
   /** 此咒語不能被反擊 */
   uncounterable?: boolean;
+  /** 偽裝：可以支付 {3} 面朝下施放，之後支付此費用翻成正面 */
+  disguise?: string;
+  /** 預謀：可以支付此費用從手上放逐此牌，之後的回合免費施放 */
+  plot?: string;
+  /** 發動引擎！：你沒有速度時，速度變為 1 */
+  startEngines?: boolean;
+  /** 面朝下的 2/2 生物（真正的牌記在 Card.hidden） */
+  faceDown?: boolean;
   /** 不能被力量小於等於 n 的生物阻擋 */
   evadePowLte?: number;
   spell?: SpellSpec;
@@ -486,6 +510,12 @@ export interface Card {
   lore?: number;
   /** 在下一個結束步驟開始時犧牲（動員派出的衍生物） */
   sacAtEnd?: boolean;
+  /** 面朝下時，真正的牌 */
+  hidden?: CardDef;
+  /** 預謀的回合 */
+  plottedTurn?: number;
+  /** 騎乘的回合 */
+  saddledTurn?: number;
   /** 已起動過的竭力異能 */
   exhausted?: number[];
   /** 攻擊中的生物所攻擊的鵬洛客（沒有就是攻擊玩家） */
@@ -511,6 +541,10 @@ export interface Player {
   nonlandEtbThisTurn?: number;
   /** 本回合有永久物牌置入你的墳墓場 */
   permToGyThisTurn?: boolean;
+  /** 速度（發動引擎！），0～4 */
+  speed?: number;
+  /** 上一次提升速度的回合 */
+  speedUpTurn?: number;
   drewFromEmpty: boolean;
   lost: boolean;
   cantGainLife: boolean;
@@ -522,7 +556,8 @@ export type TargetRef = { p: PID } | { c: number };
 
 /** 特殊的施放方式 */
 /** cycle：循環（從手上支付費用並棄掉此牌） */
-export type CastAlt = 'adventure' | 'flashback' | 'back' | 'cycle';
+/** disguise：面朝下施放；plot：預謀（付費放逐）；plotted：免費施放預謀的牌 */
+export type CastAlt = 'adventure' | 'flashback' | 'back' | 'cycle' | 'disguise' | 'plot' | 'plotted';
 
 export interface StackItem {
   sid: number;
@@ -583,6 +618,7 @@ export type GameEvent =
   | { type: 'targeted'; card: number; by: PID; spell: boolean }
   | { type: 'sacrifice'; card: number; player: PID }
   | { type: 'drawSecond'; player: PID }
+  | { type: 'turnedFaceUp'; card: number }
   | { type: 'counterPlaced'; card: number; controller: PID; amount: number };
 
 export interface PendingTrigger {

@@ -237,6 +237,11 @@ export function Avatar({
         <span className="hero-name">
           {p.name}
           {sub}
+          {!!p.speed && (
+            <span className={`hero-speed ${p.speed >= 4 ? 'max' : ''}`} title="速度（發動引擎！）：你的回合中對手失去生命時每回合提升 1，最高 4">
+              速度 {p.speed}
+            </span>
+          )}
         </span>
         <span className="hero-mana" title="目前可用的法術力來源">
           {mana.map((m) => (

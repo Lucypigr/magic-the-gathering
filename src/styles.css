@@ -4312,3 +4312,20 @@ button {
     animation: none;
   }
 }
+
+/* 面朝下的生物、速度 */
+.card-facedown .art {
+  background: repeating-linear-gradient(45deg, #2a2f3a 0 6px, #232833 6px 12px);
+}
+.hero-speed {
+  margin-left: 6px;
+  padding: 0 6px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 700;
+  color: #1a1408;
+  background: var(--brass-hi);
+}
+.hero-speed.max {
+  background: linear-gradient(90deg, #ff9f68, #ffd86b);
+}

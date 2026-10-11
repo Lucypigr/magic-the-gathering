@@ -1,6 +1,7 @@
 // 由 scripts/gen_cards.py 從 Scryfall 資料自動產生（SPM）：請勿手動修改
 import { add } from '../../dsl';
 
+add({"set": "SPM", "rarity": "C", "name": "Beetle, Legacy Criminal", "cost": "{3}{U}", "types": ["Creature"], "supertypes": ["Legendary"], "subtypes": ["Human", "Rogue", "Villain"], "power": 3, "toughness": 3, "keywords": ["flying"], "abilities": [{"kind": "activated", "cost": {"mana": "{1}{U}"}, "effects": [{"e": "counters", "what": "T0", "n": 1}, {"e": "pump", "what": "T0", "p": 0, "t": 0, "kw": ["flying"]}], "label": "在目標生物上放置一個+1/+1指示物", "fromGraveyard": true, "targets": [{"kind": "creature"}], "sorcery": true}], "text": "飛行\n{1}{U}，從你的墳墓場放逐此牌：在目標生物上放置一個+1/+1指示物。該生物獲得飛行異能直到回合結束。只能於法術時機起動。"});
 add({"set": "SPM", "rarity": "C", "name": "Mysterio's Phantasm", "cost": "{1}{U}", "types": ["Creature"], "subtypes": ["Illusion", "Villain"], "power": 1, "toughness": 3, "keywords": ["flying", "vigilance"], "abilities": [{"kind": "trigger", "on": "attacks", "effects": [{"e": "mill", "n": 1}]}], "text": "飛行，警戒\n每當此生物攻擊時，磨一張牌。"});
 add({"set": "SPM", "rarity": "C", "name": "Common Crook", "cost": "{1}{B}", "types": ["Creature"], "subtypes": ["Human", "Rogue", "Villain"], "power": 2, "toughness": 2, "abilities": [{"kind": "trigger", "on": "dies", "effects": [{"e": "token", "token": "tok-treasure"}]}], "text": "當此生物死去時，派出一個珍寶衍生物。"});
 add({"set": "SPM", "rarity": "C", "name": "Risky Research", "cost": "{2}{B}", "types": ["Sorcery"], "spell": {"effects": [{"e": "surveil", "n": 2}, {"e": "draw", "n": 2}, {"e": "lose", "n": 2, "who": "you"}]}, "text": "刺探2，然後抓兩張牌。你失去2點生命。"});
