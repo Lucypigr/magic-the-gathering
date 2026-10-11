@@ -6,7 +6,7 @@
 export type PID = 0 | 1;
 export type Color = 'W' | 'U' | 'B' | 'R' | 'G';
 export type Mana = Color | 'C';
-export type CardType = 'Creature' | 'Instant' | 'Sorcery' | 'Enchantment' | 'Artifact' | 'Land';
+export type CardType = 'Creature' | 'Instant' | 'Sorcery' | 'Enchantment' | 'Artifact' | 'Land' | 'Planeswalker';
 export type Rarity = 'C' | 'U' | 'R' | 'M' | 'L' | 'T'; // L = 基本地, T = 衍生物
 /** 標準賽系列（依發售順序） */
 export const STANDARD_SETS = [
@@ -239,6 +239,10 @@ export type Effect =
   | { e: 'exileGy'; what: Ref }
   | { e: 'landFromHand' }
   | { e: 'cantGainLife'; who: Ref }
+  /** 在鵬洛客上放置（或移除）忠誠指示物 */
+  | { e: 'loyalty'; what: Ref; n: Amt }
+  /** 強化傑斯 n：在你的傑斯衍生物上放置 n 個忠誠指示物（沒有就先派出一個） */
+  | { e: 'empowerJace'; n: Amt }
   /** 直到回合結束，永久物（通常是地）成為生物 */
   /** 轉化（翻到另一面） */
   | { e: 'transform'; what: Ref }
@@ -252,6 +256,8 @@ export type TriggerOn =
   | 'attacks'
   | 'blocks'
   | 'upkeep'
+  /** 在每位對手的維持開始時 */
+  | 'oppUpkeep'
   | 'endStep'
   | 'combatStart'
   | 'castNoncreature'
@@ -302,7 +308,8 @@ export interface TriggeredAbility {
 
 export interface ActivatedAbility {
   kind: 'activated';
-  cost: { mana?: string; tap?: boolean; sacSelf?: boolean; sacOther?: Filter; life?: number; craft?: Filter; craftCount?: number };
+  /** loyalty：忠誠異能（+N 放置、-N 移除忠誠指示物；每個鵬洛客每回合只能起動一次，只能於法術時機） */
+  cost: { mana?: string; tap?: boolean; sacSelf?: boolean; sacOther?: Filter; life?: number; craft?: Filter; craftCount?: number; loyalty?: number };
   targets?: TargetSpec[];
   effects: Effect[];
   sorcery?: boolean;
@@ -391,6 +398,8 @@ export interface CardDef {
   shock?: boolean;
   /** 起手時可直接放進戰場 */
   leyline?: boolean;
+  /** 鵬洛客的起始忠誠 */
+  loyalty?: number;
   /** 中文規則敘述 */
   text: string;
   /** 衍生物不會出現在補充包 */
@@ -437,6 +446,10 @@ export interface Card {
   usedThisTurn: number[];
   /** 最近一次在戰場上的狀態（用於死去時的最後已知資訊） */
   lastPower?: number;
+  /** 鵬洛客目前的忠誠 */
+  loyalty?: number;
+  /** 攻擊中的生物所攻擊的鵬洛客（沒有就是攻擊玩家） */
+  attackTarget?: number | null;
 }
 
 export interface Player {
@@ -626,7 +639,8 @@ export type PriorityAction =
 export type Response =
   | PriorityAction
   | { type: 'keep'; keep: boolean }
-  | { type: 'attackers'; ids: number[] }
+  /** targets：攻擊者 → 被攻擊的鵬洛客（沒列出的攻擊玩家） */
+  | { type: 'attackers'; ids: number[]; targets?: Record<number, number> }
   | { type: 'blockers'; blocks: [number, number][] }
   | { type: 'targets'; targets: (TargetRef | null)[] }
   | { type: 'choose'; ids: number[] }

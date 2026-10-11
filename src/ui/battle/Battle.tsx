@@ -9,7 +9,7 @@ import {
   spellCost,
   type PlayOption,
 } from '../../engine/actions';
-import { attackCandidates, blockCandidates, canBlock } from '../../engine/combat';
+import { attackablePlaneswalkers, attackCandidates, blockCandidates, canBlock } from '../../engine/combat';
 import { MatchController } from '../../engine/controller';
 import { costToString, manaValue } from '../../engine/mana';
 import { cardName, isCreature, stats } from '../../engine/state';
@@ -94,6 +94,9 @@ export function Battle(props: Props) {
   const [, force] = useReducer((x: number) => x + 1, 0);
   const [draft, setDraft] = useState<Draft | null>(null);
   const [attackSel, setAttackSel] = useState<Set<number>>(new Set());
+  /** 攻擊者 → 改攻擊的對手鵬洛客 */
+  const [attackTo, setAttackTo] = useState<Map<number, number>>(new Map());
+  const [lastAtk, setLastAtk] = useState<number | null>(null);
   const [blocks, setBlocks] = useState<Map<number, number>>(new Map());
   const [blockSel, setBlockSel] = useState<number | null>(null);
   const [focus, setFocus] = useState<number | null>(null);
@@ -245,6 +248,8 @@ export function Battle(props: Props) {
     if (d === lastDecision.current) return;
     lastDecision.current = d;
     setAttackSel(new Set());
+    setAttackTo(new Map());
+    setLastAtk(null);
     setBlocks(new Map());
     setBlockSel(null);
     setSeq((n) => n + 1);
@@ -373,6 +378,7 @@ export function Battle(props: Props) {
   const legalCards = new Set(legal.filter((t): t is { c: number } => 'c' in t).map((t) => t.c));
   const legalPlayers = new Set(legal.filter((t): t is { p: PID } => 'p' in t).map((t) => t.p));
   const sacs = new Set(sacNow(draft));
+  const oppPws = new Set(g && d?.type === 'attackers' ? attackablePlaneswalkers(g, 0).map((c) => c.id) : []);
   const attackable = useMemo(() => new Set(g && d?.type === 'attackers' ? attackCandidates(g, 0).map((c) => c.id) : []), [g, d]);
   const myBlockers = useMemo(() => new Set(g && d?.type === 'blockers' ? blockCandidates(g, 0).map((c) => c.id) : []), [g, d]);
 
@@ -387,12 +393,27 @@ export function Battle(props: Props) {
       return;
     }
     if (!draft && d?.type === 'attackers' && attackable.has(id)) {
+      const on = !attackSel.has(id);
       setAttackSel((s) => {
         const n = new Set(s);
-        if (n.has(id)) n.delete(id);
-        else n.add(id);
+        if (on) n.add(id);
+        else n.delete(id);
         return n;
       });
+      setLastAtk(on ? id : null);
+      if (!on) {
+        const m = new Map(attackTo);
+        m.delete(id);
+        setAttackTo(m);
+      }
+      return;
+    }
+    // 宣告攻擊時點對手的鵬洛客：讓最後選的攻擊者改攻擊它（再點一次改回攻擊玩家）
+    if (!draft && d?.type === 'attackers' && oppPws.has(id) && lastAtk != null && attackSel.has(lastAtk)) {
+      const m = new Map(attackTo);
+      if (m.get(lastAtk) === id) m.delete(lastAtk);
+      else m.set(lastAtk, id);
+      setAttackTo(m);
       return;
     }
     if (!draft && d?.type === 'blockers') {
@@ -457,6 +478,8 @@ export function Battle(props: Props) {
   if (!draft && d?.type === 'attackers') {
     attackable.forEach((id) => marks.selectable.add(id));
     attackSel.forEach((id) => marks.selected.add(id));
+    if (lastAtk != null && attackSel.has(lastAtk)) oppPws.forEach((id) => marks.selectable.add(id));
+    attackTo.forEach((pw, a) => attackSel.has(a) && g.cards[pw] && marks.labels.set(a, `→ ${cardName(g.cards[pw])}`));
   }
   if (!draft && d?.type === 'blockers') {
     myBlockers.forEach((id) => marks.selectable.add(id));
@@ -506,10 +529,14 @@ export function Battle(props: Props) {
       main = { label: '繼續', onClick: pass, tone: 'calm' };
     }
   } else if (d.type === 'attackers') {
-    status = '選擇攻擊者';
+    status = oppPws.size && attackSel.size ? '選擇攻擊者 · 點對手的鵬洛客可以改攻擊它' : '選擇攻擊者';
     main =
       attackSel.size > 0
-        ? { label: `攻擊 ×${attackSel.size}`, onClick: () => ctl.submit({ type: 'attackers', ids: [...attackSel] }), tone: 'go' }
+        ? {
+            label: `攻擊 ×${attackSel.size}`,
+            onClick: () => ctl.submit({ type: 'attackers', ids: [...attackSel], targets: Object.fromEntries([...attackTo].filter(([a]) => attackSel.has(a))) }),
+            tone: 'go',
+          }
         : { label: '不攻擊', onClick: () => ctl.submit({ type: 'attackers', ids: [] }), tone: 'calm' };
     if (attackSel.size < attackable.size) minor.push({ label: '全部攻擊', onClick: () => setAttackSel(new Set(attackable)) });
     else if (attackSel.size > 0) minor.push({ label: '清除', onClick: () => setAttackSel(new Set()) });
@@ -736,8 +763,9 @@ export function Battle(props: Props) {
               </button>
             )}
             <CardZoom def={inspected.def} />
-            {(liveStats || inspected.tapped || inspected.controller === 1) && inspected.zone === 'battlefield' && (
+            {(liveStats || inspected.tapped || inspected.controller === 1 || inspected.loyalty != null) && inspected.zone === 'battlefield' && (
               <div className="peek-chips">
+                {inspected.loyalty != null && <span className="chip chip-loyal">忠誠 {inspected.loyalty}</span>}
                 {liveStats && (
                   <span className="chip">
                     {liveStats.p}/{liveStats.t}
@@ -752,7 +780,7 @@ export function Battle(props: Props) {
               <div className="actions">
                 {actions.map((o, i) => (
                   <button key={i} className="btn btn-primary btn-block" onClick={() => startOption(o)}>
-                    {o.kind === 'play' ? '打出' : o.kind === 'activate' ? `起動：${o.label}` : o.alt || inspected.def.spell?.modes ? o.label : inspected.def.adventure ? `施放本體` : '施放'}
+                    {o.kind === 'play' ? '打出' : o.kind === 'activate' ? (/^[+−0]/.test(o.label ?? '') ? o.label : `起動：${o.label}`) : o.alt || inspected.def.spell?.modes ? o.label : inspected.def.adventure ? `施放本體` : '施放'}
                     {o.kind === 'cast' && <ManaCost cost={costToString(spellCost(g, inspected, 0, o.mode, undefined, o.alt))} size={15} />}
                     {o.kind === 'activate' && activatedAbilities(inspected.def)[o.ability!].cost.mana && (
                       <ManaCost cost={activatedAbilities(inspected.def)[o.ability!].cost.mana} size={15} />

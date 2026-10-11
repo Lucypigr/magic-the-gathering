@@ -223,11 +223,19 @@ function sacCandidates(g: GameState, pid: PID, f: Filter, sourceId?: number): Ca
     .filter((c) => c.controller === pid && matches(g, f, c, pid, sourceId));
 }
 
+/** usedThisTurn 中代表「本回合已起動過忠誠異能」的記號 */
+const LOYALTY_USED = 2000;
+
 export function canActivate(g: GameState, pid: PID, c: Card, idx: number): boolean {
   const ab = activatedAbilities(c.def)[idx];
   if (!ab || c.zone !== 'battlefield' || c.controller !== pid) return false;
   if (ab.sorcery && !sorceryTiming(g, pid)) return false;
   if (ab.oncePerTurn && c.usedThisTurn.includes(1000 + idx)) return false;
+  if (ab.cost.loyalty !== undefined) {
+    // 忠誠異能：法術時機、每回合一次、忠誠要夠扣
+    if (!sorceryTiming(g, pid) || c.usedThisTurn.includes(LOYALTY_USED)) return false;
+    if (ab.cost.loyalty < 0 && (c.loyalty ?? 0) < -ab.cost.loyalty) return false;
+  }
   if (ab.cond && !checkCond(g, ab.cond, pid, c.id, [])) return false;
   if (ab.cost.tap) {
     if (c.tapped) return false;
@@ -478,6 +486,10 @@ function doActivate(g: GameState, pid: PID, a: Extract<PriorityAction, { type: '
     g.players[pid].lifeLostThisTurn += ab.cost.life;
   }
   if (ab.oncePerTurn) c.usedThisTurn.push(1000 + a.ability);
+  if (ab.cost.loyalty !== undefined) {
+    c.loyalty = (c.loyalty ?? 0) + ab.cost.loyalty;
+    c.usedThisTurn.push(LOYALTY_USED);
+  }
   g.stack.push({
     sid: g.nextSid++,
     kind: 'activated',

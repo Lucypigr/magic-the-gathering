@@ -38,19 +38,28 @@ export function blockCandidates(g: GameState, pid: PID): Card[] {
   return creaturesOf(g, pid).filter((b) => atk.some((a) => canBlock(g, b, a)));
 }
 
-export function declareAttackers(g: GameState, pid: PID, ids: number[]): Card[] {
+/** 可以被攻擊的鵬洛客（防守玩家操控的） */
+export function attackablePlaneswalkers(g: GameState, attacker: PID): Card[] {
+  return g.battlefield.map((id) => g.cards[id]).filter((c) => c.controller !== attacker && c.def.types.includes('Planeswalker') && !isCreature(c));
+}
+
+export function declareAttackers(g: GameState, pid: PID, ids: number[], targets?: Record<number, number>): Card[] {
   const uniq = [...new Set(ids)];
   const list = uniq.map((id) => g.cards[id]).filter((c) => c && c.controller === pid && canAttack(g, c));
+  const pws = new Set(attackablePlaneswalkers(g, pid).map((c) => c.id));
   for (const c of list) {
     c.attacking = true;
+    const t = targets?.[c.id];
+    c.attackTarget = t != null && pws.has(t) ? t : null;
     if (!stats(g, c).kw.has('vigilance')) c.tapped = true;
   }
   if (list.length) {
     g.attackedThisTurn = true;
-    log(g, `攻擊：${list.map(cardName).join('、')}`, pid, 'combat');
+    const desc = (c: Card) => (c.attackTarget != null ? `${cardName(c)}（→ ${cardName(g.cards[c.attackTarget])}）` : cardName(c));
+    log(g, `攻擊：${list.map(desc).join('、')}`, pid, 'combat');
     for (const c of list) emit(g, { type: 'attacks', card: c.id });
     emit(g, { type: 'youAttack', player: pid, attackers: list.map((c) => c.id) });
-    show(g, { kind: 'attack', player: pid, pairs: list.map((c) => [c.id, -1] as [number, number]) });
+    show(g, { kind: 'attack', player: pid, pairs: list.map((c) => [c.id, c.attackTarget ?? -1] as [number, number]) });
   }
   g.version++;
   return list;
@@ -145,13 +154,23 @@ export function combatDamage(g: GameState, step: DamageStep): void {
     if (!dealsIn(g, a, step)) continue;
     const p = stats(g, a).p;
     if (p <= 0) continue;
+    // 攻擊鵬洛客：傷害給該鵬洛客；它已經離開戰場的話不造成傷害
+    const pw = a.attackTarget != null ? g.cards[a.attackTarget] : null;
+    const pwGone = a.attackTarget != null && (!pw || pw.zone !== 'battlefield');
+    const toDefender = (n: number) => {
+      if (pw && !pwGone) hits.push({ src: a, card: pw, n });
+      else if (!pwGone) hits.push({ src: a, player: other(a.controller), n });
+    };
     const blockers = a.blockedBy.map((id) => g.cards[id]).filter((b) => b && b.zone === 'battlefield');
     if (!a.wasBlocked) {
-      hits.push({ src: a, player: other(a.controller), n: p });
+      toDefender(p);
     } else if (blockers.length === 0) {
-      if (stats(g, a).kw.has('trample')) hits.push({ src: a, player: other(a.controller), n: p });
+      if (stats(g, a).kw.has('trample')) toDefender(p);
     } else {
-      for (const h of assignAttackerDamage(g, a, blockers, p)) hits.push({ src: a, ...h });
+      for (const h of assignAttackerDamage(g, a, blockers, p)) {
+        if (h.player !== undefined) toDefender(h.n);
+        else hits.push({ src: a, ...h });
+      }
     }
   }
   for (const id of g.battlefield) {
@@ -173,6 +192,7 @@ export function endCombat(g: GameState): void {
   for (const id of g.battlefield) {
     const c = g.cards[id];
     c.attacking = false;
+    c.attackTarget = undefined;
     c.blocking = null;
     c.blockedBy = [];
     c.wasBlocked = false;

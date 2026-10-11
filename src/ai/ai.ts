@@ -10,7 +10,7 @@ import {
   spellEffects,
   type PlayOption,
 } from '../engine/actions';
-import { attackCandidates, combatDamage, declareAttackers, declareBlockers, endCombat, hasFirstStrikers } from '../engine/combat';
+import { attackablePlaneswalkers, attackCandidates, combatDamage, declareAttackers, declareBlockers, endCombat, hasFirstStrikers } from '../engine/combat';
 import { manaValue, parseCost } from '../engine/mana';
 import { cloneGame, isCreature, isLand, other } from '../engine/state';
 import { legalTargets, validateTargets } from '../engine/targets';
@@ -85,8 +85,10 @@ export class AIPlayer {
         return { type: 'keep', keep: keepHand(g, this.pid, d.mulligans, this.level) };
       case 'priority':
         return this.priority(g);
-      case 'attackers':
-        return { type: 'attackers', ids: this.attack(g) };
+      case 'attackers': {
+        const ids = this.attack(g);
+        return { type: 'attackers', ids, targets: this.attackTargets(g, ids) };
+      }
       case 'blockers':
         return { type: 'blockers', blocks: chooseBlocks(g, this.pid, this.level, () => this.rnd()) };
       case 'targets':
@@ -370,13 +372,37 @@ export class AIPlayer {
     return best.map((c) => c.id);
   }
 
-  private simAttack(g: GameState, list: Card[]): number {
+  /** 決定哪些攻擊者改去攻擊對手的鵬洛客（逐一嘗試，模擬結果比較好就改） */
+  private attackTargets(g: GameState, ids: number[]): Record<number, number> | undefined {
+    const pws = attackablePlaneswalkers(g, this.pid);
+    if (!pws.length || !ids.length) return undefined;
+    const list = ids.map((id) => g.cards[id]);
+    const targets: Record<number, number> = {};
+    if (this.level === 'easy') {
+      for (const c of list) if (this.rnd() < 0.35) targets[c.id] = pws[this.rndInt(pws.length)].id;
+      return targets;
+    }
+    let best = this.simAttack(g, list, targets);
+    for (const c of list) {
+      for (const pw of pws) {
+        const trial = { ...targets, [c.id]: pw.id };
+        const sc = this.simAttack(g, list, trial);
+        if (sc > best + 1e-6) {
+          best = sc;
+          targets[c.id] = pw.id;
+        }
+      }
+    }
+    return targets;
+  }
+
+  private simAttack(g: GameState, list: Card[], targets?: Record<number, number>): number {
     const me = this.pid;
     const opp = other(me);
     const g2 = cloneGame(g);
     return safely(
       () => {
-        declareAttackers(g2, me, list.map((c) => c.id));
+        declareAttackers(g2, me, list.map((c) => c.id), targets);
         resolveAll(g2);
         g2.phase = 'combat_blockers';
         declareBlockers(g2, opp, chooseBlocks(g2, opp, this.tune.predictBlocks));

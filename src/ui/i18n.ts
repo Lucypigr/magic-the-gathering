@@ -7,6 +7,7 @@ export const TYPE_ZH: Record<string, string> = {
   Enchantment: '結界',
   Artifact: '神器',
   Land: '地',
+  Planeswalker: '鵬洛客',
 };
 
 export const SUPER_ZH: Record<string, string> = { Basic: '基本', Legendary: '傳奇' };

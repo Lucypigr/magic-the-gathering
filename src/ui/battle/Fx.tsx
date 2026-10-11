@@ -40,7 +40,7 @@ function computeArrows(g: GameState, root: HTMLElement): Arrow[] {
   };
   for (const id of g.battlefield) {
     const c = g.cards[id];
-    if (c.attacking) add(`a${id}`, 'attack', findEl(root, { c: id }), findEl(root, { p: (1 - c.controller) as PID }));
+    if (c.attacking) add(`a${id}`, 'attack', findEl(root, { c: id }), findEl(root, c.attackTarget != null ? { c: c.attackTarget } : { p: (1 - c.controller) as PID }));
     if (c.blocking != null) add(`b${id}`, 'block', findEl(root, { c: id }), findEl(root, { c: c.blocking }));
   }
   for (const s of g.stack) {

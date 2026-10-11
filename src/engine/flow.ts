@@ -43,6 +43,11 @@ export function checkSBA(g: GameState): void {
     const dying: Card[] = [];
     for (const id of g.battlefield) {
       const c = g.cards[id];
+      // 鵬洛客：忠誠為0時置入墳墓場
+      if (c.def.types.includes('Planeswalker') && !isCreature(c) && (c.loyalty ?? 0) <= 0) {
+        dying.push(c);
+        continue;
+      }
       if (!isCreature(c)) continue;
       const st = stats(g, c);
       if (st.t <= 0) dying.push(c);
@@ -329,7 +334,7 @@ function* combatPhase(g: GameState): SubFlow {
   g.phase = 'combat_attackers';
   g.version++;
   const r: Response = yield { type: 'attackers', player: a };
-  const list = declareAttackers(g, a, r.type === 'attackers' ? r.ids : []);
+  const list = declareAttackers(g, a, r.type === 'attackers' ? r.ids : [], r.type === 'attackers' ? r.targets : undefined);
   if (!list.length) {
     g.phase = 'combat_end';
     endCombat(g);

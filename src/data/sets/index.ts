@@ -19,3 +19,4 @@ import './woe';
 import './gen';
 import './dfc';
 import './staples';
+import './planeswalkers';

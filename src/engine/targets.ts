@@ -18,10 +18,10 @@ export function legalTargets(g: GameState, spec: TargetSpec, controller: PID, so
       out.push({ p: pid });
     }
   };
-  const addPerms = (creatureOnly: boolean) => {
+  const addPerms = (creatureOnly: boolean, orPlaneswalker = false) => {
     for (const id of g.battlefield) {
       const c = g.cards[id];
-      if (creatureOnly && !isCreature(c)) continue;
+      if (creatureOnly && !isCreature(c) && !(orPlaneswalker && c.def.types.includes('Planeswalker'))) continue;
       if (spec.notSelf && id === sourceId) continue;
       if (!matches(g, f, c, controller, sourceId)) continue;
       if (!targetable(g, c, controller)) continue;
@@ -42,7 +42,8 @@ export function legalTargets(g: GameState, spec: TargetSpec, controller: PID, so
       addPerms(false);
       break;
     case 'any': {
-      addPerms(true);
+      // 任意一個目標：生物、鵬洛客或玩家
+      addPerms(true, true);
       for (const pid of [0, 1] as PID[]) out.push({ p: pid });
       break;
     }

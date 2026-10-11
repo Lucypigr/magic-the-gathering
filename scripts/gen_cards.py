@@ -47,7 +47,7 @@ KW = {
     'prowess': ('prowess', '勇行'),
 }
 # Scryfall keywords 欄位中可以接受的（其餘機制一律略過整張卡）
-OK_KEYWORDS = {k.title() for k in KW} | {'First strike', 'Double strike', 'Ward', 'Scry', 'Surveil', 'Mill', 'Fight', 'Landfall', 'Enchant', 'Equip', 'Treasure', 'Investigate', 'Food', 'Clue', 'Earthbend', 'Flashback', 'Role token', 'Craft', 'Transform'}
+OK_KEYWORDS = {k.title() for k in KW} | {'First strike', 'Double strike', 'Ward', 'Scry', 'Surveil', 'Mill', 'Fight', 'Landfall', 'Enchant', 'Equip', 'Treasure', 'Investigate', 'Food', 'Clue', 'Earthbend', 'Flashback', 'Role token', 'Craft', 'Transform', 'Empower Jace'}
 
 NUM = {'a': 1, 'an': 1, 'one': 1, 'two': 2, 'three': 3, 'four': 4, 'five': 5, 'six': 6, 'seven': 7}
 ZHN = {1: '一', 2: '二', 3: '三', 4: '四', 5: '五', 6: '六', 7: '七', 8: '八', 9: '九', 10: '十'}
@@ -433,6 +433,10 @@ def sentence(s, ctx):
     if m:
         n = int(m.group(1))
         return [{'e': 'surveil', 'n': n}], f'刺探{n}'
+    m = re.match(r'^empower jace (\d+)$', low)
+    if m:
+        n = int(m.group(1))
+        return [{'e': 'empowerJace', 'n': n}], f'強化傑斯{n}（在你的傑斯衍生物上放置{n}個忠誠指示物；沒有的話先派出一個具有「−1：刺探1」「−3：抓一張牌」的藍色傑斯鵬洛客衍生物）'
     m = re.match(r'^mill (a|one|two|three|four|five) cards?$', low)
     if m:
         n = num(m.group(1))
