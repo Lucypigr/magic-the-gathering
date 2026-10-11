@@ -4,6 +4,9 @@ on:
   push:
     branches: [main]
   workflow_dispatch:
+  # 每天更新一次抄牌組的熱門牌組
+  schedule:
+    - cron: '17 3 * * *'
 
 permissions:
   contents: read
@@ -25,6 +28,8 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm test
+      - name: 更新熱門牌組（失敗時沿用倉庫內的舊資料）
+        run: node scripts/fetch-netdecks.mjs || echo "抓取失敗，沿用舊的 netdecks.json"
       - run: npm run build
       - uses: actions/upload-pages-artifact@v3
         with:

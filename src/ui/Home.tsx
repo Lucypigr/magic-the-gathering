@@ -104,6 +104,10 @@ export function Home({ profile, go, update }: { profile: Profile; go: (s: Screen
           <span className="mt-title">套牌組建</span>
           <span className="mt-sub">{profile.decks.length} 副套牌 · 自由搭配收藏中的卡</span>
         </button>
+        <button className="menu-tile" onClick={() => go({ name: 'netdecks' })}>
+          <span className="mt-title">抄牌組</span>
+          <span className="mt-sub">貼上 MTGTop8、MTGGoldfish 等網址，一鍵套用職業牌組</span>
+        </button>
         <button className="menu-tile" onClick={() => go({ name: 'shop' })}>
           <span className="mt-title">商店</span>
           <span className="mt-sub">用金幣購買補充包，隨機掉落卡牌</span>

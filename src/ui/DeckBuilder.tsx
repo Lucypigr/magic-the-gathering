@@ -204,6 +204,9 @@ export function DeckBuilder({ profile, go, update }: { profile: Profile; go: (s:
         <button className="deck-tab add" onClick={newDeck}>
           ＋ 新套牌
         </button>
+        <button className="deck-tab add" onClick={() => go({ name: 'netdecks' })} title="從抄牌網的網址或牌表文字匯入">
+          ⇩ 抄牌組匯入
+        </button>
       </div>
 
       <div className="mobile-tabs">
