@@ -24,7 +24,7 @@ import {
 } from './state';
 import { isLegalTarget, legalTargets, validateTargets } from './targets';
 import type { Card, Flow, GameState, PID, Response, SubFlow, TargetRef } from './types';
-import { discard, drawCards, emit, enterBattlefield, enterBattlefieldBack, moveCard, putIntoGraveyard } from './zones';
+import { addLore, discard, drawCards, emit, enterBattlefield, enterBattlefieldBack, moveCard, putIntoGraveyard, sacrifice } from './zones';
 
 // ------------------------------------------------------------
 // 狀態動作
@@ -74,6 +74,16 @@ export function checkSBA(g: GameState): void {
           changed = true;
         }
       }
+    }
+    // 傳奇（Saga）：最後一章結算完畢後犧牲
+    for (const id of [...g.battlefield]) {
+      const c = g.cards[id];
+      const n = c.def.saga?.chapters.length;
+      if (!n || (c.lore ?? 0) < n) continue;
+      if (g.stack.some((s) => s.cardId === c.id && s.kind === 'trigger') || g.pending.some((p) => p.source === c.id)) continue;
+      log(g, `${cardName(c)} 的最後一章結束，犧牲`, c.controller);
+      sacrifice(g, c);
+      changed = true;
     }
     // 傳奇規則：保留最新進場的那個
     for (const pid of [0, 1] as PID[]) {
@@ -192,7 +202,10 @@ export function* resolveTop(g: GameState): SubFlow {
     if (item.alt === 'adventure' || item.alt === 'flashback') {
       // 冒險：結算後放逐，之後可以施放本體；返照：結算後放逐
       yield* runEffects(g, ctx, item.effects);
-      if (src.zone === 'stack') {
+      if (src.zone === 'stack' && item.alt === 'flashback' && def.flashbackTransform && def.back) {
+        enterBattlefieldBack(g, src, item.controller);
+        log(g, `${cardName(src)} 轉化後進入戰場`, item.controller);
+      } else if (src.zone === 'stack') {
         moveCard(g, src, 'exile');
         if (item.alt === 'adventure') {
           src.onAdventure = true;
@@ -405,16 +418,24 @@ function* turn(g: GameState): SubFlow {
   g.phase = 'draw';
   if (g.turn > 1) drawCards(g, a, 1);
   yield* priorityStep(g);
-  // 主要階段一
+  // 主要階段一：傳奇在抓牌步驟後前進一章
   g.phase = 'main1';
+  for (const id of [...g.battlefield]) {
+    const c = g.cards[id];
+    if (c.controller === a && c.def.saga) addLore(g, c, 1);
+  }
   yield* priorityStep(g);
   // 戰鬥
   yield* combatPhase(g);
   // 主要階段二
   g.phase = 'main2';
   yield* priorityStep(g);
-  // 結束
+  // 結束：動員之類的暫時衍生物在結束步驟開始時犧牲
   g.phase = 'end';
+  for (const id of [...g.battlefield]) {
+    const c = g.cards[id];
+    if (c.sacAtEnd) sacrifice(g, c);
+  }
   emit(g, { type: 'step', step: 'endStep', player: a });
   yield* priorityStep(g);
   // 清除

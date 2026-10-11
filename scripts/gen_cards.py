@@ -47,7 +47,7 @@ KW = {
     'prowess': ('prowess', '勇行'),
 }
 # Scryfall keywords 欄位中可以接受的（其餘機制一律略過整張卡）
-OK_KEYWORDS = {k.title() for k in KW} | {'First strike', 'Double strike', 'Ward', 'Scry', 'Surveil', 'Mill', 'Fight', 'Landfall', 'Enchant', 'Equip', 'Treasure', 'Investigate', 'Food', 'Clue', 'Earthbend', 'Flashback', 'Role token', 'Craft', 'Transform', 'Empower Jace'}
+OK_KEYWORDS = {k.title() for k in KW} | {'First strike', 'Double strike', 'Ward', 'Scry', 'Surveil', 'Mill', 'Fight', 'Landfall', 'Enchant', 'Equip', 'Treasure', 'Investigate', 'Food', 'Clue', 'Earthbend', 'Flashback', 'Role token', 'Craft', 'Transform', 'Empower Jace', 'Explore', 'Map', 'Mobilize'}
 
 NUM = {'a': 1, 'an': 1, 'one': 1, 'two': 2, 'three': 3, 'four': 4, 'five': 5, 'six': 6, 'seven': 7}
 ZHN = {1: '一', 2: '二', 3: '三', 4: '四', 5: '五', 6: '六', 7: '七', 8: '八', 9: '九', 10: '十'}
@@ -506,8 +506,14 @@ def sentence(s, ctx):
             f['ctrl'] = 'you'
         return [{'e': 'pump', 'what': {'all': f}, 'p': p, 't': t}], f"{'由你操控的' if m.group(1) else ''}進行攻擊的生物得{fmt_pt(p, t)}直到回合結束"
     # 具名衍生物
-    NAMED = {'food': ('tok-food', '食物'), 'clue': ('tok-clue', '線索'), 'treasure': ('tok-treasure', '珍寶'), 'lander': ('tok-lander', '登陸器')}
-    m = re.match(r'^create (a|an|one|two|three) (food|clue|treasure|lander) tokens?$', low)
+    NAMED = {'food': ('tok-food', '食物'), 'clue': ('tok-clue', '線索'), 'treasure': ('tok-treasure', '珍寶'), 'lander': ('tok-lander', '登陸器'), 'map': ('tok-map', '地圖')}
+    if s == 'SELF explores':
+        return [{'e': 'explore', 'what': 'self'}], f'{ctx.self_zh}探險（展示你牌庫頂的牌；是地就放到手上，否則在它上面放一個+1/+1指示物，並可以把那張牌置入墳墓場）'
+    m = re.match(r'^(up to one )?target creature you control explores$', low)
+    if m:
+        ref, z = ctx.target('creature you control', optional=bool(m.group(1)))
+        return [{'e': 'explore', 'what': ref}], f'{z}探險（展示你牌庫頂的牌；是地就放到手上，否則在該生物上放一個+1/+1指示物，並可以把那張牌置入墳墓場）'
+    m = re.match(r'^create (a|an|one|two|three) (food|clue|treasure|lander|map) tokens?$', low)
     if m:
         n = num(m.group(1))
         tid, tz = NAMED[m.group(2)]
@@ -941,9 +947,83 @@ TYPE_ZH = {'Instant': '瞬間', 'Sorcery': '法術'}
 def convert(c):
     if c['layout'] == 'adventure':
         return convert_adventure(c)
+    if c['layout'] == 'saga':
+        return convert_saga(c)
     if c['layout'] in ('transform', 'modal_dfc'):
         return convert_dfc(c)
     return convert_face(c)
+
+
+ROMAN = ['I', 'II', 'III', 'IV', 'V', 'VI']
+ZH_CH = ['一', '二', '三', '四', '五', '六']
+
+
+def convert_saga(c):
+    """傳奇（Saga）：每一行「I, II — 效果」都要能轉成引擎效果"""
+    for k in c.get('keywords') or []:
+        if k not in OK_KEYWORDS:
+            raise Unsupported('keyword ' + k)
+    cost = c.get('mana_cost') or ''
+    if not cost or re.search(r'\{[^}]*(X|P|S)[^}]*\}', cost):
+        raise Unsupported('cost ' + cost)
+    tl = c['type_line']
+    left, _, right = tl.partition('—')
+    words = left.split()
+    if any(w not in ('Legendary', 'Enchantment', 'Creature', 'Artifact') for w in words) or 'Enchantment' not in words:
+        raise Unsupported('type ' + tl)
+    types = [w for w in words if w in ('Creature', 'Enchantment', 'Artifact')]
+    subtypes = right.split()
+    d = {'set': c['set'].upper(), 'rarity': RARITY[c['rarity']], 'name': c['name'], 'cost': cost, 'types': types, 'subtypes': subtypes}
+    if 'Legendary' in words:
+        d['supertypes'] = ['Legendary']
+    if 'Creature' in types:
+        if not (c.get('power') or '').isdigit() or not (c.get('toughness') or '').isdigit():
+            raise Unsupported('pt')
+        d['power'] = int(c['power'])
+        d['toughness'] = int(c['toughness'])
+    text = re.sub(r'\s*\([^)]*\)', '', c.get('oracle_text') or '')
+    text = text.replace(c['name'], 'SELF')
+    text = re.sub(r'\b[Tt]his (Saga|enchantment|creature)\b', 'SELF', text)
+    self_zh = '此傳奇'
+    chapters = {}
+    zh_lines = ['（此傳奇進戰場時與你的抓牌步驟後，各放上一個傳奇指示物並觸發對應的章節；最後一章結束後犧牲它。）']
+    kws = []
+    for par in [p.strip() for p in text.split('\n') if p.strip()]:
+        m = re.fullmatch(r'((?:I|II|III|IV|V|VI)(?:, (?:I|II|III|IV|V|VI))*) — (.+)', par)
+        if not m:
+            il = par.lower()
+            if il in KW:
+                kws.append(KW[il][0])
+                zh_lines.insert(0, KW[il][1])
+                continue
+            raise Unsupported('saga paragraph: ' + par)
+        nums = [ROMAN.index(x) for x in m.group(1).split(', ')]
+        ctx = Ctx('permanent', self_zh)
+        body = m.group(2)
+        # 章節名稱（例如「Mega Flare — 」）只是風味文字
+        body = re.sub(r'^[A-Z][^—.]{0,30} — ', '', body)
+        may = False
+        mm = re.match(r'^[Yy]ou may (.+)$', body)
+        if mm:
+            body = mm.group(1)[0].upper() + mm.group(1)[1:]
+            may = True
+        effs, zh = effects_of(body, ctx)
+        if may:
+            effs = [{'e': 'may', 'prompt': zh.rstrip('。') + '？', 'effects': effs}]
+            zh = '你可以' + zh
+        ch = {'effects': effs}
+        if ctx.targets:
+            ch['targets'] = ctx.targets
+        for n in nums:
+            chapters[n] = ch
+        zh_lines.append('、'.join(f'第{ZH_CH[n]}章' for n in nums) + '—' + zh)
+    if not chapters or sorted(chapters) != list(range(len(chapters))):
+        raise Unsupported('saga chapters')
+    d['saga'] = {'chapters': [chapters[i] for i in range(len(chapters))]}
+    if kws:
+        d['keywords'] = kws
+    d['text'] = '\n'.join(zh_lines)
+    return d
 
 
 CRAFT = {
@@ -1139,6 +1219,12 @@ def convert_face(c, dfc=False, back=False):
             continue
         except Unsupported:
             pass
+        m = re.fullmatch(r'Mobilize (\d+)', par)
+        if m and 'Creature' in types:
+            n = int(m.group(1))
+            abilities.append({'kind': 'trigger', 'on': 'attacks', 'effects': [{'e': 'token', 'token': 'tok-warrior-r11', 'n': n, 'tapped': True, 'attacking': True, 'temp': True}]})
+            zh_lines.append(f'動員{n}（每當此生物攻擊時，派出{zhn(n, True)}個橫置且進行攻擊的1/1紅色戰士衍生生物。在下一個結束步驟開始時犧牲它們。）')
+            continue
         if par == 'Enchant creature':
             aura_target = True
             zh_lines.append('結附於生物')

@@ -20,3 +20,4 @@ import './gen';
 import './dfc';
 import './staples';
 import './planeswalkers';
+import './sagas';

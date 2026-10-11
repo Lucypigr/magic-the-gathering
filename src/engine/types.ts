@@ -199,7 +199,12 @@ export type Effect =
   | { e: 'pump'; what: Ref; p: Amt; t: Amt; kw?: Keyword[] }
   | { e: 'counters'; what: Ref; n: Amt }
   | { e: 'doubleCounters'; what: Ref }
-  | { e: 'token'; token: string; n?: Amt; who?: Ref; tapped?: boolean; attacking?: boolean; attachTo?: Ref }
+  /** temp：在下一個結束步驟開始時犧牲（動員） */
+  | { e: 'token'; token: string; n?: Amt; who?: Ref; tapped?: boolean; attacking?: boolean; attachTo?: Ref; temp?: boolean }
+  /** 探險：展示牌庫頂；是地就放到手上，否則在該生物上放一個 +1/+1 指示物，並可以把那張牌置入墳墓場 */
+  | { e: 'explore'; what: Ref }
+  /** 閃現：放逐後立即以擁有者的操控放回戰場（可附帶 +1/+1 指示物） */
+  | { e: 'flicker'; what: Ref; counters?: number }
   /** 集結鬼怪 n：在你的軍隊上放置 n 個 +1/+1 指示物（沒有軍隊就先派出 0/0 鬼怪軍隊） */
   | { e: 'amass'; n: number }
   /** 密謀：抓一張牌，然後棄一張牌；若棄掉的不是地，在該生物上放置一個 +1/+1 指示物 */
@@ -219,7 +224,7 @@ export type Effect =
   | { e: 'mill'; n: Amt; who?: Ref }
   | { e: 'scry'; n: number }
   | { e: 'surveil'; n: number }
-  | { e: 'dig'; n: Amt; take?: number; filter?: Filter; rest: 'bottom' | 'graveyard'; to?: 'hand' | 'battlefield' }
+  | { e: 'dig'; n: Amt; take?: number; filter?: Filter; rest: 'bottom' | 'graveyard' | 'top'; to?: 'hand' | 'battlefield' }
   | { e: 'searchLand'; to: 'battlefield' | 'hand'; tapped?: boolean; untapIfLands?: number; who?: Ref; may?: boolean }
   | { e: 'counter'; what: Ref }
   | { e: 'counterUnless'; what: Ref; pay: number }
@@ -375,6 +380,8 @@ export interface CardDef {
   adventure?: { name: string; zh?: string; cost: string; types: CardType[]; text: string; spell: SpellSpec };
   /** 返照：可以支付此費用從墳墓場施放，之後放逐 */
   flashback?: string;
+  /** 以返照施放時，結算後不放逐，而是轉化成背面放進戰場 */
+  flashbackTransform?: boolean;
   /** 雙面牌的背面 */
   back?: CardDef;
   /** 可以選擇施放背面（模式雙面牌） */
@@ -400,6 +407,8 @@ export interface CardDef {
   leyline?: boolean;
   /** 鵬洛客的起始忠誠 */
   loyalty?: number;
+  /** 傳奇（Saga）：每一章的效果；進場時與你的抓牌步驟後各放一個傳奇指示物並觸發對應的章節 */
+  saga?: { chapters: { effects: Effect[]; targets?: TargetSpec[] }[] };
   /** 中文規則敘述 */
   text: string;
   /** 衍生物不會出現在補充包 */
@@ -448,6 +457,10 @@ export interface Card {
   lastPower?: number;
   /** 鵬洛客目前的忠誠 */
   loyalty?: number;
+  /** 傳奇目前的章節（傳奇指示物數量） */
+  lore?: number;
+  /** 在下一個結束步驟開始時犧牲（動員派出的衍生物） */
+  sacAtEnd?: boolean;
   /** 攻擊中的生物所攻擊的鵬洛客（沒有就是攻擊玩家） */
   attackTarget?: number | null;
 }
