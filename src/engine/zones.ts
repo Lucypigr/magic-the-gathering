@@ -159,6 +159,7 @@ function resetPermanentState(c: Card): void {
   c.attachedTo = null;
   c.usedThisTurn = [];
   c.exhausted = undefined;
+  c.prepared = undefined;
   c.loyalty = undefined;
   c.lore = undefined;
   c.sacAtEnd = undefined;
@@ -245,6 +246,7 @@ export function enterBattlefield(g: GameState, c: Card, controller: PID, tapped 
   c.sick = true;
   c.enteredTurn = g.turn;
   c.counters = c.def.etbCounters ?? 0;
+  if (c.def.etbPrepared) c.prepared = true;
   if (c.def.types.includes('Planeswalker')) c.loyalty = c.def.loyalty ?? 0;
   c.playableTurn = undefined;
   g.version++;

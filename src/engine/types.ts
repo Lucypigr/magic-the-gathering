@@ -183,6 +183,8 @@ export type Cond =
   | { c: 'descended' }
   /** 此坐騎本回合已騎乘 */
   | { c: 'saddled' }
+  /** 此生物不是已準備 */
+  | { c: 'notPrepared' }
   /** 你的速度已達最高（4） */
   | { c: 'maxSpeed' };
 
@@ -243,6 +245,8 @@ export type Effect =
   | { e: 'cloak' }
   /** 騎乘：此坐騎本回合成為已騎乘 */
   | { e: 'saddle' }
+  /** 此生物成為已準備 */
+  | { e: 'prepare' }
   | { e: 'mill'; n: Amt; who?: Ref }
   | { e: 'scry'; n: number }
   | { e: 'surveil'; n: number }
@@ -409,6 +413,10 @@ export interface CardDef {
   painMana?: boolean;
   /** 冒險：同一張牌上的另一個瞬間或法術；施放後此牌放逐，之後可以從放逐區施放本體 */
   adventure?: { name: string; zh?: string; cost: string; types: CardType[]; text: string; spell: SpellSpec };
+  /** 準備：此生物附帶的咒語；已準備時可以施放它的複製（之後取消準備） */
+  prepare?: { name: string; zh?: string; cost: string; types: CardType[]; text: string; spell: SpellSpec };
+  /** 此生物以已準備的狀態進戰場 */
+  etbPrepared?: boolean;
   /** 返照：可以支付此費用從墳墓場施放，之後放逐 */
   flashback?: string;
   /** 以返照施放時，結算後不放逐，而是轉化成背面放進戰場 */
@@ -510,6 +518,8 @@ export interface Card {
   lore?: number;
   /** 在下一個結束步驟開始時犧牲（動員派出的衍生物） */
   sacAtEnd?: boolean;
+  /** 已準備（可以施放附帶咒語的複製） */
+  prepared?: boolean;
   /** 面朝下時，真正的牌 */
   hidden?: CardDef;
   /** 預謀的回合 */
@@ -557,7 +567,8 @@ export type TargetRef = { p: PID } | { c: number };
 /** 特殊的施放方式 */
 /** cycle：循環（從手上支付費用並棄掉此牌） */
 /** disguise：面朝下施放；plot：預謀（付費放逐）；plotted：免費施放預謀的牌 */
-export type CastAlt = 'adventure' | 'flashback' | 'back' | 'cycle' | 'disguise' | 'plot' | 'plotted';
+/** prepared：施放已準備的生物附帶咒語的複製 */
+export type CastAlt = 'adventure' | 'flashback' | 'back' | 'cycle' | 'disguise' | 'plot' | 'plotted' | 'prepared';
 
 export interface StackItem {
   sid: number;

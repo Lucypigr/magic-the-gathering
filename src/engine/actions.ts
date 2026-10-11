@@ -9,6 +9,7 @@ import {
   isLand,
   log,
   matches,
+  newCard,
   show,
   stats,
 } from './state';
@@ -117,6 +118,9 @@ export function castDef(def: CardDef, alt?: CastAlt): CardDef {
     };
   } else if (alt === 'back' && def.back) {
     d = def.back;
+  } else if (alt === 'prepared' && def.prepare) {
+    const a = def.prepare;
+    d = { id: def.id, name: a.name, zh: a.zh, set: def.set, rarity: def.rarity, cost: a.cost, types: a.types, spell: a.spell, text: a.text, imageName: def.imageName };
   } else if (alt === 'disguise' && def.disguise) {
     d = faceDownDef(def, true);
   } else if (alt === 'plot' && def.plot) {
@@ -147,6 +151,7 @@ export function castAlts(g: GameState, pid: PID, c: Card): (CastAlt | undefined)
     return def.cycling ? [...base, 'cycle'] : base;
   }
   if (c.zone === 'exile' && c.owner === pid && c.plottedTurn !== undefined && c.plottedTurn < g.turn) return ['plotted'];
+  if (c.zone === 'battlefield' && c.controller === pid && c.prepared && def.prepare) return ['prepared'];
   if (c.zone === 'exile' && c.owner === pid && c.onAdventure) return [undefined];
   if (c.zone === 'exile' && c.playableTurn === g.turn && c.playableBy === pid) return def.adventure ? [undefined, 'adventure'] : [undefined];
   if (c.zone === 'graveyard' && c.owner === pid && def.flashback) return ['flashback'];
@@ -444,6 +449,8 @@ function castOptionsAs(g: GameState, pid: PID, c: Card, alt: CastAlt | undefined
             ? `返照：${name}`
             : alt === 'back'
               ? `施放背面：${def.name}`
+            : alt === 'prepared'
+              ? `施放準備的咒語：${def.zh ?? def.name}${def.spell?.modes ? `（${def.spell.modes[m].text}）` : ''}`
             : alt === 'disguise'
               ? `偽裝：面朝下施放 {3}`
             : alt === 'plotted'
@@ -463,6 +470,7 @@ export function playOptions(g: GameState, pid: PID): PlayOption[] {
   for (const id of [...g.battlefield, ...gyAbility]) {
     const c = g.cards[id];
     if (c.zone === 'battlefield' ? c.controller !== pid : c.owner !== pid) continue;
+    if (c.prepared && c.zone === 'battlefield') out.push(...castOptionsAs(g, pid, c, 'prepared'));
     const abs = activatedAbilities(c.def);
     for (let i = 0; i < abs.length; i++) {
       if (!canActivate(g, pid, c, i)) continue;
@@ -529,6 +537,23 @@ function doCycle(g: GameState, pid: PID, c: Card): string | null {
   return null;
 }
 
+/** 施放已準備生物附帶咒語的複製：複製品是一張暫時放在手上的衍生物，照一般流程施放 */
+function doCastPrepared(g: GameState, pid: PID, c: Card, a: Extract<PriorityAction, { type: 'cast' }>): string | null {
+  if (c.zone !== 'battlefield' || c.controller !== pid || !c.prepared || !c.def.prepare) return '這個生物沒有準備好';
+  const cp = newCard(g, castDef(c.def, 'prepared'), pid, true);
+  cp.zone = 'hand';
+  g.players[pid].hand.push(cp.id);
+  const err = doCast(g, pid, { ...a, card: cp.id, alt: undefined });
+  if (err) {
+    removeFromZone(g, cp);
+    delete g.cards[cp.id];
+    return err;
+  }
+  c.prepared = false;
+  g.version++;
+  return null;
+}
+
 function doPlot(g: GameState, pid: PID, c: Card): string | null {
   if (!c.def.plot || c.zone !== 'hand' || c.owner !== pid) return '無法預謀這張牌';
   if (!sorceryTiming(g, pid)) return '只能在你的主要階段且堆疊為空時預謀';
@@ -545,6 +570,7 @@ function doCast(g: GameState, pid: PID, a: Extract<PriorityAction, { type: 'cast
   const alt = a.alt;
   if (c && alt === 'cycle') return doCycle(g, pid, c);
   if (c && alt === 'plot') return doPlot(g, pid, c);
+  if (c && alt === 'prepared') return doCastPrepared(g, pid, c, a);
   if (!c || isLand(c) || !inCastableZone(g, pid, c, alt)) return '無法施放這張牌';
   const def = castDef(c.def, alt);
   if ((alt === 'plotted' || !instantSpeed(def)) && !sorceryTiming(g, pid)) return '只能在你的主要階段且堆疊為空時施放';

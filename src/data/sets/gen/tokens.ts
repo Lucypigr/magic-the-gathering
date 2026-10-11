@@ -17,5 +17,6 @@ export const GEN_TOKENS: CardDef[] = [
   {"id": "tok-g-dog-11-w", "name": "Dog", "colors": ["W"], "types": ["Creature"], "subtypes": ["Dog"], "power": 1, "toughness": 1, "text": "", "set": "TOK", "rarity": "T", "token": true},
   {"id": "tok-g-servo-11-", "name": "Servo", "colors": [], "types": ["Creature"], "subtypes": ["Servo"], "power": 1, "toughness": 1, "text": "", "set": "TOK", "rarity": "T", "token": true},
   {"id": "tok-g-elephant-33-g", "name": "Elephant", "colors": ["G"], "types": ["Creature"], "subtypes": ["Elephant"], "power": 3, "toughness": 3, "text": "", "set": "TOK", "rarity": "T", "token": true},
+  {"id": "tok-g-elf-22-bg", "name": "Elf", "colors": ["B", "G"], "types": ["Creature"], "subtypes": ["Elf"], "power": 2, "toughness": 2, "text": "", "set": "TOK", "rarity": "T", "token": true},
   {"id": "tok-g-fractal-00-gu", "name": "Fractal", "colors": ["G", "U"], "types": ["Creature"], "subtypes": ["Fractal"], "power": 0, "toughness": 0, "text": "", "set": "TOK", "rarity": "T", "token": true},
 ];

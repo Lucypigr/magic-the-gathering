@@ -458,6 +458,13 @@ function* runEffect(g: GameState, ctx: Ctx, ef: Effect): SubFlow {
       log(g, '斗篷：牌庫頂的牌面朝下進入戰場', me);
       break;
     }
+    case 'prepare':
+      if (src && src.zone === 'battlefield' && src.def.prepare) {
+        src.prepared = true;
+        log(g, `${cardName(src)} 成為已準備`, me);
+        g.version++;
+      }
+      break;
     case 'saddle':
       if (src && src.zone === 'battlefield') {
         src.saddledTurn = g.turn;

@@ -400,6 +400,8 @@ export function checkCond(
       return me.spellsThisTurn >= cond.n;
     case 'secondSpell':
       return me.spellsThisTurn === 2;
+    case 'notPrepared':
+      return sourceId != null && !g.cards[sourceId]?.prepared;
     case 'saddled':
       return sourceId != null && g.cards[sourceId]?.saddledTurn === g.turn;
     case 'maxSpeed':

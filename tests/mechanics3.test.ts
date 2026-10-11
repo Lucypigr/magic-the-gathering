@@ -154,4 +154,25 @@ describe('面朝下、預謀、騎乘、速度', () => {
     resolve(g);
     expect(g.players[0].hand.length).toBe(hand + 1);
   });
+
+  it('準備：已準備時施放附帶咒語的複製，生物留在戰場，之後不再是已準備', () => {
+    const g = mk();
+    lands(g, 5);
+    const c = inHand(g, 0, 'honorbound-page');
+    performAction(g, 0, { type: 'cast', card: c.id, targets: [] });
+    resolve(g);
+    expect(c.zone).toBe('battlefield');
+    expect(c.prepared).toBe(true);
+    const opt = playOptions(g, 0).find((o) => o.card === c.id && o.alt === 'prepared');
+    expect(opt).toBeTruthy();
+    expect(performAction(g, 0, { type: 'cast', card: c.id, targets: [{ c: c.id }], alt: 'prepared' })).toBeNull();
+    expect(c.prepared).toBe(false);
+    expect(g.stack.length).toBe(1);
+    expect(g.players[0].spellsThisTurn).toBe(2);
+    resolve(g);
+    expect(c.zone).toBe('battlefield');
+    expect(stats(g, c).p).toBe(4);
+    expect(stats(g, c).kw.has('flying')).toBe(true);
+    expect(playOptions(g, 0).some((o) => o.card === c.id && o.alt === 'prepared')).toBe(false);
+  });
 });

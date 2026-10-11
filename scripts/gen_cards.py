@@ -49,7 +49,7 @@ KW = {
 # Scryfall keywords 欄位中可以接受的（其餘機制一律略過整張卡）
 OK_KEYWORDS = {k.title() for k in KW} | {'First strike', 'Double strike', 'Ward', 'Scry', 'Surveil', 'Mill', 'Fight', 'Landfall', 'Enchant', 'Equip', 'Treasure', 'Investigate', 'Food', 'Clue', 'Earthbend', 'Flashback', 'Role token', 'Craft', 'Transform', 'Empower Jace', 'Explore', 'Map', 'Mobilize', 'Crew',
                'Cycling', 'Basic landcycling', 'Plainscycling', 'Islandcycling', 'Swampcycling', 'Mountaincycling', 'Forestcycling', 'Landcycling',
-               'Disguise', 'Manifest', 'Manifest dread', 'Cloak', 'Plot', 'Saddle', 'Max speed', 'Start your engines!', 'Typecycling', 'Affinity', 'Connive', 'Endure', 'Kicker', 'Gift', 'Spree', 'Exhaust', 'Changeling', 'Raid', 'Threshold', 'Delirium', 'Morbid', 'Celebration', 'Descend'}
+               'Prepared', 'Disguise', 'Manifest', 'Manifest dread', 'Cloak', 'Plot', 'Saddle', 'Max speed', 'Start your engines!', 'Typecycling', 'Affinity', 'Connive', 'Endure', 'Kicker', 'Gift', 'Spree', 'Exhaust', 'Changeling', 'Raid', 'Threshold', 'Delirium', 'Morbid', 'Celebration', 'Descend'}
 
 NUM = {'a': 1, 'an': 1, 'one': 1, 'two': 2, 'three': 3, 'four': 4, 'five': 5, 'six': 6, 'seven': 7, 'eight': 8}
 ZHN = {1: '一', 2: '二', 3: '三', 4: '四', 5: '五', 6: '六', 7: '七', 8: '八', 9: '九', 10: '十'}
@@ -276,6 +276,7 @@ CONDS = [
     (r'you descended this turn', lambda m: ({'c': 'descended'}, '你本回合下潛過（有永久物牌置入你的墳墓場）')),
     (r'you(?:\'ve)? gained life this turn', lambda m: ({'c': 'gainedLifeGte', 'n': 1}, '你本回合獲得過生命')),
     (r'you control a Mount or Vehicle', lambda m: ({'c': 'controls', 'filter': {'sub': ['Mount', 'Vehicle']}}, '你操控坐騎或載具')),
+    (r"SELF isn't prepared", lambda m: ({'c': 'notPrepared'}, '此生物不是已準備')),
     (r'an opponent lost life this turn', lambda m: ({'c': 'oppLostLife'}, '本回合有對手失去過生命')),
     (r"you(?:'ve)? drawn two or more cards this turn", lambda m: ({'c': 'drawsGte', 'n': 2}, '你本回合已抓了兩張或更多牌')),
     (r"it's your turn", lambda m: ({'c': 'yourTurn'}, '在你的回合')),
@@ -305,7 +306,7 @@ def add_costs(a, b):
     xs = [x for x in rest if x == 'X']
     cols = [x for x in rest if x != 'X']
     order = 'WUBRGC'
-    cols.sort(key=lambda x: order.index(x) if x in order else 9)
+    cols.sort(key=lambda x: order.index(x) if x in order else 9 + order.index(x[0]))
     return ''.join('{' + x + '}' for x in xs) + (f'{{{gen}}}' if gen or not cols and not xs else '') + ''.join('{' + x + '}' for x in cols)
 
 
@@ -474,6 +475,8 @@ def sentence(s, ctx):
         return [{'e': 'cloak'}], '將你牌庫頂的牌' + CL
     if s == 'cloak the top card of your library, then attach SELF to it' and ctx.self_zh == '此武具':
         return [{'e': 'cloak'}, {'e': 'attach', 'what': 'created'}], '將你牌庫頂的牌' + CL + '，然後將此武具貼附在它上面'
+    if s in ('SELF becomes prepared', 'it becomes prepared') and ctx.card_kind == 'permanent':
+        return [{'e': 'prepare'}], f'{ctx.self_zh}成為已準備'
     m = re.match(r'^untap (?:it|SELF)$', s)
     if m and ctx.card_kind == 'permanent' and not ctx.targets:
         return [{'e': 'untap', 'what': 'self'}], f'重置{ctx.self_zh}'
@@ -753,7 +756,7 @@ def split_sentences(par):
 
 NUMW = r'(two|three|four|five|six|seven)'
 MULTI = [
-    (r'[Yy]ou may pay ((?:\{[0-9WUBRGC]\})+)\. If you do, ([^.]+)\.', lambda m: f'@paythen {m.group(1)} {m.group(2)}.'),
+    (r'[Yy]ou may pay ((?:\{(?:[0-9WUBRGC]|[WUBRG]/[WUBRG])\})+)\. If you do, ([^.]+)\.', lambda m: f'@paythen {m.group(1)} {m.group(2)}.'),
     (r'[Yy]ou may discard a card\. If you do, ([^.]+)\.', lambda m: f'@paythen discard {m.group(1)}.'),
     (r'[Yy]ou may pay (\d+) life\. If you do, ([^.]+)\.', lambda m: f'@paythen life{m.group(1)} {m.group(2)}.'),
     (r'Target opponent reveals their hand\. You choose an? (nonland|creature|noncreature, nonland) card from it\. That player discards that card\.', lambda m: f'@discardchosen {m.group(1)}.'),
@@ -865,7 +868,7 @@ def parse_cost(c, self_zh, is_creature):
     cost = {}
     zparts = []
     for part in [x.strip() for x in c.split(',')]:
-        if re.fullmatch(r'(\{[0-9WUBRGC]\})+', part):
+        if re.fullmatch(r'(\{(?:[0-9WUBRGC]|[WUBRG]/[WUBRG])\})+', part):
             cost['mana'] = part
             zparts.append(part)
         elif part == '{T}':
@@ -1060,7 +1063,7 @@ def land_par(par, d, produces):
         d['etbTappedUnless'] = {'c': 'controls', 'filter': {'type': 'Land', 'sub': [a, b]}}
         return f'除非你操控{BASIC_SUB[a]}或{BASIC_SUB[b]}，否則此地橫置進戰場。', None
     # 人地：直到回合結束成為生物
-    m = re.fullmatch(r'((?:\{[0-9WUBRGC]\})+): (?:Until end of turn, )?SELF becomes an? (\d+)/(\d+) ((?:(?:white|blue|black|red|green)(?: and )?)*) ?([A-Z][a-z]+(?: [A-Z][a-z]+)*)? ?creature(?: with ([a-z ,]+?))?(?: and all creature types)?(?: until end of turn)?\. It\'s still a land\.', par)
+    m = re.fullmatch(r'((?:\{(?:[0-9WUBRGC]|[WUBRG]/[WUBRG])\})+): (?:Until end of turn, )?SELF becomes an? (\d+)/(\d+) ((?:(?:white|blue|black|red|green)(?: and )?)*) ?([A-Z][a-z]+(?: [A-Z][a-z]+)*)? ?creature(?: with ([a-z ,]+?))?(?: and all creature types)?(?: until end of turn)?\. It\'s still a land\.', par)
     if m:
         cost, p, t, cols, subs, kws = m.groups()
         p, t = int(p), int(t)
@@ -1110,6 +1113,8 @@ TYPE_ZH = {'Instant': '瞬間', 'Sorcery': '法術'}
 def convert(c):
     if c['layout'] == 'adventure':
         return convert_adventure(c)
+    if c['layout'] == 'prepare':
+        return convert_prepare(c)
     if c['layout'] == 'saga':
         return convert_saga(c)
     if c['layout'] in ('transform', 'modal_dfc'):
@@ -1242,7 +1247,7 @@ def dfc_par(par, d, self_zh):
             a['sorcery'] = True
         abil.append(a)
         return f"{m.group(1)}{'，{T}' if m.group(2) else ''}：放逐{self_zh}，然後將它轉化後放回戰場。{'只能於法術時機起動。' if m.group(3) else ''}"
-    m = re.fullmatch(r'((?:\{[0-9WUBRGC]\})+), \{T\}: Transform SELF\.', par)
+    m = re.fullmatch(r'((?:\{(?:[0-9WUBRGC]|[WUBRG]/[WUBRG])\})+), \{T\}: Transform SELF\.', par)
     if m:
         abil.append({'kind': 'activated', 'cost': {'mana': m.group(1), 'tap': True}, 'effects': [{'e': 'transform', 'what': 'self'}], 'label': '轉化'})
         return f'{m.group(1)}，{{T}}：轉化{self_zh}。'
@@ -1258,7 +1263,7 @@ def dfc_par(par, d, self_zh):
         n = num(m.group(1))
         abil.append({'kind': 'trigger', 'on': 'endStep', 'cond': {'c': 'gyCount', 'filter': {}, 'n': n}, 'effects': [{'e': 'transform', 'what': 'self'}]})
         return f'在你的結束步驟開始時，若你的墳墓場中有{n}張或更多牌，轉化{self_zh}。'
-    m = re.fullmatch(r'Craft with (artifact|creature|Cave|Island|Dinosaur) ((?:\{[0-9WUBRGC]\})+)', par)
+    m = re.fullmatch(r'Craft with (artifact|creature|Cave|Island|Dinosaur) ((?:\{(?:[0-9WUBRGC]|[WUBRG]/[WUBRG])\})+)', par)
     if m:
         f, z = CRAFT[m.group(1)]
         abil.append({'kind': 'activated', 'cost': {'mana': m.group(2), 'craft': f}, 'effects': [{'e': 'returnTransformed'}], 'label': '工藝：轉化', 'sorcery': True})
@@ -1322,6 +1327,62 @@ def convert_adventure(c):
     d['adventure'] = {'name': adv['name'], 'cost': acost, 'types': atypes, 'text': zh, 'spell': spell}
     d['imageName'] = c['name']
     d['text'] = (d['text'] + '\n' if d['text'] else '') + f"冒險—《{adv['name']}》{acost}（{tz}）：{zh}\n（你可以改為施放這個冒險{tz}。結算後此牌會被放逐，之後你可以從放逐區施放本體。）"
+    return d
+
+
+PREP_NOTE = '（已準備時，你可以施放它附帶咒語的複製。施放後它就不再是已準備。）'
+
+
+def convert_prepare(c):
+    """準備（Secrets of Strixhaven）：生物附帶一個瞬間或法術"""
+    main, sp = c['card_faces']
+    face = dict(c, layout='normal', name=main['name'], mana_cost=main.get('mana_cost'), type_line=main['type_line'],
+                oracle_text=main.get('oracle_text') or '', power=main.get('power'), toughness=main.get('toughness'))
+    d = convert_face(face)
+    if 'Creature' not in d['types']:
+        raise Unsupported('prepare type')
+    tl = sp['type_line']
+    if tl.startswith('Instant'):
+        stypes = ['Instant']
+    elif tl.startswith('Sorcery'):
+        stypes = ['Sorcery']
+    else:
+        raise Unsupported('prepare spell type ' + tl)
+    scost = sp.get('mana_cost') or ''
+    if not scost or re.search(r'\{[^}]*(X|P|S)[^}]*\}', scost):
+        raise Unsupported('cost ' + scost)
+    text = re.sub(r'\s*\([^)]*\)', '', sp.get('oracle_text') or '')
+    for nm in (sp['name'], main['name']):
+        text = text.replace(nm, 'SELF')
+    text = re.sub(r'\b[Tt]his spell\b', 'SELF', text)
+    pars = [x.strip() for x in text.split('\n') if x.strip()]
+    if not pars:
+        raise Unsupported('empty prepare spell')
+    if pars[0] == 'Choose one —':
+        modes = []
+        zl = ['選擇一項：']
+        for p in pars[1:]:
+            if not p.startswith('•'):
+                raise Unsupported('prepare modes')
+            ctx = Ctx('spell', '此咒語')
+            effs, z = effects_of(p[1:].strip(), ctx)
+            mo = {'text': z.rstrip('。')[:20], 'effects': effs}
+            if ctx.targets:
+                mo['targets'] = ctx.targets
+            modes.append(mo)
+            zl.append('• ' + z)
+        spell = {'modes': modes}
+        zh = '\n'.join(zl)
+    else:
+        ctx = Ctx('spell', '此咒語')
+        effs, zh = effects_of(' '.join(pars), ctx)
+        spell = {'effects': effs}
+        if ctx.targets:
+            spell['targets'] = ctx.targets
+    tz = TYPE_ZH[stypes[0]]
+    d['prepare'] = {'name': sp['name'], 'cost': scost, 'types': stypes, 'text': zh, 'spell': spell}
+    d['imageName'] = c['name']
+    d['text'] = (d['text'] + '\n' if d['text'] else '') + f"準備—《{sp['name']}》{scost}（{tz}）：{zh}\n{PREP_NOTE}"
     return d
 
 
@@ -1410,7 +1471,7 @@ def convert_face(c, dfc=False, back=False):
                 spell_aw = ABILITY_WORDS[mw.group(1)] + '—'
             else:
                 aw_pending = (len(zh_lines), ABILITY_WORDS[mw.group(1)] + '—')
-        m = re.fullmatch(r'Kicker ((?:\{[0-9WUBRGC]\})+)', par)
+        m = re.fullmatch(r'Kicker ((?:\{(?:[0-9WUBRGC]|[WUBRG]/[WUBRG])\})+)', par)
         if m:
             if not is_spell:
                 raise Unsupported('kicker permanent')
@@ -1431,7 +1492,7 @@ def convert_face(c, dfc=False, back=False):
             spree = []
             zh_lines.append('狂歡（選擇一個或更多額外費用。）')
             while i < len(pars) and pars[i].startswith('+'):
-                ms = re.fullmatch(r'\+ ((?:\{[0-9WUBRGC]\})+) — (.+)', pars[i])
+                ms = re.fullmatch(r'\+ ((?:\{(?:[0-9WUBRGC]|[WUBRG]/[WUBRG])\})+) — (.+)', pars[i])
                 if not ms:
                     raise Unsupported('spree mode')
                 spree.append((ms.group(1), ms.group(2)))
@@ -1439,7 +1500,7 @@ def convert_face(c, dfc=False, back=False):
             if not spree:
                 raise Unsupported('spree empty')
             continue
-        m = re.fullmatch(r'(Cycling|Basic landcycling|(Plains|Island|Swamp|Mountain|Forest)cycling) ((?:\{[0-9WUBRGC]\})+)', par)
+        m = re.fullmatch(r'(Cycling|Basic landcycling|(Plains|Island|Swamp|Mountain|Forest)cycling) ((?:\{(?:[0-9WUBRGC]|[WUBRG]/[WUBRG])\})+)', par)
         if m:
             kind, sub, ccost = m.groups()
             if kind == 'Cycling':
@@ -1463,12 +1524,12 @@ def convert_face(c, dfc=False, back=False):
             abilities.append(a)
             zh_lines.append(f'竭力—{r[1]}（每場遊戲只能起動一次。）')
             continue
-        m = re.fullmatch(r'Disguise ((?:\{[0-9WUBRGC]\})+)', par)
+        m = re.fullmatch(r'Disguise ((?:\{(?:[0-9WUBRGC]|[WUBRG]/[WUBRG])\})+)', par)
         if m and 'Creature' in types:
             d['disguise'] = m.group(1)
             zh_lines.append(f'偽裝{m.group(1)}（你可以支付{{3}}將此牌面朝下施放，成為具有守護{{2}}的2/2生物。之後可以隨時支付偽裝費用將它翻成正面。）')
             continue
-        m = re.fullmatch(r'Plot ((?:\{[0-9WUBRGC]\})+)', par)
+        m = re.fullmatch(r'Plot ((?:\{(?:[0-9WUBRGC]|[WUBRG]/[WUBRG])\})+)', par)
         if m:
             d['plot'] = m.group(1)
             zh_lines.append(f'預謀{m.group(1)}（你可以支付{m.group(1)}並從手上放逐此牌。在之後的回合中，你可以於法術時機施放它且不需支付其法術力費用。只能於法術時機預謀。）')
@@ -1525,6 +1586,10 @@ def convert_face(c, dfc=False, back=False):
             d['costReduce'] = {'perCount': {'type': t}}
             tz = {'Artifact': '神器', 'Enchantment': '結界', 'Creature': '生物', 'Land': '地'}[t]
             zh_lines.append(f'{tz}親和（由你操控的每個{tz}都讓此咒語減少{{1}}來施放。）')
+            continue
+        if par == 'SELF enters prepared.':
+            d['etbPrepared'] = True
+            zh_lines.append(f'{self_zh}以已準備的狀態進戰場。')
             continue
         if re.fullmatch(r"SELF can't be countered\.", par):
             d['uncounterable'] = True
@@ -1618,7 +1683,7 @@ def convert_face(c, dfc=False, back=False):
                     produces = prod
                 zh_lines.append(z)
                 continue
-        m = re.fullmatch(r'Flashback ((?:\{[0-9WUBRGC]\})+)', par)
+        m = re.fullmatch(r'Flashback ((?:\{(?:[0-9WUBRGC]|[WUBRG]/[WUBRG])\})+)', par)
         if m:
             d['flashback'] = m.group(1)
             zh_lines.append(f'返照{m.group(1)}（你可以支付返照費用，從你的墳墓場施放此牌。之後此牌會被放逐。）')
