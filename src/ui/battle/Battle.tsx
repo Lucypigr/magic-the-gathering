@@ -566,15 +566,15 @@ export function Battle(props: Props) {
   let actions: PlayOption[] = [];
   if (inspected && myPriority && !draft && focus === inspectId) {
     if (inspected.zone === 'hand' || inspected.zone === 'exile' || inspected.zone === 'graveyard') actions = castOptionsFor(g, 0, inspected);
-    else if (inspected.zone === 'battlefield') actions = options.filter((o) => o.card === inspected.id && o.kind === 'activate');
+    else if (inspected.zone === 'battlefield') actions = options.filter((o) => o.card === inspected.id && (o.kind === 'activate' || o.alt === 'prepared'));
   }
   const liveStats = inspected && inspected.zone === 'battlefield' && isCreature(inspected) ? stats(g, inspected) : null;
 
   const hand = g.players[0].hand.map((id) => g.cards[id]);
   const exiled = [
-    ...g.players[0].exile.map((id) => g.cards[id]).filter((c) => (c.playableTurn === g.turn && c.playableBy === 0) || c.onAdventure),
-    // 有返照的牌在墳墓場也能施放
-    ...g.players[0].graveyard.map((id) => g.cards[id]).filter((c) => c.def.flashback),
+    ...g.players[0].exile.map((id) => g.cards[id]).filter((c) => (c.playableTurn === g.turn && c.playableBy === 0) || c.onAdventure || c.plottedTurn !== undefined || (c.warpExiled !== undefined && c.warpExiled < g.turn)),
+    // 有返照或墳墓場異能的牌在墳墓場也能使用
+    ...g.players[0].graveyard.map((id) => g.cards[id]).filter((c) => c.def.flashback || c.def.harmonize || (c.def.mayhem && c.discardedTurn === g.turn) || c.def.abilities?.some((a) => a.kind === 'activated' && a.fromGraveyard)),
   ];
   const gySpec = draft?.stage === 'targets' && draft.specs[draft.targets.length]?.kind === 'gyCard';
 
@@ -679,9 +679,47 @@ export function Battle(props: Props) {
                   onClick={() => onCard(c.id)}
                   onDoubleClick={() => quickCast(c.id)}
                   onMouseEnter={() => setHover(c.id)}
-                  title={c.onAdventure ? '冒險中：可以施放生物本體' : c.zone === 'graveyard' ? `在墳墓場，可用返照 ${c.def.flashback} 施放` : ex ? '在放逐區，本回合可以使用' : undefined}
+                  title={
+                    c.onAdventure
+                      ? '冒險中：可以施放生物本體'
+                      : c.plottedTurn !== undefined
+                        ? c.plottedTurn < g.turn
+                          ? '預謀中：可以於法術時機免費施放'
+                          : '預謀中：下個回合起可以免費施放'
+                        : c.warpExiled !== undefined
+                          ? '折躍後被放逐：可以從放逐區施放'
+                        : c.zone === 'graveyard'
+                          ? c.def.flashback
+                            ? `在墳墓場，可用返照 ${c.def.flashback} 施放`
+                            : c.def.harmonize
+                              ? `在墳墓場，可用和聲 ${c.def.harmonize} 施放`
+                              : c.def.mayhem && c.discardedTurn === g.turn
+                                ? `本回合棄掉，可用騷亂 ${c.def.mayhem} 施放`
+                                : '在墳墓場，可以起動墳墓場異能'
+                          : ex
+                            ? '在放逐區，本回合可以使用'
+                            : undefined
+                  }
                 >
-                  {ex && <span className={`exile-tag ${c.onAdventure ? 'adv' : c.zone === 'graveyard' ? 'fb' : ''}`}>{c.onAdventure ? '冒險' : c.zone === 'graveyard' ? '返照' : '放逐'}</span>}
+                  {ex && (
+                    <span className={`exile-tag ${c.onAdventure ? 'adv' : c.zone === 'graveyard' ? 'fb' : ''}`}>
+                      {c.onAdventure
+                        ? '冒險'
+                        : c.plottedTurn !== undefined
+                          ? '預謀'
+                          : c.warpExiled !== undefined
+                            ? '折躍'
+                            : c.zone === 'graveyard'
+                              ? c.def.flashback
+                                ? '返照'
+                                : c.def.harmonize
+                                  ? '和聲'
+                                  : c.def.mayhem && c.discardedTurn === g.turn
+                                    ? '騷亂'
+                                    : '墳墓場'
+                              : '放逐'}
+                    </span>
+                  )}
                 </CardFace>
               );
             })}
@@ -771,10 +809,12 @@ export function Battle(props: Props) {
                 ✕
               </button>
             )}
-            <CardZoom def={inspected.def} />
+            <CardZoom def={inspected.hidden && inspected.controller === 0 ? inspected.hidden : inspected.def} />
+            {inspected.hidden && inspected.controller === 0 && <div className="peek-chips"><span className="chip">面朝下（只有你看得到）</span></div>}
             {(liveStats || inspected.tapped || inspected.controller === 1 || inspected.loyalty != null) && inspected.zone === 'battlefield' && (
               <div className="peek-chips">
                 {inspected.loyalty != null && <span className="chip chip-loyal">忠誠 {inspected.loyalty}</span>}
+                {inspected.saddledTurn === g.turn && <span className="chip">已騎乘</span>}
                 {liveStats && (
                   <span className="chip">
                     {liveStats.p}/{liveStats.t}

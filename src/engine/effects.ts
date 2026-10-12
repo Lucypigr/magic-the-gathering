@@ -29,6 +29,7 @@ import {
   enterBattlefieldBack,
   transformCard,
 } from './zones';
+import { putFaceDown } from './facedown';
 
 export interface Ctx {
   controller: PID;
@@ -162,7 +163,7 @@ export function amount(g: GameState, ctx: Ctx, a: Amt): number {
 // ------------------------------------------------------------
 /** 被反擊的咒語去哪裡：返照施放的咒語會被放逐 */
 function counteredZone(g: GameState, c: Card): 'graveyard' | 'exile' {
-  return g.stack.some((s) => s.kind === 'spell' && s.cardId === c.id && s.alt === 'flashback') ? 'exile' : 'graveyard';
+  return g.stack.some((s) => s.kind === 'spell' && s.cardId === c.id && (s.alt === 'flashback' || s.alt === 'harmonize')) ? 'exile' : 'graveyard';
 }
 
 export function* runEffects(g: GameState, ctx: Ctx, effects: Effect[]): SubFlow {
@@ -438,6 +439,59 @@ function* runEffect(g: GameState, ctx: Ctx, ef: Effect): SubFlow {
       log(g, `大地彎折 ${n}`, me);
       break;
     }
+    case 'manifestDread': {
+      const top = g.players[me].library.slice(0, 2);
+      if (!top.length) break;
+      const [pick] = yield* choose(g, me, '顯化恐懼：選擇要面朝下放進戰場的牌（另一張置入墳墓場）', top, 1, 1, 'dig', false);
+      const c = g.cards[pick ?? top[0]];
+      putFaceDown(g, c, me, false);
+      ctx.created = c.id;
+      log(g, '顯化恐懼：一張牌面朝下進入戰場', me);
+      for (const id of top) if (id !== c.id) moveCard(g, g.cards[id], 'graveyard');
+      break;
+    }
+    case 'cloak': {
+      const id = g.players[me].library[0];
+      if (id == null) break;
+      putFaceDown(g, g.cards[id], me, true);
+      ctx.created = id;
+      log(g, '斗篷：牌庫頂的牌面朝下進入戰場', me);
+      break;
+    }
+    case 'suspect':
+      for (const c of resolveRef(g, ctx, ef.what).cards) {
+        if (c.zone !== 'battlefield' || !isCreature(c)) continue;
+        c.suspected = true;
+        log(g, `${cardName(c)} 被懷疑（威懾、不能阻擋）`, me);
+        g.version++;
+      }
+      break;
+    case 'prepare':
+      if (src && src.zone === 'battlefield' && src.def.prepare) {
+        src.prepared = true;
+        log(g, `${cardName(src)} 成為已準備`, me);
+        g.version++;
+      }
+      break;
+    case 'saddle':
+      if (src && src.zone === 'battlefield') {
+        src.saddledTurn = g.turn;
+        g.version++;
+      }
+      break;
+    case 'endure': {
+      const n = amount(g, ctx, ef.n);
+      if (src && src.zone === 'battlefield') {
+        src.counters += n;
+        log(g, `${cardName(src)} 堅忍 ${n}`, me);
+      } else {
+        const t = createToken(g, 'tok-spirit-endure', me);
+        t.counters = n;
+        log(g, `堅忍 ${n}：派出 ${n}/${n} 精怪`, me);
+      }
+      g.version++;
+      break;
+    }
     case 'doubleCounters':
       for (const c of resolveRef(g, ctx, ef.what).cards) {
         if (c.zone !== 'battlefield' || c.counters <= 0) continue;
@@ -533,6 +587,10 @@ function* runEffect(g: GameState, ctx: Ctx, ef: Effect): SubFlow {
     case 'counter': {
       for (const c of resolveRef(g, ctx, ef.what).cards) {
         if (c.zone !== 'stack') continue;
+        if (c.def.uncounterable) {
+          log(g, `${cardName(c)} 不能被反擊`, c.controller);
+          continue;
+        }
         log(g, `${cardName(c)} 被反擊`, c.controller, 'cast');
         moveCard(g, c, counteredZone(g, c));
       }
@@ -540,7 +598,7 @@ function* runEffect(g: GameState, ctx: Ctx, ef: Effect): SubFlow {
     }
     case 'counterUnless': {
       for (const c of resolveRef(g, ctx, ef.what).cards) {
-        if (c.zone !== 'stack') continue;
+        if (c.zone !== 'stack' || c.def.uncounterable) continue;
         const payer = c.controller;
         const cost = { ...parseCost(''), generic: ef.pay };
         let paid = false;

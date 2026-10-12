@@ -4234,3 +4234,113 @@ button {
   opacity: 0.55;
   filter: grayscale(0.6);
 }
+
+/* ============================================================
+   特殊版本（閃卡）
+   ============================================================ */
+.special-text {
+  color: #ffd86b;
+  font-weight: 700;
+}
+.special-tag {
+  margin-left: 6px;
+  padding: 1px 8px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 700;
+  color: #1a1408;
+  background: linear-gradient(90deg, #ffd86b, #ff9fd8, #8fd8ff, #ffd86b);
+}
+.special-badge {
+  position: absolute;
+  bottom: -8px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 3;
+  white-space: nowrap;
+  font-size: 11px;
+  font-weight: 700;
+  padding: 1px 8px;
+  border-radius: 999px;
+  color: #1a1408;
+  background: linear-gradient(90deg, #ffd86b, #ff9fd8, #8fd8ff);
+}
+.card-special,
+.special-img {
+  position: relative;
+}
+.special-img {
+  overflow: hidden;
+  border-radius: 4.5% / 3.2%;
+}
+.card-special::after {
+  border-radius: inherit;
+}
+.card-special {
+  box-shadow:
+    0 0 0 2px #ffd86b,
+    0 0 14px rgba(255, 216, 107, 0.55);
+}
+.card-special::after,
+.special-img::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 2;
+  background: linear-gradient(115deg, transparent 30%, rgba(255, 255, 255, 0.35) 45%, rgba(255, 160, 220, 0.25) 50%, rgba(140, 220, 255, 0.25) 55%, transparent 70%);
+  background-size: 250% 100%;
+  mix-blend-mode: screen;
+  animation: foilSweep 3.2s linear infinite;
+}
+.flip.open.is-special .card {
+  box-shadow:
+    0 0 0 3px #ffd86b,
+    0 0 30px rgba(255, 180, 230, 0.9);
+}
+@keyframes foilSweep {
+  from {
+    background-position: 150% 0;
+  }
+  to {
+    background-position: -100% 0;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .card-special::after,
+  .special-img::after {
+    animation: none;
+  }
+}
+
+/* 面朝下的生物、速度 */
+.card-facedown .art {
+  background: repeating-linear-gradient(45deg, #2a2f3a 0 6px, #232833 6px 12px);
+}
+.hero-speed {
+  margin-left: 6px;
+  padding: 0 6px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 700;
+  color: #1a1408;
+  background: var(--brass-hi);
+}
+.hero-speed.max {
+  background: linear-gradient(90deg, #ff9f68, #ffd86b);
+}
+
+/* 準備好的生物 */
+.perm-prepared {
+  position: absolute;
+  left: 3px;
+  top: 3px;
+  padding: 1px 5px;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 700;
+  color: #0c2233;
+  background: linear-gradient(#bfe6ff, #6fb8e8);
+  border: 1px solid #e2f4ff;
+  z-index: 2;
+}

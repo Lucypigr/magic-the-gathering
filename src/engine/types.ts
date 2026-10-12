@@ -172,7 +172,23 @@ export type Cond =
   /** 這是你的第 n 個或更早的回合 */
   | { c: 'myTurnLte'; n: number }
   /** 你本回合已失去 n 點或更多生命 */
-  | { c: 'lostLifeGte'; n: number };
+  | { c: 'lostLifeGte'; n: number }
+  /** 死亡：本回合有生物死去 */
+  | { c: 'morbid' }
+  /** 譫妄：你墳墓場中的牌有四種或更多類別 */
+  | { c: 'delirium' }
+  /** 慶典：本回合有兩個或更多非地永久物在你的操控下進戰場 */
+  | { c: 'celebration' }
+  /** 下潛：本回合有永久物牌置入你的墳墓場 */
+  | { c: 'descended' }
+  /** 此坐騎本回合已騎乘 */
+  | { c: 'saddled' }
+  /** 虛空 */
+  | { c: 'void' }
+  /** 此生物不是已準備 */
+  | { c: 'notPrepared' }
+  /** 你的速度已達最高（4） */
+  | { c: 'maxSpeed' };
 
 export interface ExtraCost {
   mana?: string;
@@ -223,6 +239,18 @@ export type Effect =
   | { e: 'removeCounters'; what: Ref; n: number }
   /** 大地彎折（簡化）：派出一個 0/0 具敏捷的大地元素，並放上 n 個 +1/+1 指示物 */
   | { e: 'earthbend'; n: Amt }
+  /** 堅忍 n：在此永久物上放置 n 個 +1/+1 指示物；它不在戰場上時改為派出一個 0/0 白色精靈並放上 n 個指示物 */
+  | { e: 'endure'; n: Amt }
+  /** 顯化恐懼：檢視牌庫頂兩張，一張面朝下放進戰場成為 2/2 生物，另一張置入墳墓場 */
+  | { e: 'manifestDread' }
+  /** 斗篷：將牌庫頂的牌面朝下放進戰場，成為具有守護{2}的 2/2 生物 */
+  | { e: 'cloak' }
+  /** 騎乘：此坐騎本回合成為已騎乘 */
+  | { e: 'saddle' }
+  /** 此生物成為已準備 */
+  | { e: 'prepare' }
+  /** 懷疑：該生物具有威懾且不能阻擋 */
+  | { e: 'suspect'; what: Ref }
   | { e: 'mill'; n: Amt; who?: Ref }
   | { e: 'scry'; n: number }
   | { e: 'surveil'; n: number }
@@ -291,7 +319,9 @@ export type TriggerOn =
   /** 每當你在由你操控的生物上放置 +1/+1 指示物時 */
   | 'allyCounters'
   /** 每當由你操控的生物成為對手的咒語或異能的目標時 */
-  | 'allyTargeted';
+  | 'allyTargeted'
+  /** 當此生物翻成正面時 */
+  | 'turnedFaceUp';
 
 export interface TriggeredAbility {
   kind: 'trigger';
@@ -322,6 +352,14 @@ export interface ActivatedAbility {
   effects: Effect[];
   sorcery?: boolean;
   oncePerTurn?: boolean;
+  /** 竭力：每場遊戲只能起動一次 */
+  oncePerGame?: boolean;
+  /** 強化：每場遊戲只能起動一次；此永久物本回合才進場時，費用減去其法術力費用 */
+  powerUp?: boolean;
+  /** 特殊動作：不使用堆疊，立即生效（例如把面朝下的生物翻成正面） */
+  special?: boolean;
+  /** 從墳墓場起動，代價包含放逐此牌 */
+  fromGraveyard?: boolean;
   cond?: Cond;
   /** 按鈕上顯示的簡短描述 */
   label: string;
@@ -347,6 +385,8 @@ export interface Mode {
   text: string;
   /** 取代原本費用（用於增幅等） */
   cost?: string;
+  /** 交易：施放這個模式時要犧牲符合條件的永久物 */
+  sac?: Filter;
   targets?: TargetSpec[];
   effects: Effect[];
 }
@@ -381,6 +421,20 @@ export interface CardDef {
   painMana?: boolean;
   /** 冒險：同一張牌上的另一個瞬間或法術；施放後此牌放逐，之後可以從放逐區施放本體 */
   adventure?: { name: string; zh?: string; cost: string; types: CardType[]; text: string; spell: SpellSpec };
+  /** 準備：此生物附帶的咒語；已準備時可以施放它的複製（之後取消準備） */
+  prepare?: { name: string; zh?: string; cost: string; types: CardType[]; text: string; spell: SpellSpec };
+  /** 折躍：可以用此費用從手上施放，下一個結束步驟開始時放逐，之後的回合可以從放逐區施放 */
+  warp?: string;
+  /** 子嗣：可以多付此費用，進戰場時派出一個 1/1 的衍生物複製 */
+  offspring?: string;
+  /** 騷亂：本回合棄掉此牌後，可以用此費用從墳墓場施放 */
+  mayhem?: string;
+  /** 和聲：可以用此費用從墳墓場施放（可以橫置一個生物，減少等同其力量的費用），之後放逐 */
+  harmonize?: string;
+  /** 召集：你的生物可以幫忙支付此咒語 */
+  convoke?: boolean;
+  /** 此生物以已準備的狀態進戰場 */
+  etbPrepared?: boolean;
   /** 返照：可以支付此費用從墳墓場施放，之後放逐 */
   flashback?: string;
   /** 以返照施放時，結算後不放逐，而是轉化成背面放進戰場 */
@@ -394,6 +448,22 @@ export interface CardDef {
   /** 進戰場時帶有 X 個 +1/+1 指示物（X 為施放時決定的值） */
   etbCountersX?: boolean;
   ward?: number;
+  /** 守護—支付 n 點生命 */
+  wardLife?: number;
+  /** 循環：從手上支付費用、棄掉此牌，然後抓一張牌（有 search 時改為搜尋符合條件的牌） */
+  cycling?: { cost: string; search?: Filter };
+  /** 變形者：具有所有生物類別 */
+  changeling?: boolean;
+  /** 此咒語不能被反擊 */
+  uncounterable?: boolean;
+  /** 偽裝：可以支付 {3} 面朝下施放，之後支付此費用翻成正面 */
+  disguise?: string;
+  /** 預謀：可以支付此費用從手上放逐此牌，之後的回合免費施放 */
+  plot?: string;
+  /** 發動引擎！：你沒有速度時，速度變為 1 */
+  startEngines?: boolean;
+  /** 面朝下的 2/2 生物（真正的牌記在 Card.hidden） */
+  faceDown?: boolean;
   /** 不能被力量小於等於 n 的生物阻擋 */
   evadePowLte?: number;
   spell?: SpellSpec;
@@ -466,6 +536,24 @@ export interface Card {
   lore?: number;
   /** 在下一個結束步驟開始時犧牲（動員派出的衍生物） */
   sacAtEnd?: boolean;
+  /** 折躍：在下一個結束步驟開始時放逐 */
+  exileAtEnd?: boolean;
+  /** 因折躍被放逐的回合（之後的回合可以從放逐區施放） */
+  warpExiled?: number;
+  /** 被棄掉的回合（騷亂） */
+  discardedTurn?: number;
+  /** 被懷疑：具有威懾且不能阻擋 */
+  suspected?: boolean;
+  /** 已準備（可以施放附帶咒語的複製） */
+  prepared?: boolean;
+  /** 面朝下時，真正的牌 */
+  hidden?: CardDef;
+  /** 預謀的回合 */
+  plottedTurn?: number;
+  /** 騎乘的回合 */
+  saddledTurn?: number;
+  /** 已起動過的竭力異能 */
+  exhausted?: number[];
   /** 攻擊中的生物所攻擊的鵬洛客（沒有就是攻擊玩家） */
   attackTarget?: number | null;
 }
@@ -485,6 +573,14 @@ export interface Player {
   lifeGainedThisTurn: number;
   lifeLostThisTurn: number;
   drawsThisTurn: number;
+  /** 本回合在你的操控下進戰場的非地永久物數量 */
+  nonlandEtbThisTurn?: number;
+  /** 本回合有永久物牌置入你的墳墓場 */
+  permToGyThisTurn?: boolean;
+  /** 速度（發動引擎！），0～4 */
+  speed?: number;
+  /** 上一次提升速度的回合 */
+  speedUpTurn?: number;
   drewFromEmpty: boolean;
   lost: boolean;
   cantGainLife: boolean;
@@ -495,7 +591,11 @@ export interface Player {
 export type TargetRef = { p: PID } | { c: number };
 
 /** 特殊的施放方式 */
-export type CastAlt = 'adventure' | 'flashback' | 'back';
+/** cycle：循環（從手上支付費用並棄掉此牌） */
+/** disguise：面朝下施放；plot：預謀（付費放逐）；plotted：免費施放預謀的牌 */
+/** prepared：施放已準備的生物附帶咒語的複製 */
+/** warp：折躍；offspring：子嗣（多付費用）；mayhem／harmonize：從墳墓場施放 */
+export type CastAlt = 'adventure' | 'flashback' | 'back' | 'cycle' | 'disguise' | 'plot' | 'plotted' | 'prepared' | 'warp' | 'offspring' | 'mayhem' | 'harmonize';
 
 export interface StackItem {
   sid: number;
@@ -556,6 +656,7 @@ export type GameEvent =
   | { type: 'targeted'; card: number; by: PID; spell: boolean }
   | { type: 'sacrifice'; card: number; player: PID }
   | { type: 'drawSecond'; player: PID }
+  | { type: 'turnedFaceUp'; card: number }
   | { type: 'counterPlaced'; card: number; controller: PID; amount: number };
 
 export interface PendingTrigger {
@@ -608,6 +709,10 @@ export interface GameState {
   version: number;
   /** 本回合是否已經有生物宣告攻擊 */
   attackedThisTurn: boolean;
+  /** 本回合有生物死去 */
+  creatureDiedThisTurn?: boolean;
+  /** 虛空：本回合有非地永久物離開戰場，或有咒語以折躍施放 */
+  voidThisTurn?: boolean;
   maxTurns: number;
   /** 最近的畫面事件（模擬用的複本不記錄） */
   shows: Show[];

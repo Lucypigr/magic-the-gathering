@@ -238,6 +238,7 @@ export const TOKENS: CardDef[] = [
   }),
   T({ id: 'tok-ally', name: 'Ally', zh: '盟友', colors: ['W'], types: ['Creature'], subtypes: ['Ally'], power: 1, toughness: 1, text: '' }),
   T({ id: 'tok-bear', name: 'Bear', zh: '熊', colors: ['G'], types: ['Creature'], subtypes: ['Bear'], power: 4, toughness: 4, text: '' }),
+  T({ id: 'tok-spirit-endure', name: 'Spirit', zh: '精怪', colors: ['W'], types: ['Creature'], subtypes: ['Spirit'], power: 0, toughness: 0, text: '（堅忍產生的生物）' }),
   T({
     id: 'tok-earth',
     name: 'Earth Elemental',

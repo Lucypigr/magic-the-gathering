@@ -80,8 +80,22 @@ export function openPack(set: SetCode, rng: () => number = Math.random): string[
   return out.map((c) => c.id);
 }
 
+/** 每包出現一張特殊版本的機率 */
+export const SPECIAL_RATE = 1 / 6;
+/** 重複開到已擁有的特殊版本時，額外換得的金幣 */
+export const SPECIAL_DUP_GOLD = 100;
+
+/** 決定這包哪一張是特殊版本（-1 表示沒有）；稀有欄位機率較高 */
+export function rollSpecial(cards: string[], rng: () => number = Math.random): number {
+  if (!cards.length || rng() >= SPECIAL_RATE) return -1;
+  if (rng() < 0.4) return cards.length - 1;
+  return Math.floor(rng() * cards.length);
+}
+
 export interface PackResult {
   cards: string[];
+  /** 特殊版本 */
+  special: boolean[];
   isNew: boolean[];
   /** 超過 4 張的重複卡會自動換成金幣 */
   converted: boolean[];
@@ -89,8 +103,9 @@ export interface PackResult {
 }
 
 /** 把開到的卡加入收藏（直接修改 profile） */
-export function addToCollection(p: Profile, cards: string[]): PackResult {
+export function addToCollection(p: Profile, cards: string[], specialIdx = -1): PackResult {
   const isNew: boolean[] = [];
+  const special = cards.map((_, i) => i === specialIdx);
   const converted: boolean[] = [];
   let gold = 0;
   for (const id of cards) {
@@ -105,6 +120,13 @@ export function addToCollection(p: Profile, cards: string[]): PackResult {
       converted.push(false);
     }
   }
+  // 特殊版本另外記錄（同時也是一張可以使用的卡）；已經有了就換成金幣
+  if (specialIdx >= 0 && specialIdx < cards.length) {
+    const id = cards[specialIdx];
+    p.specials ??= [];
+    if (p.specials.includes(id)) gold += SPECIAL_DUP_GOLD;
+    else p.specials.push(id);
+  }
   p.gold += gold;
-  return { cards, isNew, converted, gold };
+  return { cards, special, isNew, converted, gold };
 }

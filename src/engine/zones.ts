@@ -93,6 +93,8 @@ function triggerMatches(g: GameState, c: Card, ab: TriggeredAbility, ev: GameEve
     }
     case 'drawSecond':
       return ev.type === 'drawSecond' && ev.player === pov;
+    case 'turnedFaceUp':
+      return ev.type === 'turnedFaceUp' && ev.card === c.id;
   }
 }
 
@@ -156,6 +158,10 @@ function resetPermanentState(c: Card): void {
   c.sick = false;
   c.attachedTo = null;
   c.usedThisTurn = [];
+  c.exhausted = undefined;
+  c.prepared = undefined;
+  c.exileAtEnd = undefined;
+  c.suspected = undefined;
   c.loyalty = undefined;
   c.lore = undefined;
   c.sacAtEnd = undefined;
@@ -168,6 +174,8 @@ function resetPermanentState(c: Card): void {
 
 export function moveCard(g: GameState, c: Card, to: Zone, bottom = false): void {
   const wasOnBf = c.zone === 'battlefield';
+  if (wasOnBf && !c.def.types.includes('Land')) g.voidThisTurn = true;
+  c.warpExiled = undefined;
   if (wasOnBf) {
     c.lastPower = stats(g, c).p;
     g.eot = g.eot.filter((e) => e.card !== c.id);
@@ -182,12 +190,20 @@ export function moveCard(g: GameState, c: Card, to: Zone, bottom = false): void 
   c.controller = c.owner;
   c.playableTurn = undefined;
   c.onAdventure = false;
+  // 面朝下的牌離開戰場後亮出真正的牌
+  if (c.hidden) {
+    c.def = c.hidden;
+    c.hidden = undefined;
+  }
+  c.plottedTurn = undefined;
+  c.saddledTurn = undefined;
   // 雙面牌離開戰場後回到正面
   if (c.front) {
     c.def = c.front;
     c.front = undefined;
   }
   if (to !== 'exile') c.exiledBy = undefined;
+  if (to === 'graveyard' && !c.token && !c.def.types.some((t) => t === 'Instant' || t === 'Sorcery')) g.players[c.owner].permToGyThisTurn = true;
   if (c.token && to !== 'battlefield') {
     // 衍生物離開戰場即消失
   } else if (to === 'library') {
@@ -234,9 +250,15 @@ export function enterBattlefield(g: GameState, c: Card, controller: PID, tapped 
   c.sick = true;
   c.enteredTurn = g.turn;
   c.counters = c.def.etbCounters ?? 0;
+  if (c.def.etbPrepared) c.prepared = true;
   if (c.def.types.includes('Planeswalker')) c.loyalty = c.def.loyalty ?? 0;
   c.playableTurn = undefined;
   g.version++;
+  if (c.def.startEngines && !g.players[controller].speed) {
+    g.players[controller].speed = 1;
+    log(g, '發動引擎！速度變為 1', controller);
+  }
+  if (!c.def.types.includes('Land')) g.players[controller].nonlandEtbThisTurn = (g.players[controller].nonlandEtbThisTurn ?? 0) + 1;
   emit(g, { type: 'etb', card: c.id, controller });
   if (c.def.saga) addLore(g, c, 1);
 }
@@ -297,7 +319,10 @@ export function transformCard(g: GameState, c: Card): boolean {
 export function putIntoGraveyard(g: GameState, cards: Card[]): void {
   const list = cards.filter((c) => c.zone === 'battlefield');
   for (const c of list) {
-    if (isCreature(c)) emit(g, { type: 'dies', card: c.id, controller: c.controller, power: stats(g, c).p });
+    if (isCreature(c)) {
+      g.creatureDiedThisTurn = true;
+      emit(g, { type: 'dies', card: c.id, controller: c.controller, power: stats(g, c).p });
+    }
   }
   for (const c of list) moveCard(g, c, 'graveyard');
 }
@@ -335,6 +360,7 @@ export function drawCards(g: GameState, pid: PID, n: number): void {
 export function discard(g: GameState, c: Card): void {
   log(g, `棄掉 ${cardName(c)}`, c.owner);
   moveCard(g, c, 'graveyard');
+  c.discardedTurn = g.turn;
 }
 
 export function gainLife(g: GameState, pid: PID, n: number): void {
@@ -354,6 +380,13 @@ export function loseLife(g: GameState, pid: PID, n: number): void {
   p.life -= n;
   p.lifeLostThisTurn += n;
   g.version++;
+  // 速度：你的回合中對手失去生命時，每回合提升一次（最高 4）
+  const act = g.players[g.active];
+  if (pid !== g.active && act.speed && act.speed < 4 && act.speedUpTurn !== g.turn) {
+    act.speed++;
+    act.speedUpTurn = g.turn;
+    log(g, act.speed >= 4 ? '速度達到最高（4）！' : `速度提升為 ${act.speed}`, g.active);
+  }
   emit(g, { type: 'lifeloss', player: pid, amount: n });
 }
 

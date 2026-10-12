@@ -195,6 +195,20 @@ export class AIPlayer {
       const c = g.cards[o.card];
       const def = o.kind === 'cast' ? castDef(c.def, o.alt) : c.def;
       let bonus = 0;
+      // 循環：手上用不到的牌（太貴，或地已經夠多）在對手回合結束時換掉
+      if (o.alt === 'cycle') {
+        const lands = g.battlefield.filter((id) => g.cards[id].controller === me && g.cards[id].def.types.includes('Land')).length;
+        const useless = c.def.types.includes('Land') ? lands >= 5 : manaValue(c.def) > lands + 2;
+        if (!useless && !(g.phase === 'end' && !myTurn)) continue;
+        out.push({ action: { type: 'cast', card: c.id, targets: [], alt: 'cycle' }, bonus: 0.4, threshold: 0 });
+        continue;
+      }
+      // 預謀：第二主要階段有多餘的法術力時，把之後才用得到的牌先預謀
+      if (o.alt === 'plot') {
+        if (!myTurn || g.phase !== 'main2') continue;
+        out.push({ action: { type: 'cast', card: c.id, targets: [], alt: 'plot' }, bonus: 0.5, threshold: 0 });
+        continue;
+      }
       // 冒險：施放後牌還能再用一次，返照：用的是墳墓場的牌，都是額外的價值
       if (o.alt) bonus += 0.6;
       let threshold = T.actThreshold;
@@ -225,7 +239,12 @@ export class AIPlayer {
       } else if (o.kind === 'activate') {
         const ab = activatedAbilities(def)[o.ability!];
         // 駕駛：只在自己的第一主要階段、載具能攻擊時才駕駛
-        if (ab.cost.crew !== undefined) {
+        if (ab.cost.crew !== undefined && ab.effects.some((e) => e.e === 'saddle')) {
+          // 騎乘：自己的第一主要階段、坐騎能攻擊時才騎乘
+          if (!myTurn || g.phase !== 'main1' || g.stack.length || c.sick || c.tapped || c.saddledTurn === g.turn) continue;
+          bonus += 0.5;
+          threshold = 0;
+        } else if (ab.cost.crew !== undefined) {
           if (!myTurn || g.phase !== 'main1' || g.stack.length || c.sick || c.tapped || isCreature(c)) continue;
           bonus += 0.5;
           threshold = 0;

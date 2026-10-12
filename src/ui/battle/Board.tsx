@@ -64,6 +64,11 @@ export function Permanent({ g, c, marks, onCard, onHover }: { g: GameState; c: C
             ))}
           </div>
         )}
+        {c.prepared && (
+          <div className="perm-prepared" title={`已準備：可以施放《${c.def.prepare?.name ?? ''}》的複製品`}>
+            準備
+          </div>
+        )}
         {c.def.saga && (
           <div className="perm-lore" title="傳奇的章節：進場與你的抓牌步驟後各前進一章，最後一章結束後犧牲">
             {ROMAN[(c.lore ?? 1) - 1] ?? c.lore}/{ROMAN[c.def.saga.chapters.length - 1]}
@@ -237,6 +242,11 @@ export function Avatar({
         <span className="hero-name">
           {p.name}
           {sub}
+          {!!p.speed && (
+            <span className={`hero-speed ${p.speed >= 4 ? 'max' : ''}`} title="速度（發動引擎！）：你的回合中對手失去生命時每回合提升 1，最高 4">
+              速度 {p.speed}
+            </span>
+          )}
         </span>
         <span className="hero-mana" title="目前可用的法術力來源">
           {mana.map((m) => (

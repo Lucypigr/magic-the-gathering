@@ -3,7 +3,7 @@ import { useState } from 'react';
 import type { Screen, UpdateProfile } from '../App';
 import { SET_INFO } from '../data';
 import { getDef } from '../engine/registry';
-import { addToCollection, CLASSIC_PRODUCTS, openPack, poolSize, STANDARD_PRODUCTS, type PackResult, type Product } from '../meta/booster';
+import { addToCollection, CLASSIC_PRODUCTS, openPack, poolSize, rollSpecial, SPECIAL_DUP_GOLD, STANDARD_PRODUCTS, type PackResult, type Product } from '../meta/booster';
 import { STANDARD_SETS } from '../engine/types';
 import { DUPLICATE_GOLD, type Profile } from '../meta/profile';
 import { CardBack, CardDetail, CardFace } from './CardView';
@@ -24,7 +24,10 @@ export function Shop({ profile, go, update }: { profile: Profile; go: (s: Screen
     const next = structuredClone(profile);
     next.gold -= p.price;
     next.packsOpened += p.packs;
-    const results = Array.from({ length: p.packs }, () => addToCollection(next, openPack(p.set)));
+    const results = Array.from({ length: p.packs }, () => {
+      const cards = openPack(p.set);
+      return addToCollection(next, cards, rollSpecial(cards));
+    });
     update((prof) => {
       Object.assign(prof, next);
     });
@@ -36,6 +39,7 @@ export function Shop({ profile, go, update }: { profile: Profile; go: (s: Screen
       <TopBar profile={profile} go={go} title="商店" />
       <p className="muted">
         每包 12 張：7 普通、3 非普通、1 張稀有或秘稀，外加 1 張隨機稀有度。已經有 4 張的卡再開到會自動換成金幣（普通 {DUPLICATE_GOLD.C}、非普通 {DUPLICATE_GOLD.U}、稀有 {DUPLICATE_GOLD.R}、秘稀 {DUPLICATE_GOLD.M}）。
+        每包有機會開到一張 <b className="special-text">★ 特殊版本</b>（異畫、無邊框等收藏版卡面），重複的特殊版本換 {SPECIAL_DUP_GOLD} 金幣。
       </p>
       {msg && <p className="notice">{msg}</p>}
       <h3 className="section-title">標準賽系列</h3>
@@ -97,7 +101,7 @@ export function Shop({ profile, go, update }: { profile: Profile; go: (s: Screen
 function PackOpening({ product, packs, onDone }: { product: Product; packs: PackResult[]; onDone: () => void }) {
   const [idx, setIdx] = useState(0);
   const [flipped, setFlipped] = useState<Set<number>>(new Set());
-  const [detail, setDetail] = useState<string | null>(null);
+  const [detail, setDetail] = useState<{ id: string; special: boolean } | null>(null);
   const pack = packs[idx];
   const allFlipped = flipped.size >= pack.cards.length;
   const last = idx === packs.length - 1;
@@ -138,9 +142,10 @@ function PackOpening({ product, packs, onDone }: { product: Product; packs: Pack
           const def = getDef(id);
           const open = flipped.has(i);
           return (
-            <div key={`${idx}-${i}`} className={`flip ${open ? 'open' : ''} rar-${def.rarity}`}>
+            <div key={`${idx}-${i}`} className={`flip ${open ? 'open' : ''} rar-${def.rarity} ${pack.special[i] ? 'is-special' : ''}`}>
               {open ? (
-                <CardFace def={def} size="md" onClick={() => setDetail(id)}>
+                <CardFace def={def} size="md" special={pack.special[i]} onClick={() => setDetail({ id, special: pack.special[i] })}>
+                  {pack.special[i] && <span className="special-badge">★ 特殊版本</span>}
                   {pack.isNew[i] && !pack.converted[i] && <span className="new-tag">新卡</span>}
                   {pack.converted[i] && <span className="dup-tag">+{DUPLICATE_GOLD[def.rarity]} 金幣</span>}
                 </CardFace>
@@ -154,8 +159,8 @@ function PackOpening({ product, packs, onDone }: { product: Product; packs: Pack
         })}
       </div>
       {detail && (
-        <Modal title={displayName(getDef(detail))} onClose={() => setDetail(null)} wide>
-          <CardDetail def={getDef(detail)} />
+        <Modal title={displayName(getDef(detail.id))} onClose={() => setDetail(null)} wide>
+          <CardDetail def={getDef(detail.id)} special={detail.special} />
         </Modal>
       )}
     </Modal>

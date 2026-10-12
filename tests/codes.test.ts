@@ -4,15 +4,15 @@ import { checkCode, redeemCode } from '../src/meta/codes';
 import { newProfile } from '../src/meta/profile';
 
 describe('獎勵碼', () => {
-  it('evon 送 5000 金幣，不分大小寫，每個存檔只能兌換一次', () => {
+  it('evon 送 5000 金幣，不分大小寫，可以重複兌換', () => {
     const p = newProfile();
     const before = p.gold;
     expect(checkCode(p, ' EVON ')).toEqual({ ok: true, gold: 5000 });
     expect(p.gold).toBe(before);
     expect(redeemCode(p, ' EVON ')).toEqual({ ok: true, gold: 5000 });
     expect(p.gold).toBe(before + 5000);
-    expect(redeemCode(p, 'evon')).toEqual({ ok: false, reason: 'used' });
-    expect(p.gold).toBe(before + 5000);
+    expect(redeemCode(p, 'evon')).toEqual({ ok: true, gold: 5000 });
+    expect(p.gold).toBe(before + 10000);
   });
 
   it('錯誤或空白的碼', () => {
