@@ -819,6 +819,7 @@ TRIGGERS = [
     (r'^Whenever SELF enters or attacks, (.+)$', 'etb+attacks', '每當{self}進戰場或攻擊時，'),
     (r'^Whenever SELF becomes the target of a spell or ability you control for the first time each turn, (.+)$', 'targeted^', '每當{self}每回合第一次成為你的咒語或異能的目標時，'),
     (r'^Whenever you cast your second spell each turn, (.+)$', 'castAny@secondSpell', '每當你施放你本回合的第二個咒語時，'),
+    (r'^Whenever you cast a creature spell, (.+)$', 'castAny:Creature', '每當你施放生物咒語時，'),
     (r'^When SELF is turned face up, (.+)$', 'turnedFaceUp', '當{self}翻成正面時，'),
     (r'^When SELF enters or is turned face up, (.+)$', 'etb+turnedFaceUp', '當{self}進戰場或翻成正面時，'),
     (r'^Whenever SELF attacks while saddled, (.+)$', 'attacks@saddled', '每當{self}在已騎乘時攻擊，'),
@@ -856,6 +857,9 @@ def parse_trigger(par, self_zh):
             if o.endswith('^'):
                 o = o[:-1]
                 flags['oncePerTurn'] = True
+            if ':' in o:
+                o, ft = o.split(':')
+                flags['filter'] = {'type': ft}
             if '@' in o:
                 o, cname = o.split('@')
                 if cond:
