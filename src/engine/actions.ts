@@ -55,7 +55,11 @@ export function manaSources(g: GameState, pid: PID, exclude?: number, convoke = 
     const cr = isCreature(c);
     if (cr && c.sick && !hasKw(g, c, 'haste')) continue;
     out.push({ id, produces: c.def.produces, isCreature: cr, sac: c.def.sacOnMana, filter: c.def.filterMana, pain: c.def.painMana });
+    // 「每當你為山脈橫置來產生法術力時，額外加一點{R}」
+    if (g.players[pid].mountainBonus && c.def.subtypes?.includes('Mountain')) out.push({ id: -2000 - id, produces: ['R'], isCreature: false, extra: true });
   }
+  // 法術力池
+  (g.players[pid].pool ?? []).forEach((m, i) => out.push({ id: -1000 - i, produces: [m], isCreature: false, pool: true }));
   return out;
 }
 
@@ -77,9 +81,12 @@ export function canPayCost(g: GameState, pid: PID, cost: ManaCost, exclude?: num
 export function payCost(g: GameState, pid: PID, cost: ManaCost, exclude?: number, convoke = false, forDef?: CardDef): boolean {
   const pay = findPayment(cost, manaSources(g, pid, exclude, convoke, forDef));
   if (!pay) return false;
-  for (const p of pay) g.cards[p.id].tapped = true;
-  for (const p of pay) if (g.cards[p.id].def.painMana && p.mana !== 'C') loseLife(g, pid, 1);
-  for (const p of pay) if (g.cards[p.id].def.sacOnMana) sacrifice(g, g.cards[p.id]);
+  for (const p of pay) if (p.id >= 0) g.cards[p.id].tapped = true;
+  for (const p of pay) if (p.id >= 0 && g.cards[p.id].def.painMana && p.mana !== 'C') loseLife(g, pid, 1);
+  for (const p of pay) if (p.id >= 0 && g.cards[p.id].def.sacOnMana) sacrifice(g, g.cards[p.id]);
+  // 用掉的法術力池
+  const usedPool = new Set(pay.filter((p) => p.id <= -1000 && p.id > -2000).map((p) => -1000 - p.id));
+  if (usedPool.size) g.players[pid].pool = (g.players[pid].pool ?? []).filter((_, i) => !usedPool.has(i));
   g.version++;
   return true;
 }
@@ -181,7 +188,7 @@ export function castAlts(g: GameState, pid: PID, c: Card): (CastAlt | undefined)
   if (c.zone === 'exile' && c.owner === pid && c.warpExiled !== undefined && c.warpExiled < g.turn) return [undefined];
   if (c.zone === 'graveyard' && c.owner === pid) {
     const out: CastAlt[] = [];
-    if (def.flashback) out.push('flashback');
+    if (def.flashback || c.tempFlashbackTurn === g.turn) out.push('flashback');
     if (def.harmonize) out.push('harmonize');
     if (def.mayhem && c.discardedTurn === g.turn) out.push('mayhem');
     return out;
@@ -494,7 +501,7 @@ export function castableCards(g: GameState, pid: PID): Card[] {
   }
   for (const id of p.graveyard) {
     const c = g.cards[id];
-    if (c.def.flashback || c.def.harmonize || (c.def.mayhem && c.discardedTurn === g.turn)) out.push(c);
+    if (c.def.flashback || c.tempFlashbackTurn === g.turn || c.def.harmonize || (c.def.mayhem && c.discardedTurn === g.turn)) out.push(c);
   }
   for (const id of p.exile) {
     const c = g.cards[id];

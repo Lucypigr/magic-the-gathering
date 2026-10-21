@@ -110,6 +110,10 @@ export interface ManaSource {
   pain?: boolean;
   /** 召集：橫置生物來支付 */
   convoke?: boolean;
+  /** 來自法術力池（用掉就從池中移除；優先使用） */
+  pool?: boolean;
+  /** 額外的一點法術力（來自某個永久物的加成，不會橫置任何東西；排在最後才用） */
+  extra?: boolean;
 }
 
 /**
@@ -130,7 +134,7 @@ export function findPayment(cost: ManaCost, sources: ManaSource[]): { id: number
   need.sort((a, b) => supply(a) - supply(b));
 
   // 優先使用：非生物、產出顏色少的來源
-  const rank = (s: ManaSource) => (s.convoke ? 2000 : 0) + (s.sac ? 1000 : 0) + (s.isCreature ? 100 : 0) + (s.pain ? 50 : 0) + s.produces.length;
+  const rank = (s: ManaSource) => (s.pool ? -1000 : 0) + (s.extra ? 5000 : 0) + (s.convoke ? 2000 : 0) + (s.sac ? 1000 : 0) + (s.isCreature ? 100 : 0) + (s.pain ? 50 : 0) + s.produces.length;
   const ordered = [...sources].sort((a, b) => rank(a) - rank(b));
 
   const used = new Set<number>();

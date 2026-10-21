@@ -298,7 +298,7 @@ export function* resolveTop(g: GameState): SubFlow {
       if (src.zone === 'stack') moveCard(g, src, 'graveyard');
     }
   } else {
-    if (item.cond && !checkCond(g, item.cond, item.controller, item.cardId, legal)) return;
+    if (item.cond && !checkCond(g, item.cond, item.controller, item.cardId, legal, item.ev)) return;
     if (item.may) {
       const r: Response = yield { type: 'yesno', player: item.controller, prompt: item.may, source: item.cardId, purpose: 'may' };
       if (r.type !== 'yesno' || !r.yes) return;
@@ -322,6 +322,8 @@ export function* priorityStep(g: GameState): SubFlow {
       if (passes >= 2) {
         if (g.stack.length === 0) {
           g.priority = null;
+          // 步驟結束：法術力池清空
+          for (const pl of g.players) pl.pool = [];
           return;
         }
         yield* resolveTop(g);
@@ -460,6 +462,9 @@ function* turn(g: GameState): SubFlow {
     p.noncombatThisTurn = false;
     p.noncreatureThisTurn = 0;
     p.nextSpellUncounterable = false;
+    p.discardedThisTurn = 0;
+    p.mountainBonus = false;
+    p.pool = [];
     p.lifeLostThisTurn = 0;
   }
   g.attackedThisTurn = false;

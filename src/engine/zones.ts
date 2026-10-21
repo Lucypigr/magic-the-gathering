@@ -123,6 +123,13 @@ function triggerMatches(g: GameState, c: Card, ab: TriggeredAbility, ev: GameEve
       return ev.type === 'discard';
     case 'discardSelf':
       return ev.type === 'discard' && ev.card === c.id && ev.player === pov;
+    case 'eachUpkeep':
+      return ev.type === 'step' && ev.step === 'upkeep';
+    case 'oppBlocks': {
+      if (ev.type !== 'blocks') return false;
+      const b = g.cards[ev.card];
+      return !!b && b.controller !== pov && matches(g, ab.filter, b, pov, c.id);
+    }
     case 'oppLoyaltyActivated':
       return ev.type === 'loyaltyActivated' && ev.controller !== pov;
     case 'eachEndStep':
@@ -251,6 +258,12 @@ export function moveCard(g: GameState, c: Card, to: Zone, bottom = false): void 
   const wasOnBf = c.zone === 'battlefield';
   const from = c.zone;
   if (wasOnBf) c.lastCounters = c.counters;
+  // 直到回合結束，將要死去時改為放逐
+  if (wasOnBf && to === 'graveyard' && c.exileOnDeathTurn === g.turn) {
+    log(g, `${cardName(c)} 改為放逐`, c.owner);
+    to = 'exile';
+  }
+  c.exileOnDeathTurn = undefined;
   // 帶著終結指示物的永久物死去時改為放逐
   if (wasOnBf && to === 'graveyard' && c.finality) {
     log(g, `${cardName(c)} 有終結指示物，改為放逐`, c.owner);
@@ -476,6 +489,7 @@ export function discard(g: GameState, c: Card, silent = false): void {
   log(g, `棄掉 ${cardName(c)}`, c.owner);
   moveCard(g, c, 'graveyard');
   c.discardedTurn = g.turn;
+  g.players[c.owner].discardedThisTurn = (g.players[c.owner].discardedThisTurn ?? 0) + 1;
   if (!silent) emit(g, { type: 'discard', player: c.owner, card: c.id });
 }
 
@@ -573,6 +587,16 @@ export function createToken(
   controller: PID,
   opts: { tapped?: boolean; attacking?: boolean; attachTo?: number } = {},
 ): Card {
+  // 取代效果：神器衍生物改為 5/5 的龍衍生物
+  if (getDef(tokenId).types.includes('Artifact') && !tokenId.startsWith('tok-fra-dragon')) {
+    for (const id of g.battlefield) {
+      const s = g.cards[id];
+      if (s.controller === controller && abilitiesOf(g, s).some((a) => a.kind === 'static' && a.artifactTokenDragon)) {
+        tokenId = 'tok-fra-dragon';
+        break;
+      }
+    }
+  }
   const c = newCard(g, getDef(tokenId), controller, true);
   c.zone = 'exile'; // 暫存，隨即進場
   enterBattlefield(g, c, controller, !!opts.tapped);

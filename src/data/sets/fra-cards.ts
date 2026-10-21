@@ -632,5 +632,155 @@ lcr('U', 'Winter, Tormented Loner', '{2}{B}', 'Human Warlock', 0, 3, '當此生�
   ],
 });
 
+// ============================================================
+// 紅
+// ============================================================
+const MY_ARTIFACTS: Filter = { type: 'Artifact', ctrl: 'you' };
+const dragon5 = { e: 'token', token: 'tok-fra-dragon' } as const;
+
+sorc(S, 'U', 'Command the Stage', '{2}{R}', `派出一個${CADET}，然後在每個其他由你操控的巫師衍生物上各放置一個+1/+1指示物。\n在每個維持開始時，若上個回合有對手被造成非戰鬥傷害，將此牌從你的墳墓場移回你手上。`, {
+  effects: [{ e: 'counters', what: { all: { type: 'Creature', sub: 'Wizard', token: true, ctrl: 'you' } }, n: 1 }, cadet()],
+}, { abilities: [trig('eachUpkeep', [{ e: 'toHand', what: 'selfAny' }], { fromGraveyard: true, cond: { c: 'oppNoncombatLastTurn' } })] });
+
+add({
+  set: S, rarity: 'M', name: 'Craterclaw Colossus', cost: '{4}{R}{R}{R}', types: ['Artifact', 'Creature'], subtypes: ['Beast', 'Construct'], power: 5, toughness: 5, keywords: ['haste'],
+  text: '敏捷\n當此生物進戰場時，由你操控的生物獲得踐踏異能，並得+X/+0直到回合結束，X為由你操控的神器數量。',
+  abilities: [etb([{ e: 'pump', what: { all: MY_CREATURES }, p: { count: MY_ARTIFACTS }, t: 0, kw: ['trample'] }])],
+});
+
+cr(S, 'R', 'Curse-Marred Demon', '{2}{R}{R}', 'Demon', 4, 4, '飛行，踐踏\n當此生物進戰場時，從你的牌庫中搜尋一張牌，將它置於你手上，然後洗牌，然後隨機棄一張牌。', {
+  keywords: ['flying', 'trample'],
+  abilities: [etb([{ e: 'tutor', filter: {} }, { e: 'discard', n: 1, who: 'you', random: true }])],
+});
+
+cr(S, 'R', 'Draconic Visitor', '{3}{R}{R}', 'Dragon', 5, 5, '飛行\n如果一個或更多神器衍生物將在你的操控下被派出，改為派出同樣數量的5/5紅色，具有飛行異能的龍衍生生物。', {
+  keywords: ['flying'],
+  abilities: [{ kind: 'static', artifactTokenDragon: true }],
+});
+
+cr(S, 'C', 'Eardrum Rattler', '{1}{R}', 'Human Bard', 2, 2, '{1}，{T}：另一個目標力量為2或更少，且由你操控的生物本回合不能被阻擋。', {
+  abilities: [act({ mana: '{1}', tap: true }, [{ e: 'pump', what: 'T0', p: 0, t: 0, kw: ['unblockable'] }], '另一個生物本回合不能被阻擋', { targets: [{ kind: 'creature', filter: { ctrl: 'you', powMax: 2 }, notSelf: true, prompt: '選擇另一個力量2或更少的生物' }] })],
+});
+
+inst(S, 'U', 'Essence Burn', '{1}{R}', '此咒語對目標黑色或綠色的生物或鵬洛客造成5點傷害。如果該永久物本回合將要死去，改為放逐它。', {
+  targets: [{ kind: 'permanent', filter: { type: ['Creature', 'Planeswalker'], color: ['B', 'G'] }, prompt: '選擇黑色或綠色的生物或鵬洛客' }],
+  effects: [{ e: 'exileIfDies', what: 'T0' }, { e: 'damage', n: 5, to: 'T0' }],
+});
+
+sorc(S, 'R', 'Face Yourself', '{5}{R}{R}', '對目標玩家操控的每個生物，派出一個它的衍生物複製，但它具有敏捷異能與「在結束步驟開始時，若你沒有操控鵬洛客，犧牲此生物。」', {
+  targets: [{ kind: 'player', prompt: '選擇一位玩家' }],
+  effects: [{ e: 'copyCreatures', who: 'T0' }],
+});
+
+inst(S, 'U', 'Fulminous Forte', '{2}{R}', '選擇一項：\n• 此咒語對每個由對手操控的生物與鵬洛客各造成1點傷害。\n• 此咒語對目標生物或鵬洛客造成5點傷害。', {
+  modes: [
+    { text: '對對手的每個生物與鵬洛客造成1點傷害', effects: [{ e: 'damage', n: 1, to: { all: { type: ['Creature', 'Planeswalker'], ctrl: 'opp' } } }] },
+    { text: '對目標生物或鵬洛客造成5點傷害', targets: [{ kind: 'permanent', filter: GY_CR_PW, prompt: '選擇生物或鵬洛客' }], effects: [{ e: 'damage', n: 5, to: 'T0' }] },
+  ],
+});
+
+prepared('C', 'Hallway Heckler', '{2}{R}', 'Elemental Sorcerer', 2, 3, ['', '{T}，棄一張牌：抓一張牌。'], 'Vicious Verse', '{B/R}', ['Sorcery'], '此咒語對目標對手造成1點傷害。', {
+  targets: [OPP],
+  effects: [{ e: 'damage', n: 1, to: 'T0' }],
+}, {
+  abilities: [act({ tap: true }, [{ e: 'costThen', prompt: '要棄一張牌來抓一張牌嗎？', cost: { discard: 1 }, then: [{ e: 'draw', n: 1 }] }], '棄一張牌：抓一張牌', { cond: { c: 'handGte', n: 1 } })],
+});
+
+cr(S, 'C', 'Heartstring Puller', '{3}{R}', 'Elf Sorcerer', 3, 1, `踐踏\n當此生物進戰場時，派出一個${CADET}。`, {
+  keywords: ['trample'],
+  abilities: [etb([cadet()])],
+});
+
+ench(S, 'R', 'Identity Echo', '{2}{R}', '{3}{R}：放逐目標由你操控的生物或鵬洛客。展示你牌庫頂的牌，直到展示出生物或鵬洛客牌為止。將那張牌放進戰場，其餘的牌以隨機順序置於你的牌庫底。只能於法術時機起動。', {
+  abilities: [act({ mana: '{3}{R}' }, [{ e: 'exile', what: 'T0' }, { e: 'revealUntil', filter: GY_CR_PW }], '放逐你的生物並換成新的', { sorcery: true, targets: [{ kind: 'permanent', filter: { type: ['Creature', 'Planeswalker'], ctrl: 'you' }, prompt: '選擇由你操控的生物或鵬洛客' }] })],
+});
+
+cr(S, 'R', 'Master of Barbs', '{1}{R}', 'Lizard Bard', 2, 1, '威懾\n每當一位或更多對手被造成非戰鬥傷害時，由你操控的生物得+1/+0直到回合結束。', {
+  keywords: ['menace'],
+  abilities: [trig('noncombatOpp', [{ e: 'pump', what: { all: MY_CREATURES }, p: 1, t: 0 }])],
+});
+
+prepared('R', 'Pompous Battlemage', '{R}', 'Goblin Sorcerer', 1, 1, '勇行', 'Improvised Act', '{R}', ['Sorcery'], '你可以棄一張牌。若你如此作，抓一張牌。', {
+  effects: [{ e: 'costThen', prompt: '要棄一張牌來抓一張牌嗎？', cost: { discard: 1 }, then: [{ e: 'draw', n: 1 }] }],
+}, { keywords: ['prowess'] });
+
+prepared('R', 'Pyre Rhymer', '{1}{R}{R}', 'Elemental Sorcerer', 3, 3, '勇行', 'Molten Tide', '{R}', ['Instant'], '直到回合結束，每當你為山脈橫置來產生法術力時，額外加{R}。', {
+  effects: [{ e: 'mountainBonus' }],
+}, { keywords: ['prowess'] });
+
+cr(S, 'M', 'Stingcaster Mage', '{1}{R}', 'Human Wizard', 2, 1, '敏捷\n當此生物進戰場時，目標在你墳墓場中的瞬間或法術牌，直到回合結束獲得返照異能。其返照費用等同於它的法術力費用。', {
+  keywords: ['haste'],
+  abilities: [etb([{ e: 'grantFlashback', what: 'T0' }], { targets: [gyTarget({ type: ['Instant', 'Sorcery'] }, '選擇你墳墓場中的瞬間或法術牌')] })],
+});
+
+cr(S, 'C', 'Tether Technician', '{4}{R}', 'Minotaur Artificer', 4, 5, '延勢\n當此生物進戰場時，你可以棄一張牌。當你如此作時，此生物對任意一個目標造成2點傷害。', {
+  keywords: ['reach'],
+  abilities: [etb([{ e: 'costThen', prompt: '要棄一張牌，對任意一個目標造成2點傷害嗎？', cost: { discard: 1 }, then: [{ e: 'reflexive', targets: [ANY], effects: [{ e: 'damage', n: 2, to: 'T0' }] }] }])],
+});
+
+inst(S, 'U', 'Violent Echoes', '{2}{R}{R}', `此咒語對目標生物或鵬洛客造成6點傷害。若對該永久物造成了過量傷害，強化傑斯X，X為該過量傷害。${EMP_X}`, {
+  targets: [{ kind: 'permanent', filter: GY_CR_PW, prompt: '選擇生物或鵬洛客' }],
+  effects: [{ e: 'damage', n: 6, to: 'T0' }, empower({ excess: true })],
+});
+
+inst(S, 'C', 'Wrath of the Bloodmane', '{2}{R}', '如果你操控傳奇生物，此咒語減少{1}來施放。\n此咒語對目標生物或鵬洛客造成4點傷害。', {
+  targets: [{ kind: 'permanent', filter: GY_CR_PW, prompt: '選擇生物或鵬洛客' }],
+  effects: [{ e: 'damage', n: 4, to: 'T0' }],
+}, { costReduce: { cond: { c: 'controls', filter: { type: 'Creature', legendary: true } }, mana: '{1}' } });
+
+lcr('U', 'Arni, Renowned Champion', '{3}{R}', 'Human Berserker', 1, 5, '踐踏\n每當另一個生物在你的操控下進戰場時，此生物得+X/+0直到回合結束，X為該生物的力量。', {
+  keywords: ['trample'],
+  abilities: [trig('allyEtb', [{ e: 'pump', what: 'self', p: { power: 'trig' }, t: 0 }])],
+});
+
+lcr('U', 'Gallia, the Merrymaker', '{1}{R}', 'Satyr', 2, 1, '敏捷\n每個其他有+1/+1指示物，且由你操控的生物都具有敏捷異能。\n{1}{R}，{T}：在目標本回合進戰場的生物上放置一個+1/+1指示物。', {
+  keywords: ['haste'],
+  abilities: [
+    { kind: 'static', anthem: { filter: { type: 'Creature', ctrl: 'you', other: true, plusCounters: true }, grant: { kw: ['haste'] } } },
+    act({ mana: '{1}{R}', tap: true }, [{ e: 'counters', what: 'T0', n: 1 }], '本回合進戰場的生物+1/+1指示物', { targets: [{ kind: 'creature', filter: { enteredThisTurn: true }, prompt: '選擇本回合進戰場的生物' }] }),
+  ],
+});
+
+lcr('U', 'Jiang Yanggu, Alone', '{4}{R}', 'Human Berserker', 4, 4, '威懾\n每當由你操控的生物單獨攻擊一位玩家時，棄一張牌，然後抓一張牌。然後在該生物上放置你本回合已棄掉的牌數個+1/+1指示物。', {
+  keywords: ['menace'],
+  abilities: [trig('youAttack', [{ e: 'discard', n: 1, who: 'you' }, { e: 'draw', n: 1 }, { e: 'counters', what: 'trig', n: { discardedThisTurn: true } }], { alone: true })],
+});
+
+lcr('U', 'Kiora of Fire and Ashes', '{4}{R}{R}', 'Merfolk Noble', 2, 2, '當此生物進戰場時，派出一個5/5紅色，具有飛行異能的龍衍生生物。\n{8}：派出一個5/5紅色，具有飛行異能的龍衍生生物。', {
+  abilities: [etb([dragon5]), act({ mana: '{8}' }, [dragon5], '派出一個5/5龍')],
+});
+
+lcr('U', 'Koth, the Geomancer', '{2}{R}', 'Human Warrior', 3, 2, '延勢\n地落—每當一個地在你的操控下進戰場時，此生物對每位對手各造成1點傷害。若該地是山脈，加{R}。', {
+  keywords: ['reach'],
+  abilities: [trig('landfall', [{ e: 'damage', n: 1, to: 'opp' }, { e: 'if', cond: { c: 'evCardIs', filter: { sub: 'Mountain' } }, then: [{ e: 'addMana', mana: ['R'] }] }])],
+});
+
+lcr('U', 'Marwyn, the Clearcutter', '{R}', 'Elf Warrior', 2, 1, '{2}，{T}，犧牲一個神器或地：抓一張牌。', {
+  abilities: [act({ mana: '{2}', tap: true, sacOther: { or: [{ type: 'Artifact' }, { type: 'Land' }] } }, [{ e: 'draw', n: 1 }], '犧牲神器或地：抓一張牌')],
+});
+
+lcr('U', 'Pia, Determined Rebuilder', '{2}{R}', 'Human Artificer', 2, 2, `當此生物進戰場時，派出一個${THOPTER}。\n{5}{R}：目標生物得+X/+0直到回合結束，X為由你操控的神器數量。`, {
+  abilities: [etb([{ e: 'token', token: 'tok-thopter' }]), act({ mana: '{5}{R}' }, [{ e: 'pump', what: 'T0', p: { count: MY_ARTIFACTS }, t: 0 }], '目標生物得+X/+0', { targets: [CR] })],
+});
+
+lcr('U', 'Tetsuko Umezawa, Pursuer', '{3}{R}', 'Human Mercenary', 2, 4, '雙擊\n勇行\n每當由對手操控，且力量或防禦力為1或更少的生物阻擋時，此生物對該生物的操控者造成1點傷害。', {
+  keywords: ['double_strike', 'prowess'],
+  abilities: [trig('oppBlocks', [{ e: 'damage', n: 1, to: 'opp' }], { filter: { or: [{ powMax: 1 }, { toughMax: 1 }] } })],
+});
+
+lcr('U', 'Tomik, Izzet Sparkmage', '{1}{R}', 'Human Wizard', 1, 2, '勇行\n如果由你操控的來源將對對手或由對手操控的永久物造成非戰鬥傷害，改為造成多1點的傷害。', {
+  keywords: ['prowess'],
+  abilities: [{ kind: 'static', noncombatPlus: 1 }],
+});
+
+add({
+  set: S, rarity: 'U', name: 'Way of the Warlord', cost: '{2}{R}', types: ['Enchantment'], supertypes: ['Legendary'],
+  text: `${WAY_HEAD(5)}\n由你操控的鵬洛客具有「[−4]：此鵬洛客對至多一個目標生物或鵬洛客造成2點傷害，並對目標玩家造成2點傷害。」`,
+  abilities: [
+    etb([empower(5)]),
+    grantPw([loyalty(-4, [{ e: 'damage', n: 2, to: 'T0' }, { e: 'damage', n: 2, to: 'T1' }], '−4：造成2點傷害與2點傷害', [{ kind: 'permanent', filter: GY_CR_PW, optional: true, prompt: '選擇至多一個生物或鵬洛客' }, { kind: 'player', prompt: '選擇一位玩家' }])]),
+  ],
+});
+
 // 後續顏色的卡在下方追加
 export { ANY, OPP, OPP_CR, arti, land };

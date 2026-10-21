@@ -215,6 +215,15 @@ export function handCardValue(g: GameState, pid: PID, c: Card): number {
 export function heuristicMode(g: GameState, d: Extract<Decision, { type: 'mode' }>): number[] {
   const n = d.options.length;
   const scores: number[] = [];
+  if (d.purpose === 'color') {
+    // 選手牌裡最需要的顏色
+    const need: Record<string, number> = {};
+    for (const id of g.players[d.player].hand) {
+      const cost = parseCost(g.cards[id].def.cost);
+      for (const k of ['W', 'U', 'B', 'R', 'G'] as const) need[k] = (need[k] ?? 0) + cost[k];
+    }
+    return [d.options.map((o, i) => [need[o] ?? 0, i] as const).sort((a, b) => b[0] - a[0] || a[1] - b[1])[0][1]];
+  }
   if (d.purpose === 'count') {
     // 選數量：對手的指示物能移除就盡量移除，自己的不移除
     return [d.meta?.preferHigh ? n - 1 : 0];

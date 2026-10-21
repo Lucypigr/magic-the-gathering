@@ -3,7 +3,7 @@ import type { ReactNode } from 'react';
 import type { Decision, GameState, TargetRef } from '../../engine/types';
 import { CardDetail, CardFace } from '../CardView';
 import { Modal } from '../common';
-import { SUB_ZH } from '../i18n';
+import { COLOR_ZH, SUB_ZH } from '../i18n';
 
 /**
  * 卡牌格子 + 放大檢視：滑鼠移過或點一下卡牌，旁邊會顯示完整的卡圖與效果。
@@ -134,7 +134,7 @@ export function ModeModal({ g, d, onSubmit }: { g: GameState; d: Extract<Decisio
         <div className="mode-list">
           {d.options.map((o, i) => (
             <button key={i} className={`btn mode-opt ${sel.includes(i) ? 'btn-primary' : ''}`} onClick={() => toggle(i)}>
-              {d.purpose === 'creatureType' ? SUB_ZH[o] ?? o : o}
+              {d.purpose === 'creatureType' ? SUB_ZH[o] ?? o : d.purpose === 'color' ? COLOR_ZH[o as 'W'] ?? o : o}
             </button>
           ))}
         </div>

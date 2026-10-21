@@ -88,6 +88,8 @@ export interface Filter {
   vanilla?: boolean;
   /** 身上有 +1/+1 指示物 */
   plusCounters?: boolean;
+  /** 本回合進戰場 */
+  enteredThisTurn?: boolean;
 }
 
 export type TargetKind = 'creature' | 'player' | 'opponent' | 'any' | 'permanent' | 'spell' | 'gyCard';
@@ -143,6 +145,10 @@ export type Amt =
   | { negOf: Amt }
   /** 這次效果中，上一個效果實際處理的數量（例如實際抓到的牌數、實際放逐的數量） */
   | { last: true }
+  /** 上一個傷害效果造成的過量傷害 */
+  | { excess: true }
+  /** 你本回合棄掉的牌數 */
+  | { discardedThisTurn: true }
   /** 由你操控的符合條件的生物中最大的力量 */
   | { maxPower: Filter }
   /** 本回合從牌庫置入該玩家墳墓場的牌數 */
@@ -214,6 +220,12 @@ export type Cond =
   | { c: 'void' }
   /** 本回合有 n 個或更多生物死去 */
   | { c: 'creaturesDiedGte'; n: number }
+  /** 條件不成立 */
+  | { c: 'not'; cond: Cond }
+  /** 你的手牌有 n 張或更多 */
+  | { c: 'handGte'; n: number }
+  /** 觸發事件中的牌符合條件（例如進戰場的地是山脈） */
+  | { c: 'evCardIs'; filter: Filter }
   /** 你本回合占卜或刺探過 */
   | { c: 'scried' }
   /** 你本回合施放的非生物咒語恰好是第 n 個（用於「每回合第一個」） */
@@ -249,7 +261,7 @@ export interface ExtraCost {
 export type Effect =
   | { e: 'damage'; n: Amt; to: Ref; noLifeGain?: boolean }
   | { e: 'draw'; n: Amt; who?: Ref }
-  | { e: 'discard'; n: Amt; who: Ref }
+  | { e: 'discard'; n: Amt; who: Ref; random?: boolean }
   | { e: 'discardChosen'; who: Ref; filter?: Filter }
   | { e: 'gain'; n: Amt; who?: Ref }
   | { e: 'lose'; n: Amt; who: Ref }
@@ -332,6 +344,22 @@ export type Effect =
   | { e: 'reanimate'; what: Ref; counters?: number; finality?: boolean; tapped?: boolean }
   /** 目標對手犧牲其操控的生物與鵬洛客中法術力值最大的一個（由該玩家在並列者中選擇） */
   | { e: 'edictMax'; who: Ref }
+  /** 直到回合結束，該永久物將要死去時改為放逐 */
+  | { e: 'exileIfDies'; what: Ref }
+  /** 對目標玩家操控的每個生物，派出一個它的衍生物複製（具有敏捷；結束步驟若你沒有鵬洛客就犧牲） */
+  | { e: 'copyCreatures'; who: Ref }
+  /** 展示牌庫頂直到展示出符合條件的牌，將它放進戰場，其餘以隨機順序置於牌庫底 */
+  | { e: 'revealUntil'; filter: Filter }
+  /** 目標的牌直到回合結束獲得返照（返照費用等於其法術力費用） */
+  | { e: 'grantFlashback'; what: Ref }
+  /** 反射觸發：「當你如此作時」——此時才選擇目標，並建立一個新的觸發式異能 */
+  | { e: 'reflexive'; targets: TargetSpec[]; effects: Effect[] }
+  /** 加入法術力到法術力池（直到此步驟結束） */
+  | { e: 'addMana'; mana: Mana[] }
+  /** 你的法術力池加入：選擇一種顏色，依你操控的生物中不同力量的數量 */
+  | { e: 'addManaDistinctPower' }
+  /** 直到回合結束，每當你為山脈橫置來產生法術力時，額外加一點{R} */
+  | { e: 'mountainBonus' }
   /** 將符合條件的牌從你的墳墓場全部放進戰場 */
   | { e: 'reanimateAll'; filter: Filter }
   | { e: 'edict'; who: Ref; filter?: Filter }
@@ -408,6 +436,10 @@ export type TriggerOn =
   | 'eachEndStep'
   /** 每當有對手起動忠誠異能時 */
   | 'oppLoyaltyActivated'
+  /** 在每個維持開始時（任何玩家的回合） */
+  | 'eachUpkeep'
+  /** 每當由對手操控的生物阻擋時 */
+  | 'oppBlocks'
   /** 每當此永久物成為對手的咒語或異能的目標時 */
   | 'targetedByOpp'
   /** 在你的回合中，有一個或更多對手被造成戰鬥傷害時（每個傷害步驟一次） */
@@ -503,6 +535,8 @@ export interface StaticAbility {
   noZeroLoyaltyDeath?: boolean;
   /** 此永久物的力量／防禦力隨你墳墓場中符合條件的牌數增加 */
   selfPumpPerGy?: { filter: Filter; p?: number; t?: number };
+  /** 如果有一個或更多神器衍生物將在你的操控下被派出，改為派出同樣數量的 5/5 紅色龍衍生物 */
+  artifactTokenDragon?: boolean;
   /** 你操控的瞬間與法術咒語具有切割 */
   splitSecondSpells?: boolean;
   /** 由你操控的鵬洛客每個戰鬥只能被一個生物攻擊 */
@@ -686,6 +720,10 @@ export interface Card {
   sacAtEnd?: boolean;
   /** 折躍：在下一個結束步驟開始時放逐 */
   exileAtEnd?: boolean;
+  /** 直到此回合結束，將要死去時改為放逐 */
+  exileOnDeathTurn?: number;
+  /** 直到此回合結束，可以從墳墓場以返照施放 */
+  tempFlashbackTurn?: number;
   /** 因折躍被放逐的回合（之後的回合可以從放逐區施放） */
   warpExiled?: number;
   /** 被棄掉的回合（騷亂） */
@@ -733,6 +771,12 @@ export interface Player {
   scriedThisTurn?: boolean;
   /** 本回合施放的非生物咒語數量 */
   noncreatureThisTurn?: number;
+  /** 本回合棄掉的牌數 */
+  discardedThisTurn?: number;
+  /** 法術力池（直到步驟結束） */
+  pool?: Mana[];
+  /** 本回合山脈額外產生 {R} */
+  mountainBonus?: boolean;
   /** 你本回合施放的下一個咒語不能被反擊 */
   nextSpellUncounterable?: boolean;
   /** 本回合從牌庫置入墳墓場的牌數 */
@@ -896,6 +940,8 @@ export interface GameState {
   creatureDiedThisTurn?: boolean;
   /** 本回合死去的生物數量 */
   creaturesDiedCount?: number;
+  /** 上一個傷害效果造成的過量傷害（結算期間使用） */
+  lastExcess?: number;
   /** 本回合的延遲觸發 */
   delayed?: DelayedTrigger[];
   /** 場上有「失去所有異能」的光環（用來避免不必要的檢查） */
@@ -938,7 +984,7 @@ export type Decision =
       source?: number;
       options: string[];
       count: number;
-      purpose: 'trigger' | 'creatureType' | 'count';
+      purpose: 'trigger' | 'creatureType' | 'count' | 'color';
       /** 觸發的模式：每個選項的效果與目標（AI 判斷用） */
       meta?: { effects: Effect[][]; specs: TargetSpec[][]; preferHigh?: boolean };
     };

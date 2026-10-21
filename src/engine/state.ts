@@ -8,6 +8,7 @@ import type {
   CardType,
   Cond,
   Filter,
+  GameEvent,
   GameState,
   Grant,
   Keyword,
@@ -350,6 +351,7 @@ export function matches(g: GameState, f: Filter | undefined, c: Card, pov: PID, 
   if (f.inCombat && !c.attacking && c.blocking == null) return false;
   if (f.other && c.id === sourceId) return false;
   if (f.token !== undefined && c.token !== f.token) return false;
+  if (f.enteredThisTurn !== undefined && (c.enteredTurn === g.turn) !== f.enteredThisTurn) return false;
   if (f.stunned && c.stun <= 0) return false;
   if (f.plusCounters !== undefined && c.counters > 0 !== f.plusCounters) return false;
   if (f.hasCounters !== undefined && (c.counters !== 0) !== f.hasCounters) return false;
@@ -396,6 +398,7 @@ export function checkCond(
   controller: PID,
   sourceId: number | undefined,
   targets: (TargetRef | null)[],
+  ev?: GameEvent,
 ): boolean {
   const me = g.players[controller];
   const opp = g.players[other(controller)];
@@ -452,6 +455,14 @@ export function checkCond(
       return !!me.scriedThisTurn;
     case 'creaturesDiedGte':
       return (g.creaturesDiedCount ?? 0) >= cond.n;
+    case 'not':
+      return !checkCond(g, cond.cond, controller, sourceId, targets, ev);
+    case 'handGte':
+      return me.hand.length >= cond.n;
+    case 'evCardIs': {
+      const id = ev && 'card' in ev ? ev.card : undefined;
+      return id != null && !!g.cards[id] && matches(g, cond.filter, g.cards[id], controller, sourceId);
+    }
     case 'noncreatureCastEq':
       return (me.noncreatureThisTurn ?? 0) === cond.n;
     case 'noncreatureCastGte':
