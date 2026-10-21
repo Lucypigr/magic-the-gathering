@@ -238,6 +238,7 @@ export interface Stats {
 /** 這張永久物是否因為光環而失去所有異能 */
 export function abilitiesSuppressed(g: GameState, c: Card): boolean {
   if (!g.loseAbilities || c.zone !== 'battlefield') return false;
+  if (c.loseAbilitiesTurn === g.turn) return true;
   return g.battlefield.some((id) => {
     const a = g.cards[id];
     return a.attachedTo === c.id && !!a.def.aura?.grant?.loseAbilities;
@@ -294,6 +295,21 @@ export function stats(g: GameState, c: Card, ignoreEot = false): Stats {
         if (ab.kind !== 'static') continue;
         if (ab.anthem && matches(g, ab.anthem.filter, c, s.controller, s.id)) apply(ab.anthem.grant);
         if (ab.self && s.id === c.id && (!ab.self.cond || checkCond(g, ab.self.cond, s.controller, s.id, []))) apply(ab.self.grant);
+        if (ab.selfPumpGraveyardTypes && s.id === c.id) {
+          const types = new Set<string>();
+          for (const pl of g.players) for (const id of pl.graveyard) for (const ty of g.cards[id].def.types) types.add(ty);
+          st.p += types.size;
+          st.t += types.size;
+        }
+        if (ab.selfPowerDomain && s.id === c.id) {
+          const basics = new Set<string>();
+          for (const id of g.battlefield) {
+            const l = g.cards[id];
+            if (l.controller !== s.controller || !l.def.types.includes('Land')) continue;
+            for (const sub of l.def.subtypes ?? []) if (['Plains', 'Island', 'Swamp', 'Mountain', 'Forest'].includes(sub)) basics.add(sub);
+          }
+          st.p += basics.size;
+        }
         if (ab.selfPumpPerGy && s.id === c.id) {
           let n = 0;
           for (const id of g.players[s.controller].graveyard) if (matches(g, ab.selfPumpPerGy.filter, g.cards[id], s.controller, s.id)) n++;
@@ -457,6 +473,8 @@ export function checkCond(
       return (g.creaturesDiedCount ?? 0) >= cond.n;
     case 'not':
       return !checkCond(g, cond.cond, controller, sourceId, targets, ev);
+    case 'selfNoCombatDamage':
+      return sourceId != null && !g.cards[sourceId]?.dealtCombat;
     case 'handGte':
       return me.hand.length >= cond.n;
     case 'evCardIs': {

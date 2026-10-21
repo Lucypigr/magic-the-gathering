@@ -157,6 +157,8 @@ export type Amt =
   | { lkiCounters: true };
 
 export interface Grant {
+  /** 成為生物（光環使永久物變成生物） */
+  animate?: { p: number; t: number; subtype?: string };
   p?: number;
   t?: number;
   kw?: Keyword[];
@@ -222,6 +224,8 @@ export type Cond =
   | { c: 'creaturesDiedGte'; n: number }
   /** 條件不成立 */
   | { c: 'not'; cond: Cond }
+  /** 此生物還沒有造成過戰鬥傷害 */
+  | { c: 'selfNoCombatDamage' }
   /** 你的手牌有 n 張或更多 */
   | { c: 'handGte'; n: number }
   /** 觸發事件中的牌符合條件（例如進戰場的地是山脈） */
@@ -293,7 +297,7 @@ export type Effect =
   /** 招募：抓一張牌，然後棄一張牌；若棄掉的不是地，派出 1/1 人類士兵 */
   | { e: 'recruit' }
   /** 從牌庫中搜尋一張符合條件的牌放到手上 */
-  | { e: 'tutor'; filter: Filter; to?: 'hand' | 'top' | 'battlefield' }
+  | { e: 'tutor'; filter: Filter; to?: 'hand' | 'top' | 'battlefield' | 'graveyard' }
   /** 移除至多 n 個指示物 */
   | { e: 'removeCounters'; what: Ref; n: number; upTo?: boolean }
   /** 大地彎折（簡化）：派出一個 0/0 具敏捷的大地元素，並放上 n 個 +1/+1 指示物 */
@@ -338,12 +342,24 @@ export type Effect =
   | { e: 'counter'; what: Ref }
   | { e: 'counterUnless'; what: Ref; pay: number }
   | { e: 'fight'; a: Ref; b: Ref }
-  | { e: 'bite'; a: Ref; b: Ref }
+  | { e: 'bite'; a: Ref; b: Ref; byLoyalty?: boolean }
   | { e: 'toHand'; what: Ref }
   /** counters：額外的 +1/+1 指示物；finality：帶著終結指示物（死去時改為放逐） */
   | { e: 'reanimate'; what: Ref; counters?: number; finality?: boolean; tapped?: boolean }
   /** 目標對手犧牲其操控的生物與鵬洛客中法術力值最大的一個（由該玩家在並列者中選擇） */
   | { e: 'edictMax'; who: Ref }
+  /** 在永久物上放置（任何種類的）指示物，例如充能指示物 */
+  | { e: 'chargeCounter'; what: Ref; n: Amt }
+  /** 從你的牌庫搜尋至多 n 張符合條件的牌（可選：名稱不同） */
+  | { e: 'tutorMany'; filter: Filter; n: Amt; to: 'hand' | 'battlefield'; tapped?: boolean; distinct?: boolean }
+  /** 選擇其中一種異能：獲得該異能直到回合結束 */
+  | { e: 'pumpChoice'; what: Ref; kws: Keyword[] }
+  /** 從這次效果碾磨的牌中，你可以選一張符合條件的牌置於手上 */
+  | { e: 'retrieveMilled'; filter: Filter }
+  /** 直到回合結束，失去所有異能 */
+  | { e: 'loseAbilitiesEot'; what: Ref }
+  /** 本回合你可以多使用一個地 */
+  | { e: 'extraLandThisTurn' }
   /** 直到回合結束，該永久物將要死去時改為放逐 */
   | { e: 'exileIfDies'; what: Ref }
   /** 對目標玩家操控的每個生物，派出一個它的衍生物複製（具有敏捷；結束步驟若你沒有鵬洛客就犧牲） */
@@ -355,7 +371,7 @@ export type Effect =
   /** 反射觸發：「當你如此作時」——此時才選擇目標，並建立一個新的觸發式異能 */
   | { e: 'reflexive'; targets: TargetSpec[]; effects: Effect[] }
   /** 加入法術力到法術力池（直到此步驟結束） */
-  | { e: 'addMana'; mana: Mana[] }
+  | { e: 'addMana'; mana: Mana[]; n?: Amt }
   /** 你的法術力池加入：選擇一種顏色，依你操控的生物中不同力量的數量 */
   | { e: 'addManaDistinctPower' }
   /** 直到回合結束，每當你為山脈橫置來產生法術力時，額外加一點{R} */
@@ -436,6 +452,8 @@ export type TriggerOn =
   | 'eachEndStep'
   /** 每當有對手起動忠誠異能時 */
   | 'oppLoyaltyActivated'
+  /** 在你的第一個主要階段開始時 */
+  | 'mainStart'
   /** 在每個維持開始時（任何玩家的回合） */
   | 'eachUpkeep'
   /** 每當由對手操控的生物阻擋時 */
@@ -537,6 +555,12 @@ export interface StaticAbility {
   selfPumpPerGy?: { filter: Filter; p?: number; t?: number };
   /** 如果有一個或更多神器衍生物將在你的操控下被派出，改為派出同樣數量的 5/5 紅色龍衍生物 */
   artifactTokenDragon?: boolean;
+  /** 你可以從手上免費施放法術力值小於或等於你操控的生物數量的咒語 */
+  freeCastByCreatures?: boolean;
+  /** 此永久物的力量與防禦力各加上全部墳墓場中的牌的類別數 */
+  selfPumpGraveyardTypes?: boolean;
+  /** 此永久物的力量加上你操控的地中基本地類別的數量（領域） */
+  selfPowerDomain?: boolean;
   /** 你操控的瞬間與法術咒語具有切割 */
   splitSecondSpells?: boolean;
   /** 由你操控的鵬洛客每個戰鬥只能被一個生物攻擊 */
@@ -592,7 +616,7 @@ export interface CardDef {
   /** 產生有色法術力時要支付1點生命（{C} 不用） */
   painMana?: boolean;
   /** 產生的法術力只能用來施放某類咒語 */
-  manaOnly?: 'planeswalker';
+  manaOnly?: 'planeswalker' | 'notFromHand';
   /** 冒險：同一張牌上的另一個瞬間或法術；施放後此牌放逐，之後可以從放逐區施放本體 */
   adventure?: { name: string; zh?: string; cost: string; types: CardType[]; text: string; spell: SpellSpec };
   /** 準備：此生物附帶的咒語；已準備時可以施放它的複製（之後取消準備） */
@@ -650,7 +674,7 @@ export interface CardDef {
   evadePowLte?: number;
   spell?: SpellSpec;
   aura?: { target?: TargetSpec; grant: Grant };
-  equip?: { cost: string; grant: Grant };
+  equip?: { cost: string; grant: Grant; /** 被裝備的生物獲得的觸發式異能 */ trigger?: TriggeredAbility };
   abilities?: Ability[];
   /** 額外費用（例如：犧牲一個生物、支付生命） */
   addCost?: ExtraCost;
@@ -736,6 +760,14 @@ export interface Card {
   lastCounters?: number;
   /** 已準備（可以施放附帶咒語的複製） */
   prepared?: boolean;
+  /** 光環使其變成生物之前的原本定義 */
+  auraBaseDef?: CardDef;
+  /** 已經造成過戰鬥傷害 */
+  dealtCombat?: boolean;
+  /** 施放時決定的 X（進戰場後的觸發式異能可以使用） */
+  castX?: number;
+  /** 直到此回合結束，失去所有異能 */
+  loseAbilitiesTurn?: number;
   /** 面朝下時，真正的牌 */
   hidden?: CardDef;
   /** 預謀的回合 */
@@ -773,6 +805,8 @@ export interface Player {
   noncreatureThisTurn?: number;
   /** 本回合棄掉的牌數 */
   discardedThisTurn?: number;
+  /** 本回合額外可以打出的地數 */
+  extraLandsThisTurn?: number;
   /** 法術力池（直到步驟結束） */
   pool?: Mana[];
   /** 本回合山脈額外產生 {R} */
@@ -803,7 +837,7 @@ export type TargetRef = { p: PID } | { c: number };
 /** disguise：面朝下施放；plot：預謀（付費放逐）；plotted：免費施放預謀的牌 */
 /** prepared：施放已準備的生物附帶咒語的複製 */
 /** warp：折躍；offspring：子嗣（多付費用）；mayhem／harmonize：從墳墓場施放 */
-export type CastAlt = 'adventure' | 'flashback' | 'back' | 'cycle' | 'disguise' | 'plot' | 'plotted' | 'prepared' | 'warp' | 'offspring' | 'mayhem' | 'harmonize';
+export type CastAlt = 'adventure' | 'flashback' | 'back' | 'cycle' | 'disguise' | 'plot' | 'plotted' | 'prepared' | 'warp' | 'offspring' | 'mayhem' | 'harmonize' | 'free';
 
 export interface StackItem {
   sid: number;
@@ -868,7 +902,7 @@ export type GameEvent =
   | { type: 'attacks'; card: number }
   | { type: 'youAttack'; player: PID; attackers: number[] }
   | { type: 'blocks'; card: number }
-  | { type: 'step'; step: 'upkeep' | 'endStep' | 'combatStart'; player: PID }
+  | { type: 'step'; step: 'upkeep' | 'endStep' | 'combatStart' | 'main1'; player: PID }
   | { type: 'cast'; card: number; player: PID; opponentTurn: boolean }
   | { type: 'lifegain'; player: PID; amount: number }
   | { type: 'lifeloss'; player: PID; amount: number }
@@ -984,7 +1018,7 @@ export type Decision =
       source?: number;
       options: string[];
       count: number;
-      purpose: 'trigger' | 'creatureType' | 'count' | 'color';
+      purpose: 'trigger' | 'creatureType' | 'count' | 'color' | 'keyword';
       /** 觸發的模式：每個選項的效果與目標（AI 判斷用） */
       meta?: { effects: Effect[][]; specs: TargetSpec[][]; preferHigh?: boolean };
     };
@@ -1000,6 +1034,7 @@ export type ChoosePurpose =
   | 'opponentDiscard'
   | 'landFromHand'
   | 'tutor'
+  | 'searchMany'
   | 'blight';
 
 export type PriorityAction =

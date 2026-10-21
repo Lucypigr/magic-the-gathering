@@ -123,6 +123,8 @@ function triggerMatches(g: GameState, c: Card, ab: TriggeredAbility, ev: GameEve
       return ev.type === 'discard';
     case 'discardSelf':
       return ev.type === 'discard' && ev.card === c.id && ev.player === pov;
+    case 'mainStart':
+      return ev.type === 'step' && ev.step === 'main1' && ev.player === pov;
     case 'eachUpkeep':
       return ev.type === 'step' && ev.step === 'upkeep';
     case 'oppBlocks': {
@@ -162,6 +164,12 @@ export function emit(g: GameState, ev: GameEvent): void {
       g.pending.push({ source: c.id, controller: c.controller, ability: PROWESS, abilityIndex: -1, ev });
     }
     const abs = abilitiesOf(g, c);
+    // 裝備授予被裝備生物的觸發式異能
+    for (const sid of g.battlefield) {
+      const eq = g.cards[sid];
+      const tr = eq.attachedTo === c.id ? eq.def.equip?.trigger : undefined;
+      if (tr && triggerMatches(g, c, tr, ev)) g.pending.push({ source: c.id, controller: c.controller, ability: tr, abilityIndex: -1, ev });
+    }
     if (!abs.length) continue;
     for (let i = 0; i < abs.length; i++) {
       const ab = abs[i];
@@ -241,6 +249,12 @@ function resetPermanentState(c: Card): void {
   c.attachedTo = null;
   c.usedThisTurn = [];
   c.exhausted = undefined;
+  c.dealtCombat = undefined;
+  c.loseAbilitiesTurn = undefined;
+  if (c.auraBaseDef) {
+    c.def = c.auraBaseDef;
+    c.auraBaseDef = undefined;
+  }
   c.prepared = undefined;
   c.exileAtEnd = undefined;
   c.suspected = undefined;
@@ -257,6 +271,14 @@ function resetPermanentState(c: Card): void {
 export function moveCard(g: GameState, c: Card, to: Zone, bottom = false): void {
   const wasOnBf = c.zone === 'battlefield';
   const from = c.zone;
+  // 使永久物變成生物的光環離開時，恢復原本的樣子
+  if (wasOnBf && c.def.aura?.grant?.animate && c.attachedTo != null) {
+    const host = g.cards[c.attachedTo];
+    if (host?.auraBaseDef) {
+      host.def = host.auraBaseDef;
+      host.auraBaseDef = undefined;
+    }
+  }
   if (wasOnBf) c.lastCounters = c.counters;
   // 直到回合結束，將要死去時改為放逐
   if (wasOnBf && to === 'graveyard' && c.exileOnDeathTurn === g.turn) {
@@ -555,7 +577,10 @@ export function dealDamage(
     loseLife(g, target.p, n);
     if (opts.noLifeGain) p.cantGainLife = true;
     log(g, `${srcName} 對 ${p.name} 造成 ${n} 點傷害（${p.life}）`, srcController, 'damage');
-    if (opts.combat && src) emit(g, { type: 'combatDamage', source: src.id, player: target.p, amount: n });
+    if (opts.combat && src) {
+      src.dealtCombat = true;
+      emit(g, { type: 'combatDamage', source: src.id, player: target.p, amount: n });
+    }
     if (!opts.combat) {
       p.noncombatThisTurn = true;
       emit(g, { type: 'noncombat', player: target.p, amount: n, sourceController: srcController });
@@ -573,6 +598,7 @@ export function dealDamage(
       return n;
     }
     c.damage += n;
+    if (opts.combat && src) src.dealtCombat = true;
     if (kws.has('deathtouch')) c.dtDamage = true;
     log(g, `${srcName} 對 ${cardName(c)} 造成 ${n} 點傷害`, srcController, 'damage');
     emit(g, { type: 'damaged', card: c.id, amount: n });

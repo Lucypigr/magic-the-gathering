@@ -215,6 +215,11 @@ export function handCardValue(g: GameState, pid: PID, c: Card): number {
 export function heuristicMode(g: GameState, d: Extract<Decision, { type: 'mode' }>): number[] {
   const n = d.options.length;
   const scores: number[] = [];
+  if (d.purpose === 'keyword') {
+    // 優先順序：踐踏、死觸、辟邪、敏捷
+    const order = ['trample', 'deathtouch', 'hexproof', 'haste'];
+    return [d.options.map((o, i) => [order.indexOf(o) < 0 ? 99 : order.indexOf(o), i] as const).sort((a, b) => a[0] - b[0])[0][1]];
+  }
   if (d.purpose === 'color') {
     // 選手牌裡最需要的顏色
     const need: Record<string, number> = {};
@@ -315,6 +320,12 @@ export function heuristicChoose(g: GameState, d: Extract<Decision, { type: 'choo
     case 'dig': {
       const want = wantsLands(g, pid);
       const sorted = byDesc((c) => (isLand(c) ? (want ? 6 : 0.5) : handCardValue(g, pid, c)));
+      return take(sorted, d.max);
+    }
+    case 'searchMany': {
+      // 盡量多拿（基本地等），優先拿手牌最缺的類型
+      const want = wantsLands(g, pid);
+      const sorted = byDesc((c) => (isLand(c) ? (want ? 6 : 3) : handCardValue(g, pid, c)));
       return take(sorted, d.max);
     }
     case 'search': {

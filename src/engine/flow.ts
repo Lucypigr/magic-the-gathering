@@ -276,12 +276,26 @@ export function* resolveTop(g: GameState): SubFlow {
         }
         enterBattlefield(g, src, item.controller);
         src.attachedTo = t.c;
+        // 讓永久物變成生物的光環
+        const anim = def.aura.grant.animate;
+        const host = g.cards[t.c];
+        if (anim && host && !host.auraBaseDef) {
+          host.auraBaseDef = host.def;
+          host.def = {
+            ...host.def,
+            types: [...new Set([...host.def.types, 'Creature' as const])],
+            subtypes: [...(host.def.subtypes ?? []), ...(anim.subtype ? [anim.subtype] : [])],
+            power: anim.p,
+            toughness: anim.t,
+          };
+        }
         log(g, `${cardName(src)} 結附於 ${cardName(g.cards[t.c])}`, item.controller);
       } else if (item.alt === 'back') {
         enterBattlefieldBack(g, src, item.controller);
         log(g, `${cardName(src)} 進入戰場`, item.controller);
       } else {
         enterBattlefield(g, src, item.controller);
+        if (item.x !== undefined) src.castX = item.x;
         if (def.etbCountersX && item.x) putCounters(g, src, item.x);
         log(g, `${cardName(src)} 進入戰場`, item.controller);
         if (item.alt === 'warp') src.exileAtEnd = true;
@@ -463,6 +477,7 @@ function* turn(g: GameState): SubFlow {
     p.noncreatureThisTurn = 0;
     p.nextSpellUncounterable = false;
     p.discardedThisTurn = 0;
+    p.extraLandsThisTurn = 0;
     p.mountainBonus = false;
     p.pool = [];
     p.lifeLostThisTurn = 0;
@@ -501,6 +516,7 @@ function* turn(g: GameState): SubFlow {
   yield* priorityStep(g);
   // 主要階段一：傳奇在抓牌步驟後前進一章
   g.phase = 'main1';
+  emit(g, { type: 'step', step: 'main1', player: a });
   for (const id of [...g.battlefield]) {
     const c = g.cards[id];
     if (c.controller === a && c.def.saga) addLore(g, c, 1);

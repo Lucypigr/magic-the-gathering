@@ -6,7 +6,7 @@ import { stats } from '../src/engine/state';
 import type { GameState } from '../src/engine/types';
 import { createToken, dealDamage, enterBattlefield } from '../src/engine/zones';
 import { newCard } from '../src/engine/state';
-import { inGy, inHand, lands, mk, put, resolve, settleAll } from './helpers';
+import { inGy, inHand, lands, mk, put, settleAll } from './helpers';
 
 const cast = (g: GameState, id: string, targets: ({ c: number } | { p: 0 | 1 })[] = [], extra = {}) => {
   const c = inHand(g, 0, id);

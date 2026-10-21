@@ -782,5 +782,177 @@ add({
   ],
 });
 
+// ============================================================
+// 綠
+// ============================================================
+const OPP_CR_PW: TargetSpec = { kind: 'permanent', filter: { type: ['Creature', 'Planeswalker'], ctrl: 'opp' }, prompt: '選擇由對手操控的生物或鵬洛客' };
+
+cr(S, 'C', 'Budding Insurgent', '{2}{G}', 'Dryad Scout', 3, 3, '警戒\n犧牲此生物：消滅目標神器或結界。若該永久物是傳奇結界，抓一張牌。只能於法術時機起動。', {
+  keywords: ['vigilance'],
+  abilities: [
+    act({ sacSelf: true }, [
+      { e: 'if', cond: { c: 'targetIs', t: 0, filter: { type: 'Enchantment', legendary: true } }, then: [{ e: 'draw', n: 1 }] },
+      { e: 'destroy', what: 'T0' },
+    ], '犧牲：消滅神器或結界', { sorcery: true, targets: [{ kind: 'permanent', filter: { type: ['Artifact', 'Enchantment'] }, prompt: '選擇神器或結界' }] }),
+  ],
+});
+
+prepared('R', 'Carnivorous Cultivator', '{1}{G}', 'Elf Warlock', 2, 3, ['死觸', '每當此生物對玩家造成戰鬥傷害時，將目標地牌從你的墳墓場移回你手上。'], 'Enroot', '{G}', ['Sorcery'], '從你的牌庫中搜尋一張地牌，將它置入你的墳墓場，然後洗牌。', {
+  effects: [{ e: 'tutor', filter: { type: 'Land' }, to: 'graveyard' }],
+}, { keywords: ['deathtouch'], abilities: [trig('combatDamagePlayer', [{ e: 'toHand', what: 'T0' }], { targets: [gyTarget({ type: 'Land' }, '選擇你墳墓場中的地牌')] })] });
+
+inst(S, 'C', 'Compel Brutality', '{1}{G}', '選擇一項：\n• 目標由你操控的生物對目標由對手操控的生物或鵬洛客造成等同其力量的傷害。\n• 目標由你操控的鵬洛客對目標由對手操控的生物或鵬洛客造成等同其忠誠的傷害。', {
+  modes: [
+    { text: '你的生物造成等同其力量的傷害', targets: [MY_CR, OPP_CR_PW], effects: [{ e: 'bite', a: 'T0', b: 'T1' }] },
+    { text: '你的鵬洛客造成等同其忠誠的傷害', targets: [{ kind: 'permanent', filter: MY_PW, prompt: '選擇由你操控的鵬洛客' }, OPP_CR_PW], effects: [{ e: 'bite', a: 'T0', b: 'T1', byLoyalty: true }] },
+  ],
+});
+
+inst(S, 'U', 'Flourishing Grapple', '{G}', '目標紅色或白色，且由對手操控的生物或鵬洛客直到回合結束失去所有異能。目標由你操控的生物對該永久物造成等同其力量的傷害。', {
+  targets: [{ kind: 'permanent', filter: { type: ['Creature', 'Planeswalker'], ctrl: 'opp', color: ['R', 'W'] }, prompt: '選擇紅色或白色，且由對手操控的生物或鵬洛客' }, MY_CR],
+  effects: [{ e: 'loseAbilitiesEot', what: 'T0' }, { e: 'bite', a: 'T1', b: 'T0' }],
+});
+
+ench(S, 'R', 'Gardenize', '{1}{G}{G}', '每當一個由你操控的生物死去時，在此結界上放置一個充能指示物。\n在你的第一個主要階段開始時，此結界上每有一個充能指示物，便加{G}。', {
+  abilities: [
+    trig('allyDies', [{ e: 'chargeCounter', what: 'self', n: 1 }]),
+    trig('mainStart', [{ e: 'addMana', mana: ['G'], n: { selfCounters: true } }]),
+  ],
+});
+
+prepared('U', 'Heartwood Crafter', '{G}', 'Elf Artificer', 1, 1, ['', '{T}：加{C}。這點法術力不能用來從你手上施放咒語。'], 'Soul Tether', '{2}{R/G}', ['Sorcery'], '派出一個心材衍生物。（它是紅綠雙色的神器，具有「{T}：加{R}或{G}。」）', {
+  effects: [{ e: 'token', token: 'tok-heartwood' }],
+}, { produces: ['C'], manaOnly: 'notFromHand' });
+
+cr(S, 'M', 'Hexhaven Invigorator', '{G}{G}{G}{G}', 'Chimera Horror', 6, 6, '警戒\n每當此生物受到傷害時，你可以從你的牌庫中搜尋至多等量的地牌，將它們橫置放進戰場，然後洗牌。', {
+  keywords: ['vigilance'],
+  abilities: [trig('dealtDamage', [{ e: 'tutorMany', filter: { type: 'Land' }, n: { ev: true }, to: 'battlefield', tapped: true }], { may: '要搜尋地牌嗎？' })],
+});
+
+add({
+  set: S, rarity: 'R', name: 'Hungering Puppetbeast', cost: '{3}{G}{G}', types: ['Artifact', 'Creature'], subtypes: ['Beast', 'Construct'], power: 5, toughness: 5,
+  text: '當此生物進戰場時，派出一個心材衍生物。（它是紅綠雙色的神器，具有「{T}：加{R}或{G}。」）\n{1}，犧牲另一個神器：在此生物上放置一個+1/+1指示物。它獲得你選擇的踐踏、辟邪或敏捷異能直到回合結束。',
+  abilities: [
+    etb([{ e: 'token', token: 'tok-heartwood' }]),
+    act({ mana: '{1}', sacOther: { type: 'Artifact', other: true } }, [{ e: 'counters', what: 'self', n: 1 }, { e: 'pumpChoice', what: 'self', kws: ['trample', 'hexproof', 'haste'] }], '犧牲神器：+1/+1指示物並獲得異能'),
+  ],
+});
+
+add({
+  set: S, rarity: 'U', name: "Hunter's Axe", cost: '{G}', types: ['Artifact'], subtypes: ['Equipment'],
+  text: '佩帶此武具的生物得+2/+0，並具有「每當此生物攻擊時，它獲得你選擇的踐踏或死觸異能直到回合結束。」\n裝備{2}',
+  equip: { cost: '{2}', grant: { p: 2 }, trigger: { kind: 'trigger', on: 'attacks', effects: [{ e: 'pumpChoice', what: 'self', kws: ['trample', 'deathtouch'] }] } },
+});
+
+cr(S, 'C', 'Inspired Tethermage', '{2}{G}', 'Elf Warrior', 3, 2, `每當你在鵬洛客上放置一個或更多忠誠指示物時，在此生物上放置一個+1/+1指示物。\n{6}：${EMP(2)}`, {
+  abilities: [trig('loyaltyPlaced', [{ e: 'counters', what: 'self', n: 1 }]), act({ mana: '{6}' }, [empower(2)], '強化傑斯2')],
+});
+
+ench(S, 'M', 'Omnipresence', '{5}{G}{G}{G}', '你可以從手上免費施放法術力值小於或等於你操控的生物數量的咒語。', {
+  abilities: [{ kind: 'static', freeCastByCreatures: true }],
+});
+
+ench(S, 'R', 'Puppet Crafting', '{1}{G}', '結附於神器或非靈氣的結界\n所結附的永久物除了原有的類別外，還是基礎力量與防禦力為5/5的構裝體生物。\n{4}{G}：將此牌從你的墳墓場移回你手上。', {
+  subtypes: ['Aura'],
+  aura: { target: { kind: 'permanent', filter: { or: [{ type: 'Artifact' }, { type: 'Enchantment', nonSub: 'Aura' }] }, prompt: '選擇神器或非靈氣的結界' }, grant: { animate: { p: 5, t: 5, subtype: 'Construct' } } },
+  abilities: [act({ mana: '{4}{G}' }, [{ e: 'toHand', what: 'selfAny' }], '回到手上', { fromGraveyard: true, keepSelf: true })],
+});
+
+inst(S, 'U', 'Restore with Empathy', '{2}{G}', '將目標永久物牌從你的墳墓場移回你手上。你獲得4點生命。', {
+  targets: [gyTarget({ nonType: ['Instant', 'Sorcery'] }, '選擇你墳墓場中的永久物牌')],
+  effects: [{ e: 'toHand', what: 'T0' }, { e: 'gain', n: 4 }],
+});
+
+inst(S, 'C', 'Something Worth Saving', '{1}{G}', '碾磨四張牌。你可以從其中選擇一張永久物牌置於你手上。你獲得1點生命。（碾磨四張牌：將你牌庫頂的四張牌置入你的墳墓場。）', {
+  effects: [{ e: 'mill', n: 4 }, { e: 'retrieveMilled', filter: { nonType: ['Instant', 'Sorcery'] } }, { e: 'gain', n: 1 }],
+});
+
+cr(S, 'C', 'Sureshot Sower', '{1}{G}', 'Human Archer', 3, 1, '延勢\n{3}{G}，棄掉此牌：消滅目標具有飛行異能的生物。', {
+  keywords: ['reach'],
+  abilities: [act({ mana: '{3}{G}', discardSelf: true }, [{ e: 'destroy', what: 'T0' }], '棄掉：消滅飛行生物', { fromHand: true, targets: [{ kind: 'creature', filter: { kw: 'flying' }, prompt: '選擇具有飛行異能的生物' }] })],
+});
+
+cr(S, 'M', 'Tarmogoyf', '{1}{G}', 'Lhurgoyf', 0, 1, '此生物的力量等同於所有墳墓場中的牌的類別數量，防禦力等於該數量加1。', {
+  abilities: [{ kind: 'static', selfPumpGraveyardTypes: true }],
+});
+
+inst(S, 'C', "Tethermage's Advantage", '{G}', '目標生物得+2/+2並獲得延勢異能直到回合結束。重置它。', {
+  targets: [CR],
+  effects: [{ e: 'pump', what: 'T0', p: 2, t: 2, kw: ['reach'] }, { e: 'untap', what: 'T0' }],
+});
+
+cr(S, 'R', 'Verdant Kraken', '{4}{G}{G}{G}', 'Plant Kraken', 6, 6, '在每位玩家的維持開始時，你派出一個3/3綠色的森林觸手地生物衍生物。（它具有「{T}：加{G}。」在你的下個回合開始前，它受召喚失調影響。）', {
+  abilities: [trig('eachUpkeep', [{ e: 'token', token: 'tok-forest-tentacle' }])],
+});
+
+lcr('U', 'Edgar, Moonlit Sovereign', '{3}{G}{G}', 'Werewolf Noble', 4, 4, '閃現\n在你的結束步驟開始時，若你本回合沒有施放咒語，在此生物上放置兩個+1/+1指示物。\n{4}{G}：在每個由你操控且有+1/+1指示物的生物上各放置一個+1/+1指示物。', {
+  keywords: ['flash'],
+  abilities: [
+    trig('endStep', [{ e: 'counters', what: 'self', n: 2 }], { cond: { c: 'not', cond: { c: 'spellsCast', n: 1 } } }),
+    act({ mana: '{4}{G}' }, [{ e: 'counters', what: { all: { type: 'Creature', ctrl: 'you', plusCounters: true } }, n: 1 }], '有指示物的生物各+1/+1指示物'),
+  ],
+});
+
+add({
+  set: S, rarity: 'U', name: 'Fblthp, Knows the Way', cost: '{X}{G}{G}', types: ['Creature'], supertypes: ['Legendary'], subtypes: ['Homunculus', 'Scout'], power: 0, toughness: 2,
+  text: '領域—此生物的力量等同於由你操控的地中基本地類別的數量。\n當此生物進戰場時，從你的牌庫中搜尋至多X張名稱各不相同的基本地牌，展示它們並置於你手上，然後洗牌。',
+  abilities: [{ kind: 'static', selfPowerDomain: true }, etb([{ e: 'tutorMany', filter: { type: 'Land', basic: true }, n: { x: true }, to: 'hand', distinct: true }])],
+});
+
+lcr('U', 'Ghalta the Unstoppable', '{8}{G}', 'Elder Dinosaur', 8, 8, '此咒語減少{X}來施放，X為由你操控的生物中最大的力量。\n踐踏\n由你操控的其他生物具有踐踏異能。', {
+  keywords: ['trample'],
+  costReduce: { perMaxStat: { stat: 'power', filter: MY_CREATURES } },
+  abilities: [{ kind: 'static', anthem: { filter: { type: 'Creature', ctrl: 'you', other: true }, grant: { kw: ['trample'] } } }],
+});
+
+lcr('U', 'Jiang Yanggu, Never Alone', '{3}{G}', 'Human Druid', 2, 2, '當此生物進戰場時，派出名為慕烏，3/3綠色的傳奇狗生物衍生物。\n在你的結束步驟開始時，重置所有由你操控的衍生物。', {
+  abilities: [etb([{ e: 'token', token: 'tok-mowu' }]), trig('endStep', [{ e: 'untap', what: { all: { token: true, ctrl: 'you' } } }])],
+});
+
+lcr('U', 'Loot, the Nexus', '{2}{G}', 'Beast Noble', 2, 1, '{T}：選擇一種顏色。由你操控的生物中，每有一種不同的力量，便加一點該顏色的法術力。', {
+  abilities: [act({ tap: true }, [{ e: 'addManaDistinctPower' }], '依不同力量的數量加入法術力')],
+});
+
+lcr('U', 'Marwyn, the Preserver', '{1}{G}', 'Elf Druid', 3, 2, '由你操控的地具有辟邪異能。\n{2}：將目標地牌從你的墳墓場移回你手上。', {
+  abilities: [
+    { kind: 'static', anthem: { filter: { type: 'Land', ctrl: 'you' }, grant: { kw: ['hexproof'] } } },
+    act({ mana: '{2}' }, [{ e: 'toHand', what: 'T0' }], '地牌回到手上', { targets: [gyTarget({ type: 'Land' }, '選擇你墳墓場中的地牌')] }),
+  ],
+});
+
+lcr('U', 'Pia, Aether Ascetic', '{2}{G}', 'Human Druid', 2, 2, '當此生物進戰場時，你可以棄一張牌。若你如此作，從你的牌庫中搜尋一張結界牌，展示該牌並置於你手上，然後洗牌。', {
+  abilities: [etb([{ e: 'costThen', prompt: '要棄一張牌，搜尋一張結界牌嗎？', cost: { discard: 1 }, then: [{ e: 'tutor', filter: { type: 'Enchantment' } }] }])],
+});
+
+lcr('U', 'Ruric Thar, Magecrusher', '{5}{G}{G}', 'Ogre Warrior', 7, 7, '此咒語不能被反擊。\n延勢，警戒，踐踏\n只要此生物還沒有造成過戰鬥傷害，它就具有辟邪異能。', {
+  keywords: ['reach', 'vigilance', 'trample'],
+  uncounterable: true,
+  abilities: [{ kind: 'static', self: { cond: { c: 'selfNoCombatDamage' }, grant: { kw: ['hexproof'] } } }],
+});
+
+lcr('U', 'Titanbones, Towering Heart', '{3}{G}', 'Skeleton Druid', 4, 3, '延勢\n每當你獲得生命時，在此生物上放置兩個+1/+1指示物。\n當你棄掉此牌時，你獲得3點生命。', {
+  keywords: ['reach'],
+  abilities: [trig('lifegain', [{ e: 'counters', what: 'self', n: 2 }]), trig('discardSelf', [{ e: 'gain', n: 3 }])],
+});
+
+add({
+  set: S, rarity: 'U', name: 'Way of the Paradox', cost: '{2}{G}', types: ['Enchantment'], supertypes: ['Legendary'],
+  text: `${WAY_HEAD(5)}\n每當你起動忠誠異能時，你獲得1點生命。你本回合可以多打出一個地。`,
+  abilities: [etb([empower(5)]), trig('loyaltyActivated', [{ e: 'gain', n: 1 }, { e: 'extraLandThisTurn' }])],
+});
+
+add({
+  set: S, rarity: 'U', name: 'Way of the Wildspeaker', cost: '{4}{G}', types: ['Enchantment'], supertypes: ['Legendary'],
+  text: `當此結界進戰場時，${EMP(7)}\n由你操控的鵬洛客具有「[−4]：派出一個4/4綠色，具有踐踏異能的野獸衍生生物。」`,
+  abilities: [etb([empower(7)]), grantPw([loyalty(-4, [{ e: 'token', token: 'tok-beast-trample' }], '−4：派出4/4野獸')])],
+});
+
+lcr('U', 'Yoshimaru, Scrappy Stray', '{1}{G}', 'Dog', 1, 1, '當此生物進戰場時，另一個目標由你操控的生物與至多一個目標由對手操控的生物互鬥。\n{6}：在目標非傳奇生物上放置一個+1/+1指示物。', {
+  abilities: [
+    etb([{ e: 'fight', a: 'T0', b: 'T1' }], { targets: [{ ...MY_CR, notSelf: true }, { ...OPP_CR, optional: true }] }),
+    act({ mana: '{6}' }, [{ e: 'counters', what: 'T0', n: 1 }], '非傳奇生物+1/+1指示物', { targets: [{ kind: 'creature', filter: { legendary: false }, prompt: '選擇非傳奇生物' }] }),
+  ],
+});
+
 // 後續顏色的卡在下方追加
 export { ANY, OPP, OPP_CR, arti, land };

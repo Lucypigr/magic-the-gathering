@@ -58,6 +58,8 @@ export interface Ctx {
   count?: number;
   /** 上一個傷害效果造成的過量傷害 */
   excess?: number;
+  /** 這次效果碾磨的牌 */
+  milled?: number[];
 }
 
 // ------------------------------------------------------------
@@ -181,7 +183,7 @@ export function amount(g: GameState, ctx: Ctx, a: Amt): number {
   if ('libToGy' in a) return resolveRef(g, ctx, a.libToGy).players.reduce<number>((s, p) => s + (g.players[p].libToGyThisTurn ?? 0), 0);
   if ('lkiCounters' in a) return Math.max(0, g.cards[ctx.source]?.lastCounters ?? 0);
   if ('hand' in a) return g.players[ctx.controller].hand.length;
-  if ('x' in a) return ctx.x ?? 0;
+  if ('x' in a) return ctx.x ?? g.cards[ctx.source]?.castX ?? 0;
   if ('spellsCast' in a) return g.players[ctx.controller].spellsThisTurn;
   if ('selfCounters' in a) return Math.max(0, g.cards[ctx.source]?.counters ?? 0);
   if ('colors' in a) {
@@ -471,7 +473,10 @@ function* runEffect(g: GameState, ctx: Ctx, ef: Effect): SubFlow {
       const opts = lib.filter((id) => matches(g, ef.filter, g.cards[id], me));
       const picked = yield* choose(g, me, '從牌庫中搜尋一張牌', opts, 0, 1, 'tutor', true);
       for (const id of picked) {
-        if (ef.to === 'battlefield') {
+        if (ef.to === 'graveyard') {
+          moveCard(g, g.cards[id], 'graveyard');
+          log(g, `搜尋 ${cardName(g.cards[id])} 置入墳墓場`, me);
+        } else if (ef.to === 'battlefield') {
           enterBattlefield(g, g.cards[id], me);
           log(g, `搜尋 ${cardName(g.cards[id])} 放進戰場`, me);
         } else if (ef.to === 'top') {
@@ -668,7 +673,11 @@ function* runEffect(g: GameState, ctx: Ctx, ef: Effect): SubFlow {
       const n = amount(g, ctx, ef.n);
       for (const p of resolveRef(g, ctx, ef.who ?? 'you').players) {
         const lib = g.players[p].library;
-        for (let i = 0; i < n && lib.length; i++) moveCard(g, g.cards[lib[0]], 'graveyard');
+        ctx.milled = [];
+        for (let i = 0; i < n && lib.length; i++) {
+          ctx.milled.push(lib[0]);
+          moveCard(g, g.cards[lib[0]], 'graveyard');
+        }
         log(g, `碾磨 ${n} 張牌`, p);
       }
       break;
@@ -775,9 +784,11 @@ function* runEffect(g: GameState, ctx: Ctx, ef: Effect): SubFlow {
       const a = resolveRef(g, ctx, ef.a).cards[0];
       const b = resolveRef(g, ctx, ef.b).cards[0];
       if (!a || !b || a.zone !== 'battlefield' || b.zone !== 'battlefield') break;
-      if (!isCreature(a) || !isCreature(b)) break;
-      const pa = stats(g, a).p;
-      const pb = stats(g, b).p;
+      const byLoyalty = ef.e === 'bite' && ef.byLoyalty;
+      if (byLoyalty ? !a.def.types.includes('Planeswalker') : !isCreature(a)) break;
+      if (ef.e === 'fight' ? !isCreature(b) : !isCreature(b) && !b.def.types.includes('Planeswalker')) break;
+      const pa = byLoyalty ? Math.max(0, a.loyalty ?? 0) : stats(g, a).p;
+      const pb = isCreature(b) ? stats(g, b).p : 0;
       dealDamage(g, a, a.controller, { c: b.id }, pa);
       if (ef.e === 'fight') dealDamage(g, b, b.controller, { c: a.id }, pb);
       break;
@@ -840,10 +851,75 @@ function* runEffect(g: GameState, ctx: Ctx, ef: Effect): SubFlow {
       g.players[me].mountainBonus = true;
       log(g, '直到回合結束，山脈額外產生{R}', me);
       break;
-    case 'addMana':
-      (g.players[me].pool ??= []).push(...ef.mana);
-      log(g, `加入法術力：${ef.mana.map((m) => `{${m}}`).join('')}`, me);
+    case 'addMana': {
+      const times = ef.n === undefined ? 1 : amount(g, ctx, ef.n);
+      const added = Array.from({ length: Math.max(0, times) }, () => ef.mana).flat();
+      (g.players[me].pool ??= []).push(...added);
+      if (added.length) log(g, `加入法術力：${added.map((m) => `{${m}}`).join('')}`, me);
       break;
+    }
+    case 'chargeCounter':
+      for (const c of resolveRef(g, ctx, ef.what).cards) {
+        if (c.zone !== 'battlefield') continue;
+        c.counters += amount(g, ctx, ef.n);
+        log(g, `${cardName(c)} 上放置了充能指示物（${c.counters}）`, c.controller);
+      }
+      g.version++;
+      break;
+    case 'extraLandThisTurn':
+      g.players[me].extraLandsThisTurn = (g.players[me].extraLandsThisTurn ?? 0) + 1;
+      log(g, '本回合你可以多打出一個地', me);
+      break;
+    case 'loseAbilitiesEot':
+      for (const c of resolveRef(g, ctx, ef.what).cards) {
+        if (c.zone !== 'battlefield') continue;
+        c.loseAbilitiesTurn = g.turn;
+        g.loseAbilities = true;
+        log(g, `${cardName(c)} 直到回合結束失去所有異能`, c.controller);
+      }
+      g.version++;
+      break;
+    case 'retrieveMilled': {
+      const opts = (ctx.milled ?? []).filter((id) => g.cards[id].zone === 'graveyard' && matches(g, ef.filter, g.cards[id], me));
+      const ids = yield* choose(g, me, '從碾磨的牌中選擇一張置於手上', opts, 0, 1, 'dig', true);
+      for (const id of ids) {
+        moveCard(g, g.cards[id], 'hand');
+        log(g, `將 ${cardName(g.cards[id])} 置於手上`, me);
+      }
+      break;
+    }
+    case 'pumpChoice': {
+      const r: Response = yield { type: 'mode', player: me, prompt: '選擇一項異能', source: ctx.source, options: ef.kws.map((k) => k as string), count: 1, purpose: 'keyword' };
+      const kw = ef.kws[r.type === 'modes' ? r.picks[0] ?? 0 : 0] ?? ef.kws[0];
+      for (const c of resolveRef(g, ctx, ef.what).cards) {
+        if (c.zone !== 'battlefield') continue;
+        g.eot.push({ card: c.id, p: 0, t: 0, kw: [kw] });
+        log(g, `${cardName(c)} 獲得 ${kw} 直到回合結束`, c.controller);
+      }
+      g.version++;
+      break;
+    }
+    case 'tutorMany': {
+      const lib = g.players[me].library;
+      const n = amount(g, ctx, ef.n);
+      let opts = lib.filter((id) => matches(g, ef.filter, g.cards[id], me));
+      if (ef.distinct) {
+        const seen = new Set<string>();
+        opts = opts.filter((id) => (seen.has(g.cards[id].def.name) ? false : (seen.add(g.cards[id].def.name), true)));
+      }
+      let picked = yield* choose(g, me, `從你的牌庫中搜尋至多 ${n} 張牌`, opts, 0, n, 'searchMany', true);
+      if (ef.distinct) {
+        const names = new Set<string>();
+        picked = picked.filter((id) => (names.has(g.cards[id].def.name) ? false : (names.add(g.cards[id].def.name), true)));
+      }
+      for (const id of picked) {
+        if (ef.to === 'battlefield') enterBattlefield(g, g.cards[id], me, !!ef.tapped);
+        else moveCard(g, g.cards[id], 'hand');
+      }
+      if (picked.length) log(g, `搜尋 ${picked.map((id) => cardName(g.cards[id])).join('、')}`, me);
+      shuffleArr(g, lib);
+      break;
+    }
     case 'addManaDistinctPower': {
       const powers = new Set<number>();
       for (const id of g.battlefield) {

@@ -35,7 +35,7 @@ import { faceDownDef, turnFaceUp } from './facedown';
 // ------------------------------------------------------------
 // 法術力
 // ------------------------------------------------------------
-export function manaSources(g: GameState, pid: PID, exclude?: number, convoke = false, forDef?: CardDef): ManaSource[] {
+export function manaSources(g: GameState, pid: PID, exclude?: number, convoke = false, forDef?: CardDef, fromHand = false): ManaSource[] {
   const out: ManaSource[] = [];
   if (convoke) {
     // 召集：未橫置的生物可以支付 {1} 或一點與它同色的法術力（排在最後才用）
@@ -51,6 +51,7 @@ export function manaSources(g: GameState, pid: PID, exclude?: number, convoke = 
     if (c.controller !== pid || c.tapped || !c.def.produces || id === exclude) continue;
     // 限定用途的法術力（例如只能用來施放鵬洛客咒語）
     if (c.def.manaOnly === 'planeswalker' && !forDef?.types.includes('Planeswalker')) continue;
+    if (c.def.manaOnly === 'notFromHand' && fromHand) continue;
     if (abilitiesSuppressed(g, c)) continue;
     const cr = isCreature(c);
     if (cr && c.sick && !hasKw(g, c, 'haste')) continue;
@@ -74,12 +75,12 @@ export function extraLandDrops(g: GameState, pid: PID): number {
   return n;
 }
 
-export function canPayCost(g: GameState, pid: PID, cost: ManaCost, exclude?: number, convoke = false, forDef?: CardDef): boolean {
-  return findPayment(cost, manaSources(g, pid, exclude, convoke, forDef)) !== null;
+export function canPayCost(g: GameState, pid: PID, cost: ManaCost, exclude?: number, convoke = false, forDef?: CardDef, fromHand = false): boolean {
+  return findPayment(cost, manaSources(g, pid, exclude, convoke, forDef, fromHand)) !== null;
 }
 
-export function payCost(g: GameState, pid: PID, cost: ManaCost, exclude?: number, convoke = false, forDef?: CardDef): boolean {
-  const pay = findPayment(cost, manaSources(g, pid, exclude, convoke, forDef));
+export function payCost(g: GameState, pid: PID, cost: ManaCost, exclude?: number, convoke = false, forDef?: CardDef, fromHand = false): boolean {
+  const pay = findPayment(cost, manaSources(g, pid, exclude, convoke, forDef, fromHand));
   if (!pay) return false;
   for (const p of pay) if (p.id >= 0) g.cards[p.id].tapped = true;
   for (const p of pay) if (p.id >= 0 && g.cards[p.id].def.painMana && p.mana !== 'C') loseLife(g, pid, 1);
@@ -139,6 +140,8 @@ export function castDef(def: CardDef, alt?: CastAlt): CardDef {
     };
   } else if (alt === 'back' && def.back) {
     d = def.back;
+  } else if (alt === 'free') {
+    d = { ...def, cost: '' };
   } else if (alt === 'warp' && def.warp) {
     d = { ...def, cost: def.warp };
   } else if (alt === 'offspring' && def.offspring) {
@@ -166,6 +169,22 @@ export function castDef(def: CardDef, alt?: CastAlt): CardDef {
   return d;
 }
 
+/** 「你可以從手上免費施放法術力值小於或等於你操控的生物數量的咒語」 */
+function freeCastAllowed(g: GameState, pid: PID, c: Card): boolean {
+  let has = false;
+  for (const id of g.battlefield) {
+    const s = g.cards[id];
+    if (s.controller === pid && abilitiesOf(g, s).some((a) => a.kind === 'static' && a.freeCastByCreatures)) has = true;
+  }
+  if (!has) return false;
+  let n = 0;
+  for (const id of g.battlefield) {
+    const s = g.cards[id];
+    if (s.controller === pid && isCreature(s)) n++;
+  }
+  return manaValue(c.def) <= n;
+}
+
 export function cycleEffects(def: CardDef): Effect[] {
   return def.cycling?.search ? [{ e: 'tutor', filter: def.cycling.search }] : [{ e: 'draw', n: 1 }];
 }
@@ -176,6 +195,7 @@ export function castAlts(g: GameState, pid: PID, c: Card): (CastAlt | undefined)
   if (c.zone === 'hand' && c.owner === pid) {
     const base: (CastAlt | undefined)[] = def.adventure ? [undefined, 'adventure'] : def.mdfc && def.back ? [undefined, 'back'] : [undefined];
     if (def.disguise) base.push('disguise');
+    if (!isLand(c) && freeCastAllowed(g, pid, c)) base.push('free');
     if (def.warp) base.push('warp');
     if (def.offspring) base.push('offspring');
     if (def.plot) base.push('plot');
@@ -203,6 +223,11 @@ export function modeCount(def: CardDef): number {
 export function spellCost(g: GameState, c: Card, pid: PID, mode?: number, targets?: (TargetRef | null)[], alt?: CastAlt, x = 0): ManaCost {
   const def = castDef(c.def, alt);
   if (alt === 'cycle' || alt === 'plot') return parseCost(def.cost);
+  if (alt === 'free') {
+    const cost = parseCost('');
+    if (targets) cost.generic += wardTax(g, pid, targets);
+    return cost;
+  }
   if (alt === 'disguise') {
     const cost = parseCost('{3}');
     if (targets) cost.generic += wardTax(g, pid, targets);
@@ -488,7 +513,7 @@ export function maxXFor(g: GameState, pid: PID, c: Card, mode?: number, alt?: Ca
   const def = castDef(c.def, alt);
   if (!parseCost(def.spell?.modes?.[mode ?? 0]?.cost ?? def.cost).x) return undefined;
   let x = 0;
-  while (x < 20 && canPayCost(g, pid, spellCost(g, c, pid, mode, undefined, alt, x + 1), undefined, !!def.convoke, def)) x++;
+  while (x < 20 && canPayCost(g, pid, spellCost(g, c, pid, mode, undefined, alt, x + 1), undefined, !!def.convoke, def, c.zone === 'hand' && !c.token)) x++;
   return x;
 }
 
@@ -511,7 +536,7 @@ export function castableCards(g: GameState, pid: PID): Card[] {
 }
 
 export function canPlayLand(g: GameState, pid: PID): boolean {
-  return sorceryTiming(g, pid) && g.players[pid].landsPlayed < 1 + extraLandDrops(g, pid);
+  return sorceryTiming(g, pid) && g.players[pid].landsPlayed < 1 + extraLandDrops(g, pid) + (g.players[pid].extraLandsThisTurn ?? 0);
 }
 
 export function castOptionsFor(g: GameState, pid: PID, c: Card): PlayOption[] {
@@ -553,7 +578,7 @@ function castOptionsAs(g: GameState, pid: PID, c: Card, alt: CastAlt | undefined
     if (msac && sacCandidates(g, pid, msac).length === 0) continue;
     const cost = spellCost(g, c, pid, mode, undefined, alt);
     const tapper = alt === 'harmonize' ? harmonizeTapper(g, pid)?.id : undefined;
-    if (!canPayCost(g, pid, cost, tapper, !!def.convoke, def)) continue;
+    if (!canPayCost(g, pid, cost, tapper, !!def.convoke, def, c.zone === 'hand' && !c.token)) continue;
     const name = alt === 'adventure' ? (def.zh ?? def.name) : displayName(def);
     out.push({
       kind: 'cast',
@@ -571,6 +596,8 @@ function castOptionsAs(g: GameState, pid: PID, c: Card, alt: CastAlt | undefined
             ? `返照：${name}`
             : alt === 'back'
               ? `施放背面：${def.name}`
+            : alt === 'free'
+              ? `免費施放 ${name}`
             : alt === 'warp'
               ? `折躍 ${def.cost}`
             : alt === 'offspring'
@@ -753,7 +780,7 @@ function doCast(g: GameState, pid: PID, a: Extract<PriorityAction, { type: 'cast
   const x = parseCost(def.spell?.modes?.[mode ?? 0]?.cost ?? def.cost).x ? Math.max(0, Math.floor(a.x ?? 0)) : undefined;
   const cost = spellCost(g, c, pid, mode, targets, alt, x ?? 0);
   const tapper = alt === 'harmonize' ? harmonizeTapper(g, pid) : null;
-  if (!payCost(g, pid, cost, tapper?.id, !!def.convoke, def)) return `法術力不足（需要 ${costToString(cost)}）`;
+  if (!payCost(g, pid, cost, tapper?.id, !!def.convoke, def, c.zone === 'hand' && !c.token)) return `法術力不足（需要 ${costToString(cost)}）`;
   if (tapper) {
     g.cards[tapper.id].tapped = true;
     log(g, `和聲：橫置 ${cardName(g.cards[tapper.id])}，費用減少 {${tapper.p}}`, pid);
