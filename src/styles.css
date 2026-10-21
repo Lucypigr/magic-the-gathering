@@ -4355,3 +4355,19 @@ button {
   text-align: left;
   white-space: normal;
 }
+
+.mana-two {
+  position: relative;
+}
+.mana-two sup {
+  position: absolute;
+  right: -2px;
+  top: -3px;
+  font-size: 0.55em;
+  font-weight: 800;
+  line-height: 1;
+  background: #1a1d26;
+  color: #f3e7c0;
+  border-radius: 999px;
+  padding: 0 3px;
+}

@@ -90,6 +90,8 @@ export interface Filter {
   plusCounters?: boolean;
   /** 本回合進戰場 */
   enteredThisTurn?: boolean;
+  /** 本回合攻擊過 */
+  attackedThisTurn?: boolean;
 }
 
 export type TargetKind = 'creature' | 'player' | 'opponent' | 'any' | 'permanent' | 'spell' | 'gyCard';
@@ -108,6 +110,10 @@ export interface TargetSpec {
 export type Ref =
   /** 來源本身，不論它在哪個區域（例如從墳墓場回到戰場） */
   | 'selfAny'
+  /** 觸發事件中的牌，不論它在哪個區域 */
+  | 'evCard'
+  /** 此效果中派出的所有衍生物 */
+  | 'allCreated'
   | 'T0'
   | 'T1'
   | 'T2'
@@ -143,6 +149,16 @@ export type Amt =
   | { lifeGained: true }
   /** 另一個數量的負值 */
   | { negOf: Amt }
+  /** 你的墳墓場中牌數除以三（無條件捨去） */
+  | { gyThirds: true }
+  /** 你的墳墓場中牌的最大法術力值 */
+  | { gyMaxMv: true }
+  /** 由你操控的生物中不同力量的數量 */
+  | { distinctPowers: true }
+  /** 由你操控的鵬洛客中不同鵬洛客類別的數量 */
+  | { pwTypes: true }
+  /** 由你操控的其他神器中不同顏色的數量 */
+  | { artifactColors: true }
   /** 這次效果中，上一個效果實際處理的數量（例如實際抓到的牌數、實際放逐的數量） */
   | { last: true }
   /** 上一個傷害效果造成的過量傷害 */
@@ -224,6 +240,14 @@ export type Cond =
   | { c: 'creaturesDiedGte'; n: number }
   /** 條件不成立 */
   | { c: 'not'; cond: Cond }
+  /** 你的手牌中有符合條件的牌 */
+  | { c: 'handHas'; filter: Filter }
+  /** 你本回合起動過忠誠異能 */
+  | { c: 'loyaltyActivatedThisTurn' }
+  /** 此咒語（來源）是被施放而進戰場的 */
+  | { c: 'selfWasCast' }
+  /** 此咒語是從墳墓場施放的 */
+  | { c: 'castFromGy' }
   /** 此生物還沒有造成過戰鬥傷害 */
   | { c: 'selfNoCombatDamage' }
   /** 你的手牌有 n 張或更多 */
@@ -247,9 +271,13 @@ export type Cond =
   /** 此生物不是已準備 */
   | { c: 'notPrepared' }
   /** 你的速度已達最高（4） */
-  | { c: 'maxSpeed' };
+  | { c: 'maxSpeed' }
+  /** 永遠成立 */
+  | { c: 'always' };
 
 export interface ExtraCost {
+  /** 棄掉符合條件的牌 */
+  discardFilter?: Filter;
   /** 從你的墳墓場放逐另一張符合條件的牌 */
   exileGy?: Filter;
   /** 從你的墳墓場放逐 n 張與此來源同名的牌（以及此咒語本身） */
@@ -263,7 +291,7 @@ export interface ExtraCost {
 }
 
 export type Effect =
-  | { e: 'damage'; n: Amt; to: Ref; noLifeGain?: boolean }
+  | { e: 'damage'; n: Amt; to: Ref; noLifeGain?: boolean; from?: Ref }
   | { e: 'draw'; n: Amt; who?: Ref }
   | { e: 'discard'; n: Amt; who: Ref; random?: boolean }
   | { e: 'discardChosen'; who: Ref; filter?: Filter }
@@ -313,15 +341,35 @@ export type Effect =
   /** 選擇一個生物類別，消滅所有不是該類別的生物 */
   | { e: 'kindredJudgment' }
   /** 此生物成為已準備 */
-  | { e: 'prepare' }
+  | { e: 'prepare'; what?: Ref }
+  /** 目標地獲得「{T}：加{C}{C}」，直到來源牌從放逐區被施放為止 */
+  | { e: 'bonusMana'; what: Ref }
+  /** 此牌在放逐區時，你可以施放它 */
+  | { e: 'allowCastFromExile' }
+  /** 直到回合結束，成為目標生物的複製 */
+  | { e: 'becomeCopy'; what: Ref }
+  /** 本回合傳奇規則不適用於你操控的永久物 */
+  | { e: 'legendExempt' }
   /** 取消準備 */
   | { e: 'unprepare'; what: Ref }
   /** 直到回合結束，該生物的基礎力量與防禦力 */
   | { e: 'setBase'; what: Ref; p: number; t: number }
   /** 擁有者選擇把永久物放在牌庫頂或牌庫底 */
-  | { e: 'topOrBottom'; what: Ref }
+  | { e: 'topOrBottom'; what: Ref; damageTop?: number }
   /** 你贏得這場遊戲 */
   | { e: 'win' }
+  /** 放逐你選擇的對手手牌中符合條件的牌（之後在門檻成立時你可以施放它，且可以用任何類型的法術力） */
+  | { e: 'exileFromHandLinked'; who: Ref; filter: Filter }
+  /** 放逐目標生物或鵬洛客；若其法術力值為3或更少，改為在你的操控下橫置放回戰場，並在下一個結束步驟開始時放逐它 */
+  | { e: 'exileThenSteal'; what: Ref; mvMax: number }
+  /** 在目標玩家操控的每個生物上各放置 n 個 +1/+1 指示物 */
+  | { e: 'countersEachOf'; who: Ref; n: Amt }
+  /** 將牌置於其擁有者牌庫底 */
+  | { e: 'toLibraryBottom'; what: Ref }
+  /** 增殖：選擇任意數量有指示物的永久物，各多放一個同種指示物 */
+  | { e: 'proliferate'; times: Amt }
+  /** 烏達羅斯：放逐你墳墓場中每種類別至多一張非地牌，複製它們，並免費施放總法術力值6或更少的複製品 */
+  | { e: 'theorix' }
   /** 本回合的延遲觸發（once：只觸發一次） */
   | { e: 'delayed'; on: TriggerOn; effects: Effect[]; once?: boolean; what?: Ref }
   /** 複製觸發的咒語（可以選擇新目標） */
@@ -345,7 +393,7 @@ export type Effect =
   | { e: 'bite'; a: Ref; b: Ref; byLoyalty?: boolean }
   | { e: 'toHand'; what: Ref }
   /** counters：額外的 +1/+1 指示物；finality：帶著終結指示物（死去時改為放逐） */
-  | { e: 'reanimate'; what: Ref; counters?: number; finality?: boolean; tapped?: boolean }
+  | { e: 'reanimate'; what: Ref; counters?: number; finality?: boolean; tapped?: boolean; owner?: boolean }
   /** 目標對手犧牲其操控的生物與鵬洛客中法術力值最大的一個（由該玩家在並列者中選擇） */
   | { e: 'edictMax'; who: Ref }
   /** 在永久物上放置（任何種類的）指示物，例如充能指示物 */
@@ -373,7 +421,8 @@ export type Effect =
   /** 加入法術力到法術力池（直到此步驟結束） */
   | { e: 'addMana'; mana: Mana[]; n?: Amt }
   /** 你的法術力池加入：選擇一種顏色，依你操控的生物中不同力量的數量 */
-  | { e: 'addManaDistinctPower' }
+  /** 選擇一種顏色，加入 n 點該顏色的法術力 */
+  | { e: 'addManaOfChoice'; n: Amt }
   /** 直到回合結束，每當你為山脈橫置來產生法術力時，額外加一點{R} */
   | { e: 'mountainBonus' }
   /** 將符合條件的牌從你的墳墓場全部放進戰場 */
@@ -452,6 +501,10 @@ export type TriggerOn =
   | 'eachEndStep'
   /** 每當有對手起動忠誠異能時 */
   | 'oppLoyaltyActivated'
+  /** 每當由你操控的生物攻擊時（每個攻擊者各觸發一次） */
+  | 'allyAttacks'
+  /** 每當被結附的生物死去時 */
+  | 'attachedDies'
   /** 在你的第一個主要階段開始時 */
   | 'mainStart'
   /** 在每個維持開始時（任何玩家的回合） */
@@ -490,6 +543,8 @@ export interface TriggeredAbility {
   targetsOpp?: boolean;
   /** 死去類觸發：也包含鵬洛客 */
   includePw?: boolean;
+  /** 施放類觸發：只有對手施放的咒語 */
+  oppOnly?: boolean;
   /** 觸發條件：只在事件發生時檢查（和 cond 不同，結算時不再檢查） */
   when?: Cond;
   /** 觸發物件需要符合的條件（例如 allyEtb 的進場生物、castAny 的咒語） */
@@ -507,13 +562,15 @@ export interface TriggeredAbility {
   /** 「你可以」：結算時詢問 */
   may?: string;
   oncePerTurn?: boolean;
+  /** 施放類觸發：只有以「準備」施放的咒語 */
+  preparedOnly?: boolean;
 }
 
 export interface ActivatedAbility {
   kind: 'activated';
   /** loyalty：忠誠異能（+N 放置、-N 移除忠誠指示物；每個鵬洛客每回合只能起動一次，只能於法術時機） */
   /** crew：駕駛 N（橫置總力量 N 或更多的其他未橫置生物） */
-  cost: { mana?: string; tap?: boolean; discardSelf?: boolean; exileSelf?: boolean; sacSelf?: boolean; sacOther?: Filter; life?: number; craft?: Filter; craftCount?: number; loyalty?: number; crew?: number };
+  cost: { mana?: string; tap?: boolean; tapN?: { filter: Filter; n: number }; discardSelf?: boolean; exileSelf?: boolean; sacSelf?: boolean; sacOther?: Filter; life?: number; craft?: Filter; craftCount?: number; loyalty?: number; crew?: number };
   targets?: TargetSpec[];
   effects: Effect[];
   sorcery?: boolean;
@@ -545,6 +602,8 @@ export interface StaticAbility {
   spellCostLess?: { filter: Filter; n: number };
   /** 你獲得生命時額外多獲得 n 點 */
   lifegainPlus?: number;
+  /** 神器與生物進戰場不會使異能觸發 */
+  suppressEtbTriggers?: boolean;
   /** 你每回合可以多使用 n 張地 */
   extraLand?: number;
   /** 符合條件的永久物（你操控的）擁有這些起動式異能 */
@@ -633,6 +692,8 @@ export interface CardDef {
   convoke?: boolean;
   /** 此生物以已準備的狀態進戰場 */
   etbPrepared?: boolean;
+  /** 以返照施放時的額外費用（例如棄一張牌） */
+  flashbackAddCost?: ExtraCost;
   /** 返照：可以支付此費用從墳墓場施放，之後放逐 */
   flashback?: string;
   /** 以返照施放時，結算後不放逐，而是轉化成背面放進戰場 */
@@ -656,6 +717,10 @@ export interface CardDef {
   castCond?: Cond;
   /** 守護—棄掉一張牌 */
   wardDiscard?: boolean;
+  /** 守護—犧牲 n 個永久物 */
+  wardSac?: number;
+  /** 當你施放此咒語時的觸發效果 */
+  castEffects?: Effect[];
   /** 套牌中可以有任意數量的同名卡 */
   anyNumber?: boolean;
   /** 此咒語不能被反擊 */
@@ -674,7 +739,7 @@ export interface CardDef {
   evadePowLte?: number;
   spell?: SpellSpec;
   aura?: { target?: TargetSpec; grant: Grant };
-  equip?: { cost: string; grant: Grant; /** 被裝備的生物獲得的觸發式異能 */ trigger?: TriggeredAbility };
+  equip?: { cost: string; costLessPerCounter?: boolean; grant: Grant; /** 被裝備的生物獲得的觸發式異能 */ trigger?: TriggeredAbility };
   abilities?: Ability[];
   /** 額外費用（例如：犧牲一個生物、支付生命） */
   addCost?: ExtraCost;
@@ -707,6 +772,10 @@ export interface Card {
   def: CardDef;
   /** 暫時變成生物前的原始定義（回合結束時還原） */
   baseDef?: CardDef;
+  /** 本回合是第幾回合攻擊的 */
+  attackedTurn?: number;
+  /** 此地獲得「{T}：加{C}{C}」，直到該來源牌離開放逐區 */
+  bonusMana?: number;
   /** 冒險中：在放逐區，可以施放本體 */
   onAdventure?: boolean;
   /** 已轉化：目前是背面，這是正面的定義 */
@@ -748,6 +817,12 @@ export interface Card {
   exileOnDeathTurn?: number;
   /** 直到此回合結束，可以從墳墓場以返照施放 */
   tempFlashbackTurn?: number;
+  /** 在下一個結束步驟開始時放逐（不能再施放） */
+  exileAtEndFinal?: boolean;
+  /** 此咒語是被施放而進戰場的 */
+  wasCast?: boolean;
+  /** 被某位玩家放逐、在條件成立時可以由其施放（任何類型的法術力皆可） */
+  linkedCast?: { by: PID; cond: Cond };
   /** 因折躍被放逐的回合（之後的回合可以從放逐區施放） */
   warpExiled?: number;
   /** 被棄掉的回合（騷亂） */
@@ -805,6 +880,8 @@ export interface Player {
   noncreatureThisTurn?: number;
   /** 本回合棄掉的牌數 */
   discardedThisTurn?: number;
+  /** 本回合起動過忠誠異能 */
+  loyaltyActivatedThisTurn?: boolean;
   /** 本回合額外可以打出的地數 */
   extraLandsThisTurn?: number;
   /** 法術力池（直到步驟結束） */
@@ -982,6 +1059,8 @@ export interface GameState {
   loseAbilities?: boolean;
   /** 虛空：本回合有非地永久物離開戰場，或有咒語以折躍施放 */
   voidThisTurn?: boolean;
+  /** 傳奇規則不適用 */
+  legendExempt?: { pid: PID; turn: number };
   maxTurns: number;
   /** 最近的畫面事件（模擬用的複本不記錄） */
   shows: Show[];
@@ -1035,6 +1114,7 @@ export type ChoosePurpose =
   | 'landFromHand'
   | 'tutor'
   | 'searchMany'
+  | 'proliferate'
   | 'blight';
 
 export type PriorityAction =

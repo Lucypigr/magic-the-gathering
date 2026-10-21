@@ -910,7 +910,7 @@ lcr('U', 'Jiang Yanggu, Never Alone', '{3}{G}', 'Human Druid', 2, 2, '當此生�
 });
 
 lcr('U', 'Loot, the Nexus', '{2}{G}', 'Beast Noble', 2, 1, '{T}：選擇一種顏色。由你操控的生物中，每有一種不同的力量，便加一點該顏色的法術力。', {
-  abilities: [act({ tap: true }, [{ e: 'addManaDistinctPower' }], '依不同力量的數量加入法術力')],
+  abilities: [act({ tap: true }, [{ e: 'addManaOfChoice', n: { distinctPowers: true } }], '依不同力量的數量加入法術力')],
 });
 
 lcr('U', 'Marwyn, the Preserver', '{1}{G}', 'Elf Druid', 3, 2, '由你操控的地具有辟邪異能。\n{2}：將目標地牌從你的墳墓場移回你手上。', {
@@ -952,6 +952,413 @@ lcr('U', 'Yoshimaru, Scrappy Stray', '{1}{G}', 'Dog', 1, 1, '當此生物進戰�
     etb([{ e: 'fight', a: 'T0', b: 'T1' }], { targets: [{ ...MY_CR, notSelf: true }, { ...OPP_CR, optional: true }] }),
     act({ mana: '{6}' }, [{ e: 'counters', what: 'T0', n: 1 }], '非傳奇生物+1/+1指示物', { targets: [{ kind: 'creature', filter: { legendary: false }, prompt: '選擇非傳奇生物' }] }),
   ],
+});
+
+// ============================================================
+// 多色／混色
+// ============================================================
+const HEARTWOOD: Effect = { e: 'token', token: 'tok-heartwood' };
+const ANY_NONLAND: TargetSpec = { kind: 'permanent', filter: { nonType: 'Land' }, prompt: '選擇非地永久物' };
+const SEED_SUTURE_TEXT = '在目標生物上放置一個+1/+1指示物。你獲得1點生命。';
+const SEED_SUTURE: SpellSpec = { targets: [CR], effects: [{ e: 'counters', what: 'T0', n: 1 }, { e: 'gain', n: 1 }] };
+const PEER_REVIEW_TEXT = `派出一個${CADET}。刺探1。`;
+const PEER_REVIEW: SpellSpec = { effects: [cadet(), { e: 'surveil', n: 1 }] };
+const SOUL_TETHER_TEXT = '派出一個心材衍生物。（它是紅綠雙色的神器，具有「{T}：加{R}或{G}。」）';
+const SOUL_TETHER: SpellSpec = { effects: [HEARTWOOD] };
+const VICIOUS_VERSE_TEXT = '此咒語對目標對手造成1點傷害。';
+const VICIOUS_VERSE: SpellSpec = { targets: [{ kind: 'opponent', prompt: '選擇對手' }], effects: [{ e: 'damage', n: 1, to: 'T0' }] };
+const OMIT_TEXT = '碾磨三張牌。（將你牌庫頂的三張牌置入你的墳墓場。）';
+const OMIT: SpellSpec = { effects: [{ e: 'mill', n: 3 }] };
+const prepareAtUpkeep = trig('upkeep', [{ e: 'prepare' }], { cond: { c: 'notPrepared' } });
+const PREP_UPKEEP = '在你的維持開始時，若此生物不是已準備，它成為已準備。';
+
+lcr('M', 'Aerid Konstrari', '{1}{R}{G}{G}', 'Elder Sphinx', 5, 4, '飛行\n當此生物進戰場或死去時，派出一個心材衍生物。（它是紅綠雙色的神器，具有「{T}：加{R}或{G}。」）\n{6}：派出一個心材衍生物。然後此生物得+X/+0直到回合結束，X為由你操控的神器數量。', {
+  keywords: ['flying'],
+  abilities: [
+    etb([HEARTWOOD]),
+    trig('dies', [HEARTWOOD]),
+    act({ mana: '{6}' }, [HEARTWOOD, { e: 'pump', what: 'self', p: { count: MY_ARTIFACTS }, t: 0 }], '派出心材並得+X/+0'),
+  ],
+});
+
+cr(S, 'C', 'Blessed Ghoul', '{W/B}', 'Zombie Cleric', 1, 1, '系帶\n{2}{W/B}：將此牌從你的墳墓場移回你手上。', {
+  keywords: ['lifelink'],
+  abilities: [act({ mana: '{2}{W/B}' }, [{ e: 'toHand', what: 'selfAny' }], '回到手上', { fromGraveyard: true, keepSelf: true })],
+});
+
+cr(S, 'U', 'Bloombrute', '{2}{G}{W}', 'Plant Elemental', 4, 4, '每當你獲得生命時，抓一張牌。此異能每回合只會觸發一次。\n{4}{G}{W}：目標生物獲得踐踏與系帶異能直到回合結束。', {
+  abilities: [
+    trig('lifegain', [{ e: 'draw', n: 1 }], { oncePerTurn: true }),
+    act({ mana: '{4}{G}{W}' }, [{ e: 'pump', what: 'T0', p: 0, t: 0, kw: ['trample', 'lifelink'] }], '目標獲得踐踏與系帶', { targets: [CR] }),
+  ],
+});
+
+inst(S, 'U', 'Clash of Elements', '{1}{U}{R}', '選擇目標非地永久物。其擁有者可以將它放在其牌庫頂。若該玩家如此作，此咒語對該玩家造成2點傷害。若該玩家沒有將牌放在牌庫頂，改為放在牌庫底。', {
+  targets: [ANY_NONLAND],
+  effects: [{ e: 'topOrBottom', what: 'T0', damageTop: 2 }],
+});
+
+cr(S, 'U', 'Craftwork Crusher', '{3}{R}{R}{G}{G}', 'Boar Construct', 7, 5, `踐踏\n當此生物進戰場時，選擇兩項：\n• 此生物對目標生物或鵬洛客造成4點傷害。\n• 派出一個${CADET}。\n• 抓一張牌。`, {
+  types: ['Artifact', 'Creature'],
+  keywords: ['trample'],
+  abilities: [
+    etb([], {
+      chooseN: 2,
+      modes: [
+        { text: '對生物或鵬洛客造成4點傷害', targets: [{ kind: 'permanent', filter: { type: ['Creature', 'Planeswalker'] }, prompt: '選擇生物或鵬洛客' }], effects: [{ e: 'damage', n: 4, to: 'T0', from: 'self' }] },
+        { text: '派出學員', effects: [cadet()] },
+        { text: '抓一張牌', effects: [{ e: 'draw', n: 1 }] },
+      ],
+    }),
+  ],
+});
+
+lcr('M', 'Denzilore Fatehold', '{1}{W}{U}{U}', 'Elder Sphinx', 3, 4, '閃現\n飛行\n每當你占卜或刺探時，在每個由你操控的生物上各放置一個+1/+1指示物。', {
+  keywords: ['flash', 'flying'],
+  abilities: [trig('scry', [{ e: 'counters', what: { all: MY_CREATURES }, n: 1 }])],
+});
+
+cr(S, 'U', 'Desperate Futurescribe', '{2}{W}{U}', 'Kor Scout', 3, 4, '飛行\n在你的戰鬥開始時，另一個目標由你操控的生物得+1/+1直到回合結束。若你本回合占卜或刺探過，改為在該生物上放置一個+1/+1指示物。', {
+  keywords: ['flying'],
+  abilities: [
+    trig(
+      'combatStart',
+      [{ e: 'if', cond: { c: 'scried' }, then: [{ e: 'counters', what: 'T0', n: 1 }], else: [{ e: 'pump', what: 'T0', p: 1, t: 1 }] }],
+      { targets: [{ ...MY_CR, notSelf: true }] },
+    ),
+  ],
+});
+
+prepared('C', 'Emergency Phytomedic', '{G/W}', 'Dryad Cleric', 1, 1, '', 'Seed Suture', '{G/W}', ['Sorcery'], SEED_SUTURE_TEXT, SEED_SUTURE);
+
+sorc(S, 'R', 'Entrust the Spark', '{3}{G}{U}', '你可以犧牲一個鵬洛客。若你如此作，從你的牌庫中搜尋一張鵬洛客牌，將它放進戰場，然後洗牌。', {
+  effects: [{ e: 'costThen', prompt: '要犧牲一個鵬洛客嗎？', cost: { sac: { type: 'Planeswalker' } }, then: [{ e: 'tutor', filter: { type: 'Planeswalker' }, to: 'battlefield' }] }],
+});
+
+prepared('C', 'Fatehold Chronologist', '{1}{W/U}', 'Bird Wizard', 1, 2, '飛行', 'Peer Review', '{2}{W/U}', ['Sorcery'], PEER_REVIEW_TEXT, PEER_REVIEW, { keywords: ['flying'] });
+
+ench(S, 'C', 'Ferocity of the Hunt', '{1}{B/G}', '閃現\n結附於生物\n所結附的生物得+1/+0並具有死觸異能。\n當所結附的生物死去時，將該牌橫置放回戰場，由其擁有者操控。', {
+  subtypes: ['Aura'],
+  keywords: ['flash'],
+  aura: { target: { kind: 'creature', prompt: '選擇要結附的生物' }, grant: { p: 1, kw: ['deathtouch'] } },
+  abilities: [trig('attachedDies', [{ e: 'reanimate', what: 'evCard', tapped: true, owner: true }])],
+});
+
+cr(S, 'R', 'Frostbite Pyromental', '{U}{R}{R}', 'Elemental', 4, 4, '踐踏，敏捷\n每當此生物對玩家造成戰鬥傷害時，抓兩張牌。\n在每個結束步驟開始時，犧牲此生物。', {
+  keywords: ['trample', 'haste'],
+  abilities: [trig('combatDamagePlayer', [{ e: 'draw', n: 2 }]), trig('eachEndStep', [{ e: 'sac', what: 'self' }])],
+});
+
+cr(S, 'U', 'Grim Repriser', '{B}{R}', 'Zombie Bard', 2, 2, '勇行\n{B}{R}：將此牌從你的墳墓場放回戰場，並帶有一個終結指示物。只有在有對手本回合被造成非戰鬥傷害時才能起動。（帶有終結指示物的生物將要死去時，改為放逐它。）', {
+  keywords: ['prowess'],
+  abilities: [act({ mana: '{B}{R}' }, [{ e: 'reanimate', what: 'selfAny', finality: true }], '帶著終結指示物回到戰場', { fromGraveyard: true, keepSelf: true, cond: { c: 'oppNoncombatThisTurn' } })],
+});
+
+lcr('M', 'Ingris Stingerquill', '{B}{R}{R}', 'Elder Sphinx', 1, 4, `飛行\n每當一個由你操控的生物攻擊時，它對每位對手各造成1點傷害。\n{4}：派出一個${CADET}。然後由你操控的生物獲得敏捷異能直到回合結束。`, {
+  keywords: ['flying'],
+  abilities: [
+    trig('allyAttacks', [{ e: 'damage', n: 1, to: 'opp', from: 'trig' }]),
+    act({ mana: '{4}' }, [cadet(), { e: 'pump', what: { all: MY_CREATURES }, p: 0, t: 0, kw: ['haste'] }], '派出學員，生物獲得敏捷'),
+  ],
+});
+
+inst(S, 'U', 'Konstrari Charm', '{R}{G}', '選擇一項：\n• 此咒語對目標具有飛行異能的生物造成6點傷害。\n• 在目標生物上放置兩個+1/+1指示物。它獲得踐踏異能直到回合結束。\n• 加{C}{C}{C}。', {
+  modes: [
+    { text: '對飛行生物造成6點傷害', targets: [{ kind: 'creature', filter: { kw: 'flying' }, prompt: '選擇具有飛行異能的生物' }], effects: [{ e: 'damage', n: 6, to: 'T0' }] },
+    { text: '+1/+1指示物×2並獲得踐踏', targets: [CR], effects: [{ e: 'counters', what: 'T0', n: 2 }, { e: 'pump', what: 'T0', p: 0, t: 0, kw: ['trample'] }] },
+    { text: '加{C}{C}{C}', effects: [{ e: 'addMana', mana: ['C'], n: 3 }] },
+  ],
+});
+
+prepared('C', 'Konstrari Improviser', '{1}{R/G}', 'Human Artificer', 2, 2, '', 'Soul Tether', '{2}{R/G}', ['Sorcery'], SOUL_TETHER_TEXT, SOUL_TETHER);
+
+lcr('M', 'Kwia Vigorbloom', '{3}{G}{W}{W}', 'Elder Sphinx', 6, 6, '飛行，警戒，系帶，守護{2}\n每當你獲得生命時，派出一個無色，名為蓮花的神器衍生物，其具有「{T}，犧牲此衍生物：加三點任一種顏色的法術力。」此異能每回合只會觸發一次。', {
+  keywords: ['flying', 'vigilance', 'lifelink'],
+  ward: 2,
+  abilities: [trig('lifegain', [{ e: 'token', token: 'tok-lotus' }], { oncePerTurn: true })],
+});
+
+cr(S, 'U', 'Mind Meanderer', '{3}{G}{U}{U}', 'Bird Fish Illusion', 4, 4, '飛行\n只要你操控傑斯鵬洛客，此生物就具有警戒異能。\n當此生物進戰場時，它與至多一個目標由對手操控的生物互鬥。', {
+  keywords: ['flying'],
+  abilities: [
+    { kind: 'static', self: { cond: { c: 'controls', filter: { type: 'Planeswalker', sub: 'Jace', ctrl: 'you' } }, grant: { kw: ['vigilance'] } } },
+    etb([{ e: 'fight', a: 'self', b: 'T0' }], { targets: [{ ...OPP_CR, optional: true }] }),
+  ],
+});
+
+cr(S, 'R', 'Null Summoner', '{2}{U}{B}', 'Human Warlock', 4, 2, '當此生物進戰場時，若你施放了它，目標對手展示其手牌。你選擇其中一張非地牌，放逐該牌。\n門檻—只要你的墳墓場中有七張或更多牌，你就可以施放該被放逐的牌，且可以用任何類型的法術力來支付該咒語的費用。', {
+  abilities: [etb([{ e: 'exileFromHandLinked', who: 'opp', filter: { nonType: 'Land' } }], { cond: { c: 'selfWasCast' } })],
+});
+
+prepared('U', 'Paradox Shaper', '{1}{U/B}', 'Octopus Wizard', 1, 3, `${PREP_UPKEEP}\n{2}：將目標你墳墓場中的牌放到你牌庫底。`, 'Omit Variables', '{U/B}', ['Sorcery'], OMIT_TEXT, OMIT, {
+  abilities: [prepareAtUpkeep, act({ mana: '{2}' }, [{ e: 'toLibraryBottom', what: 'T0' }], '墳墓場的牌放到牌庫底', { targets: [gyTarget({}, '選擇你墳墓場中的牌')] })],
+}, false);
+
+cr(S, 'U', 'Primal Witchstalker', '{1}{B}{G}', 'Wolf', 2, 1, '威懾\n當此生物進戰場時，碾磨四張牌。當你如此作時，將目標地牌從你的墳墓場橫置放回戰場。（碾磨四張牌：將你牌庫頂的四張牌置入你的墳墓場。）', {
+  keywords: ['menace'],
+  abilities: [
+    etb([
+      { e: 'mill', n: 4 },
+      { e: 'reflexive', targets: [gyTarget({ type: 'Land' }, '選擇你墳墓場中的地牌')], effects: [{ e: 'reanimate', what: 'T0', tapped: true }] },
+    ]),
+  ],
+});
+
+cr(S, 'R', 'Proctor of Potential', '{W}{U}', 'Human Cleric', 3, 1, '每當此生物或另一個由你操控的生物進戰場時，刺探1。\n{W}{U}：將此牌從你的墳墓場放回戰場，並帶有一個終結指示物。只有在你本回合占卜或刺探過時才能起動。（帶有終結指示物的生物將要死去時，改為放逐它。）', {
+  abilities: [
+    etb([{ e: 'surveil', n: 1 }]),
+    trig('allyEtb', [{ e: 'surveil', n: 1 }]),
+    act({ mana: '{W}{U}' }, [{ e: 'reanimate', what: 'selfAny', finality: true }], '帶著終結指示物回到戰場', { fromGraveyard: true, keepSelf: true, cond: { c: 'scried' } }),
+  ],
+});
+
+prepared('U', 'Prudent Fateseer', '{1}{W/U}{W/U}', 'Dwarf Wizard', 1, 4, ['', '每當你占卜或刺探時，由你操控的生物得+1/+0直到回合結束。此異能每回合只會觸發一次。'], 'Peer Review', '{2}{W/U}', ['Sorcery'], PEER_REVIEW_TEXT, PEER_REVIEW, {
+  abilities: [trig('scry', [{ e: 'pump', what: { all: MY_CREATURES }, p: 1, t: 0 }], { oncePerTurn: true })],
+});
+
+sorc(S, 'U', 'Recursive Recruitment', '{2}{U}{B}', `派出兩個${CADET}。若此咒語是從墳墓場施放的，在每個衍生物上，你墳墓場中每有三張牌就放置一個+1/+1指示物。\n${FB('{6}{U}{B}')}`, {
+  effects: [cadet(2), { e: 'if', cond: { c: 'castFromGy' }, then: [{ e: 'counters', what: 'allCreated', n: { gyThirds: true } }] }],
+}, { flashback: '{6}{U}{B}' });
+
+cr(S, 'R', 'Solarium Sentry', '{G}{W}', 'Cat Soldier', 3, 3, '每當對手施放法術力值2或更少的咒語時，你獲得2點生命。', {
+  abilities: [trig('castAny', [{ e: 'gain', n: 2 }], { oppOnly: true, filter: { mvMax: 2 } })],
+});
+
+arti(S, 'R', 'Solitary Cell', '{R}{W}', '當此神器進戰場時，放逐目標由對手操控，且法術力值為3或更少的非地永久物，直到此神器離開戰場。\n{1}，{T}，棄掉一張傳奇牌：抓一張牌。', {
+  abilities: [
+    etb([{ e: 'exileLinked', what: 'T0' }], { targets: [{ kind: 'permanent', filter: { nonType: 'Land', ctrl: 'opp', mvMax: 3 }, prompt: '選擇對手操控、法術力值3或更少的非地永久物' }] }),
+    act({ mana: '{1}', tap: true }, [{ e: 'costThen', prompt: '要棄掉一張傳奇牌嗎？', cost: { discardFilter: { legendary: true } }, then: [{ e: 'draw', n: 1 }] }], '棄掉傳奇牌：抓一張牌', { cond: { c: 'handHas', filter: { legendary: true } } }),
+  ],
+});
+
+prepared('U', 'Stingerquill Voxmancer', '{B/R}', 'Goblin Sorcerer', 1, 2, PREP_UPKEEP, 'Vicious Verse', '{B/R}', ['Sorcery'], VICIOUS_VERSE_TEXT, VICIOUS_VERSE, { abilities: [prepareAtUpkeep] }, false);
+
+sorc(S, 'R', 'Stinging Vitriol', '{B}{R}', '此咒語對目標對手造成2點傷害。該玩家展示其手牌。你選擇其中一張非地牌，該玩家棄掉那張牌。', {
+  targets: [{ kind: 'opponent', prompt: '選擇對手' }],
+  effects: [{ e: 'damage', n: 2, to: 'T0' }, { e: 'discardChosen', who: 'T0', filter: { nonType: 'Land' } }],
+});
+
+cr(S, 'R', 'Tenured Tethermage', '{1}{R}{G}', 'Human Artificer', 1, 1, '當此生物進戰場時，你可以犧牲一個地。若你如此作，派出兩個橫置的心材衍生物。\n橫置兩個由你操控的未橫置神器：在此生物上放置兩個+1/+1指示物。', {
+  abilities: [
+    etb([{ e: 'costThen', prompt: '要犧牲一個地嗎？', cost: { sac: { type: 'Land' } }, then: [{ e: 'token', token: 'tok-heartwood', n: 2, tapped: true }] }]),
+    act({ tapN: { filter: { type: 'Artifact', ctrl: 'you' }, n: 2 } }, [{ e: 'counters', what: 'self', n: 2 }], '橫置兩個神器：+1/+1指示物×2'),
+  ],
+});
+
+prepared('C', 'Theorix Metamage', '{2}{U/B}', 'Shade Wizard', 2, 3, ['', '門檻—只要你的墳墓場中有七張或更多牌，此生物便得+1/+0並具有飛行異能。'], 'Omit Variables', '{U/B}', ['Sorcery'], OMIT_TEXT, OMIT, {
+  abilities: [{ kind: 'static', self: { cond: { c: 'gyCount', filter: {}, n: 7 }, grant: { p: 1, kw: ['flying'] } } }],
+});
+
+inst(S, 'C', 'Twinned Vision', '{1}{U/R}', '抓一張牌。若此咒語不是從你手上施放的，改為抓兩張牌。\n返照—{1}{U/R}{U/R}，棄掉一張牌。（你可以支付此返照費用並從你的墳墓場施放此牌。之後此牌會被放逐。）', {
+  effects: [{ e: 'if', cond: { c: 'castFromGy' }, then: [{ e: 'draw', n: 2 }], else: [{ e: 'draw', n: 1 }] }],
+}, { flashback: '{1}{U/R}{U/R}', flashbackAddCost: { discard: 1 } });
+
+sorc(S, 'U', 'Twisted Fates', '{2}{W}{W}{B}', '消滅目標非地永久物。在每個由目標玩家操控的生物上各放置一個+1/+1指示物。', {
+  targets: [ANY_NONLAND, { kind: 'player', prompt: '選擇玩家' }],
+  effects: [{ e: 'destroy', what: 'T0' }, { e: 'countersEachOf', who: 'T1', n: 1 }],
+});
+
+lcr('M', 'Uldaros Theorix', '{3}{U}{B}{B}', 'Elder Sphinx', 5, 5, '飛行\n當此生物進戰場時，若你施放了他，從你的墳墓場中，為每種類別各放逐至多一張目標非地牌。複製那些牌。你可以免付法術力費用施放其中任意數量總法術力值為6或更少的複製品。（以此法施放的永久物咒語會成為衍生物。）', {
+  keywords: ['flying'],
+  abilities: [etb([{ e: 'theorix' }], { cond: { c: 'selfWasCast' } })],
+});
+
+inst(S, 'U', 'Vigorbloom Charm', '{G}{W}', '選擇一項：\n• 目標由你操控的永久物獲得辟邪與不滅異能直到回合結束。\n• 你抓一張牌並獲得3點生命。\n• 在目標由你操控的生物上放置一個+1/+1指示物。然後它與目標由對手操控的生物互鬥。', {
+  modes: [
+    { text: '永久物獲得辟邪與不滅', targets: [{ kind: 'permanent', filter: { ctrl: 'you' }, prompt: '選擇由你操控的永久物' }], effects: [{ e: 'pump', what: 'T0', p: 0, t: 0, kw: ['hexproof', 'indestructible'] }] },
+    { text: '抓一張牌並獲得3點生命', effects: [{ e: 'draw', n: 1 }, { e: 'gain', n: 3 }] },
+    { text: '+1/+1指示物並互鬥', targets: [MY_CR, OPP_CR], effects: [{ e: 'counters', what: 'T0', n: 1 }, { e: 'fight', a: 'T0', b: 'T1' }] },
+  ],
+});
+
+prepared('U', 'Vigorbloom Vanguard', '{1}{G/W}', 'Troll Druid', 2, 2, ['', '每個身上有+1/+1指示物且由你操控的生物都具有警戒異能。'], 'Seed Suture', '{G/W}', ['Sorcery'], SEED_SUTURE_TEXT, SEED_SUTURE, {
+  abilities: [{ kind: 'static', anthem: { filter: { ...MY_CREATURES, plusCounters: true }, grant: { kw: ['vigilance'] } } }],
+});
+
+inst(S, 'R', 'Vindictive Triumph', '{W}{B}{B}', '放逐目標生物或鵬洛客。若該永久物的法術力值為3或更少，改為將它橫置放回戰場，由你操控，並在下一個結束步驟開始時放逐它。', {
+  targets: [{ kind: 'permanent', filter: { type: ['Creature', 'Planeswalker'] }, prompt: '選擇生物或鵬洛客' }],
+  effects: [{ e: 'exileThenSteal', what: 'T0', mvMax: 3 }],
+});
+
+add({
+  set: S, rarity: 'U', name: "Warrior's Blades", cost: '{2}{R}{W}', types: ['Artifact'], subtypes: ['Equipment'],
+  text: '當此武具進戰場時，它對任意一個目標造成3點傷害，且你獲得3點生命。\n裝備的生物得+2/+1。\n裝備{3}。目標生物上每有一個+1/+1指示物，此異能的起動費用就減少{1}。',
+  equip: { cost: '{3}', costLessPerCounter: true, grant: { p: 2, t: 1 } },
+  abilities: [etb([{ e: 'damage', n: 3, to: 'T0', from: 'self' }, { e: 'gain', n: 3 }], { targets: [ANY] })],
+});
+
+prepared('C', 'Whiplash Wordsmith', '{3}{B/R}', 'Vampire Sorcerer', 3, 3, ['', '只要有對手本回合被造成非戰鬥傷害，此生物就具有飛行與敏捷異能。'], 'Vicious Verse', '{B/R}', ['Sorcery'], VICIOUS_VERSE_TEXT, VICIOUS_VERSE, {
+  abilities: [{ kind: 'static', self: { cond: { c: 'oppNoncombatThisTurn' }, grant: { kw: ['flying', 'haste'] } } }],
+});
+
+prepared('U', 'Woodwork Prodigy', '{2}{R/G}', 'Cat Druid', 3, 3, PREP_UPKEEP, 'Soul Tether', '{2}{R/G}', ['Sorcery'], SOUL_TETHER_TEXT, SOUL_TETHER, { abilities: [prepareAtUpkeep] }, false);
+
+lcr('U', 'Edgar, Ancient Bloodlord', '{W}{B}', 'Vampire Noble', 2, 3, '每當另一個由你操控的生物或鵬洛客死去時，你獲得1點生命。\n{2}，犧牲另一個生物或鵬洛客：在艾德加上放置一個+1/+1指示物。他獲得威懾異能直到回合結束。', {
+  abilities: [
+    trig('allyDies', [{ e: 'gain', n: 1 }], { includePw: true }),
+    act({ mana: '{2}', sacOther: { type: ['Creature', 'Planeswalker'], other: true } }, [{ e: 'counters', what: 'self', n: 1 }, { e: 'pump', what: 'self', p: 0, t: 0, kw: ['menace'] }], '犧牲另一個生物或鵬洛客'),
+  ],
+});
+
+lcr('U', 'Hapatra, the Desert Fang', '{2}{B}{B}{G}', 'Human Cleric', 3, 3, '當哈帕特拉進戰場時，對每位對手，在至多一個由該玩家操控的目標生物上放置X個-1/-1指示物，X為你墳墓場中的牌的最大法術力值。', {
+  abilities: [etb([{ e: 'counters', what: 'T0', n: { negOf: { gyMaxMv: true } } }], { targets: [{ ...OPP_CR, optional: true }] })],
+});
+
+add({
+  set: S, rarity: 'R', name: 'Karn, Gilded Guardian', cost: '{2/W}{2/U}{2/B}{2/R}{2/G}', types: ['Artifact', 'Creature'], supertypes: ['Legendary'], subtypes: ['Golem'], power: 5, toughness: 5,
+  keywords: ['vigilance', 'trample'],
+  text: '警戒，踐踏\n當卡恩進戰場時，在由你操控的其他神器中，每有一種顏色，你就抓一張牌。',
+  abilities: [etb([{ e: 'draw', n: { artifactColors: true } }])],
+});
+
+lcr('U', 'Kiora of Salt and Sand', '{1}{G}{U}', 'Merfolk Noble', 2, 4, '每當你進行攻擊時，若你本回合起動過忠誠異能，則將目標進行攻擊的生物重置。本回合它不能被阻擋。\n由你操控的鵬洛客具有「[−8]：派出一個8/8藍色，具有辟邪異能的利維坦衍生生物。」', {
+  abilities: [
+    trig('youAttack', [{ e: 'untap', what: 'T0' }, { e: 'pump', what: 'T0', p: 0, t: 0, kw: ['unblockable'] }], { cond: { c: 'loyaltyActivatedThisTurn' }, targets: [{ kind: 'creature', filter: { attacking: true }, prompt: '選擇進行攻擊的生物' }] }),
+    grantPw([loyalty(-8, [{ e: 'token', token: 'tok-leviathan' }], '−8：派出8/8利維坦')]),
+  ],
+});
+
+lcr('U', 'Mabel, Valley Hero', '{1}{R}{W}', 'Mouse Soldier', 1, 2, '每當瑪貝爾或另一個由你操控的生物進戰場時，在目標本回合進戰場的生物上放置一個+1/+1指示物。', {
+  abilities: [
+    etb([{ e: 'counters', what: 'T0', n: 1 }], { targets: [{ kind: 'creature', filter: { enteredThisTurn: true }, prompt: '選擇本回合進戰場的生物' }] }),
+    trig('allyEtb', [{ e: 'counters', what: 'T0', n: 1 }], { targets: [{ kind: 'creature', filter: { enteredThisTurn: true }, prompt: '選擇本回合進戰場的生物' }] }),
+  ],
+});
+
+lcr('U', 'Saheeli, Jewel of Avishkar', '{2}{U}{R}', 'Human Artificer', 2, 4, `由你操控的機械鳥具有敏捷異能。\n每當你施放非生物咒語時，派出一個${THOPTER}。`, {
+  abilities: [
+    { kind: 'static', anthem: { filter: { sub: 'Thopter', ctrl: 'you' }, grant: { kw: ['haste'] } } },
+    trig('castNoncreature', [{ e: 'token', token: 'tok-thopter' }]),
+  ],
+});
+
+lcr('R', 'Tam, the Possibility', '{1}{G}{U}', 'Gorgon Wizard', 2, 4, '你施放的鵬洛客咒語減少{1}。\n{W}{U}{B}{R}{G}，{T}：增殖X次，X為由你操控的鵬洛客中不同鵬洛客類別的數量。', {
+  abilities: [
+    { kind: 'static', spellCostLess: { filter: { type: 'Planeswalker' }, n: 1 } },
+    act({ mana: '{W}{U}{B}{R}{G}', tap: true }, [{ e: 'proliferate', times: { pwTypes: true } }], '增殖X次'),
+  ],
+});
+
+lcr('R', 'Vraska, Soul of Stone', '{U}{R}{W}', 'Gorgon Wizard', 3, 3, '由你操控的神器生物具有警戒異能。\n每當你施放非生物咒語時，派出一個1/1無色，名為雕塑珍寶的神器生物衍生物，其具有「{T}，犧牲此衍生物：加一點任意顏色的法術力。」', {
+  abilities: [
+    { kind: 'static', anthem: { filter: { type: ['Artifact', 'Creature'], ctrl: 'you' }, grant: { kw: ['vigilance'] } } },
+    trig('castNoncreature', [{ e: 'token', token: 'tok-sculpture-treasure' }]),
+  ],
+});
+
+// ============================================================
+// 無色與地
+// ============================================================
+const ALL_COLORS = ['W', 'U', 'B', 'R', 'G'] as const;
+
+add({
+  set: S, rarity: 'M', name: 'Emrakul, the Exigent Doom', cost: '{10}', types: ['Creature'], supertypes: ['Legendary'], subtypes: ['Eldrazi'], power: 12, toughness: 12,
+  keywords: ['flying', 'trample'],
+  wardSac: 3,
+  text: '當你施放此咒語時，重置你操控的所有地。\n飛行，踐踏\n守護—犧牲三個永久物。\n{3}，從你手上放逐此牌：目標地獲得「{T}：加{C}{C}」，直到此牌從放逐區被施放為止。只要它仍在放逐區，你就可以施放此牌。',
+  castEffects: [{ e: 'untap', what: { all: { type: 'Land', ctrl: 'you' } } }],
+  abilities: [
+    act({ mana: '{3}', exileSelf: true }, [{ e: 'bonusMana', what: 'T0' }, { e: 'allowCastFromExile' }], '放逐此牌：目標地加{C}{C}，之後可從放逐區施放', {
+      fromHand: true,
+      targets: [{ kind: 'permanent', filter: { type: 'Land' }, prompt: '選擇一個地' }],
+    }),
+  ],
+});
+
+cr(S, 'C', 'Afterthought Sentry', '{2}', 'Gargoyle', 2, 2, '{2}：此生物獲得飛行異能直到回合結束。\n每當此生物攻擊時，放逐至多一張目標在任一墳墓場中的牌。', {
+  types: ['Artifact', 'Creature'],
+  abilities: [
+    act({ mana: '{2}' }, [{ e: 'pump', what: 'self', p: 0, t: 0, kw: ['flying'] }], '獲得飛行'),
+    trig('attacks', [{ e: 'exileGy', what: 'T0' }], { targets: [{ kind: 'gyCard', optional: true, prompt: '選擇任一墳墓場中的牌' }] }),
+  ],
+});
+
+cr(S, 'U', 'Archive Arbiter', '{6}', 'Sphinx', 4, 4, '飛行\n當此生物進戰場時，選擇一項：\n• 消滅目標非生物，非地的永久物。\n• 你獲得4點生命。', {
+  types: ['Artifact', 'Creature'],
+  keywords: ['flying'],
+  abilities: [
+    etb([], {
+      modes: [
+        { text: '消滅非生物、非地的永久物', targets: [{ kind: 'permanent', filter: { nonType: ['Creature', 'Land'] }, prompt: '選擇非生物、非地的永久物' }], effects: [{ e: 'destroy', what: 'T0' }] },
+        { text: '獲得4點生命', effects: [{ e: 'gain', n: 4 }] },
+      ],
+    }),
+  ],
+});
+
+lcr('R', 'Codie, Ravenous Codex', '{3}', 'Book Construct', 1, 4, '每當你施放已準備的咒語時，複製它。你可以選擇新的目標。\n{W}{U}{B}{R}{G}，{T}：由你操控的每個生物都成為已準備。（只有具有準備咒語的生物才能成為已準備。）', {
+  types: ['Artifact', 'Creature'],
+  abilities: [
+    trig('castAny', [{ e: 'copySpell' }], { preparedOnly: true, filter: {} }),
+    act({ mana: '{W}{U}{B}{R}{G}', tap: true }, [{ e: 'prepare', what: { all: MY_CREATURES } }], '每個生物成為已準備'),
+  ],
+});
+
+add({
+  set: S, rarity: 'M', name: 'The Echoverse Fulcrum', cost: '{2}', types: ['Artifact'], supertypes: ['Legendary'],
+  text: '當此神器進戰場時，抓一張牌，然後棄一張牌。\n{5}，{T}，放逐此神器：消滅所有生物。只能於法術時機起動。',
+  abilities: [
+    etb([{ e: 'draw', n: 1 }, { e: 'discard', n: 1, who: 'you' }]),
+    act({ mana: '{5}', tap: true, exileSelf: true }, [{ e: 'destroy', what: { all: { type: 'Creature' } } }], '消滅所有生物', { sorcery: true }),
+  ],
+});
+
+arti(S, 'U', 'Eye of Jace', '{1}', '在你的維持開始時，刺探1。然後若你的墳墓場中有七張或更多牌，犧牲此神器，它對每位對手各造成2點傷害，且你獲得2點生命。', {
+  abilities: [
+    trig('upkeep', [
+      { e: 'surveil', n: 1 },
+      { e: 'if', cond: { c: 'gyCount', filter: {}, n: 7 }, then: [{ e: 'sac', what: 'self' }, { e: 'damage', n: 2, to: 'opp', from: 'self' }, { e: 'gain', n: 2 }] },
+    ]),
+  ],
+});
+
+cr(S, 'C', 'Living Library', '{2}', 'Book Illusion', 0, 4, '{6}，犧牲此生物：選擇目標由對手操控的生物或鵬洛客。其擁有者將它洗入其牌庫。', {
+  types: ['Artifact', 'Creature'],
+  abilities: [
+    act({ mana: '{6}', sacSelf: true }, [{ e: 'shuffleIn', what: 'T0' }], '洗入牌庫', { targets: [{ kind: 'permanent', filter: { type: ['Creature', 'Planeswalker'], ctrl: 'opp' }, prompt: '選擇對手操控的生物或鵬洛客' }] }),
+  ],
+});
+
+add({
+  set: S, rarity: 'C', name: "Medic's Kitesail", cost: '{2}', types: ['Artifact'], subtypes: ['Equipment'],
+  text: '裝備的生物得+1/+0並具有飛行異能與「每當此生物攻擊時，你獲得1點生命。」\n裝備{2}。',
+  equip: { cost: '{2}', grant: { p: 1, kw: ['flying'] }, trigger: { kind: 'trigger', on: 'attacks', effects: [{ e: 'gain', n: 1 }] } },
+});
+
+add({
+  set: S, rarity: 'C', name: 'Murmuring Volume', cost: '{3}', types: ['Artifact'], subtypes: ['Book'], produces: [...ALL_COLORS],
+  text: '{T}：加一點任意顏色的法術力。\n{2}，{T}，棄掉一張牌：抓一張牌。',
+  abilities: [act({ mana: '{2}', tap: true }, [{ e: 'costThen', prompt: '要棄掉一張牌嗎？', cost: { discard: 1 }, then: [{ e: 'draw', n: 1 }] }], '棄一張牌：抓一張牌', { cond: { c: 'handGte', n: 1 } })],
+});
+
+lcr('R', 'Karn, Argent Defender', '{2}', 'Golem', 1, 3, '神器與生物進戰場不會使異能觸發。', {
+  types: ['Artifact', 'Creature'],
+  abilities: [{ kind: 'static', suppressEtbTriggers: true }],
+});
+
+lcr('U', 'Traxos, Scourge Eternal', '{4}', 'Dragon Construct', 5, 4, '踐踏\n超艾克索斯在你的重置步驟中不會重置。\n每當你施放神器或生物咒語時，重置超艾克索斯。', {
+  types: ['Artifact', 'Creature'],
+  keywords: ['trample'],
+  abilities: [
+    { kind: 'static', self: { grant: { noUntap: true } } },
+    trig('castAny', [{ e: 'untap', what: 'self' }], { filter: { or: [{ type: 'Artifact' }, { type: 'Creature' }] } }),
+  ],
+});
+
+land(S, 'R', 'Hall of Echoes', ['C'], '{T}：加{C}。\n{5}：直到回合結束，此地成為目標由你操控的生物的複製。本回合傳奇規則不適用於由你操控的永久物。', {
+  abilities: [act({ mana: '{5}' }, [{ e: 'becomeCopy', what: 'T0' }, { e: 'legendExempt' }], '成為生物的複製', { targets: [MY_CR] })],
+});
+
+land(S, 'U', 'Hexhaven Dueling Arena', ['C'], '{T}：加{C}。\n{2}，{T}：目標本回合進行過攻擊的生物成為已準備。只能於法術時機起動。\n{4}，{T}：目標生物成為已準備。（只有具有準備咒語的生物才能成為已準備。）', {
+  abilities: [
+    act({ mana: '{2}', tap: true }, [{ e: 'prepare', what: 'T0' }], '進行過攻擊的生物成為已準備', { sorcery: true, targets: [{ kind: 'creature', filter: { attackedThisTurn: true }, prompt: '選擇本回合進行過攻擊的生物' }] }),
+    act({ mana: '{4}', tap: true }, [{ e: 'prepare', what: 'T0' }], '生物成為已準備', { targets: [CR] }),
+  ],
+});
+
+land(S, 'R', 'Roiling Canopy', ['G'], '此地以橫置狀態進戰場。\n每當一個森林在你的操控下進戰場時，若你操控至少另外五個森林，目標由你操控的生物得+3/+3直到回合結束。\n{T}：加{G}。', {
+  etbTapped: true,
+  abilities: [trig('landfall', [{ e: 'pump', what: 'T0', p: 3, t: 3 }], { filter: { sub: 'Forest' }, cond: { c: 'controls', filter: { type: 'Land', sub: 'Forest', ctrl: 'you' }, n: 6 }, targets: [MY_CR] })],
 });
 
 // 後續顏色的卡在下方追加

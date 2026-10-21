@@ -3,6 +3,7 @@ import {
   abilitiesOf,
   cardName,
   checkCond,
+  etbTriggersSuppressed,
   hasKw,
   isCreature,
   isLand,
@@ -44,7 +45,9 @@ function triggerMatches(g: GameState, c: Card, ab: TriggeredAbility, ev: GameEve
       return t.includes('Instant') || t.includes('Sorcery');
     }
     case 'castAny': {
-      if (ev.type !== 'cast' || !(ev.player === pov || ab.anyPlayer)) return false;
+      if (ev.type !== 'cast' || !(ev.player === pov || ab.anyPlayer || ab.oppOnly)) return false;
+      if (ab.preparedOnly && g.stack.find((s) => s.kind === 'spell' && s.cardId === ev.card)?.alt !== 'prepared') return false;
+      if (ab.oppOnly && ev.player === pov) return false;
       // 該咒語以對手或其生物為目標
       if (ab.targetsOpp) {
         const item = g.stack.find((s) => s.kind === 'spell' && s.cardId === ev.card);
@@ -123,6 +126,10 @@ function triggerMatches(g: GameState, c: Card, ab: TriggeredAbility, ev: GameEve
       return ev.type === 'discard';
     case 'discardSelf':
       return ev.type === 'discard' && ev.card === c.id && ev.player === pov;
+    case 'allyAttacks':
+      return ev.type === 'attacks' && g.cards[ev.card]?.controller === pov;
+    case 'attachedDies':
+      return ev.type === 'dies' && c.attachedTo === ev.card;
     case 'mainStart':
       return ev.type === 'step' && ev.step === 'main1' && ev.player === pov;
     case 'eachUpkeep':
@@ -147,6 +154,10 @@ function triggerMatches(g: GameState, c: Card, ab: TriggeredAbility, ev: GameEve
 const PROWESS: TriggeredAbility = { kind: 'trigger', on: 'castNoncreature', effects: [{ e: 'pump', what: 'self', p: 1, t: 1 }] };
 
 export function emit(g: GameState, ev: GameEvent): void {
+  if (ev.type === 'etb') {
+    const e = g.cards[ev.card];
+    if (e && (isCreature(e) || e.def.types.includes('Artifact')) && etbTriggersSuppressed(g)) return;
+  }
   if (ev.type === 'discard') {
     // 「當你棄掉這張牌時」：來源已在墳墓場
     const dc = g.cards[ev.card];

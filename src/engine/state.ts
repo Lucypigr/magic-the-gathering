@@ -358,6 +358,7 @@ export function matches(g: GameState, f: Filter | undefined, c: Card, pov: PID, 
   }
   if (f.sub && !(d.changeling && d.types.includes('Creature')) && !asArr(f.sub).some((s) => d.subtypes?.includes(s))) return false;
   if (f.nonSub && (d.changeling || asArr(f.nonSub).some((s) => d.subtypes?.includes(s)))) return false;
+  if (f.attackedThisTurn !== undefined && (c.attackedTurn === g.turn) !== f.attackedThisTurn) return false;
   if (f.legendary !== undefined && !!d.supertypes?.includes('Legendary') !== f.legendary) return false;
   if (f.basic !== undefined && !!d.supertypes?.includes('Basic') !== f.basic) return false;
   if (f.mvMax !== undefined && manaValue(d) > f.mvMax) return false;
@@ -473,6 +474,14 @@ export function checkCond(
       return (g.creaturesDiedCount ?? 0) >= cond.n;
     case 'not':
       return !checkCond(g, cond.cond, controller, sourceId, targets, ev);
+    case 'handHas':
+      return me.hand.some((id) => matches(g, cond.filter, g.cards[id], controller, sourceId));
+    case 'loyaltyActivatedThisTurn':
+      return !!me.loyaltyActivatedThisTurn;
+    case 'selfWasCast':
+      return sourceId != null && !!g.cards[sourceId]?.wasCast;
+    case 'castFromGy':
+      return false;
     case 'selfNoCombatDamage':
       return sourceId != null && !g.cards[sourceId]?.dealtCombat;
     case 'handGte':
@@ -499,6 +508,8 @@ export function checkCond(
       return sourceId != null && g.cards[sourceId]?.saddledTurn === g.turn;
     case 'maxSpeed':
       return (me.speed ?? 0) >= 4;
+    case 'always':
+      return true;
     case 'morbid':
       return !!g.creatureDiedThisTurn;
     case 'delirium': {
@@ -536,4 +547,12 @@ export function lifegainBonus(g: GameState, pid: PID): number {
     for (const ab of abilitiesOf(g, c)) if (ab.kind === 'static' && ab.lifegainPlus) n += ab.lifegainPlus;
   }
   return n;
+}
+
+/** 場上有「神器與生物進戰場不會使異能觸發」 */
+export function etbTriggersSuppressed(g: GameState): boolean {
+  for (const id of g.battlefield) {
+    for (const ab of abilitiesOf(g, g.cards[id])) if (ab.kind === 'static' && ab.suppressEtbTriggers) return true;
+  }
+  return false;
 }

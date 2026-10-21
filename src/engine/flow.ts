@@ -89,6 +89,7 @@ export function checkSBA(g: GameState): void {
     }
     // 傳奇規則：保留最新進場的那個
     for (const pid of [0, 1] as PID[]) {
+      if (g.legendExempt && g.legendExempt.pid === pid && g.legendExempt.turn === g.turn) continue;
       const seen = new Map<string, Card>();
       const extra: Card[] = [];
       for (const id of g.battlefield) {
@@ -251,6 +252,7 @@ export function* resolveTop(g: GameState): SubFlow {
     ev: item.ev,
     lkiPower: item.lkiPower,
     x: item.x,
+    alt: item.alt,
   };
   if (item.kind === 'spell') {
     const def = src.def;
@@ -295,6 +297,7 @@ export function* resolveTop(g: GameState): SubFlow {
         log(g, `${cardName(src)} 進入戰場`, item.controller);
       } else {
         enterBattlefield(g, src, item.controller);
+        src.wasCast = true;
         if (item.x !== undefined) src.castX = item.x;
         if (def.etbCountersX && item.x) putCounters(g, src, item.x);
         log(g, `${cardName(src)} 進入戰場`, item.controller);
@@ -478,6 +481,7 @@ function* turn(g: GameState): SubFlow {
     p.nextSpellUncounterable = false;
     p.discardedThisTurn = 0;
     p.extraLandsThisTurn = 0;
+    p.loyaltyActivatedThisTurn = false;
     p.mountainBonus = false;
     p.pool = [];
     p.lifeLostThisTurn = 0;
@@ -532,7 +536,10 @@ function* turn(g: GameState): SubFlow {
   for (const id of [...g.battlefield]) {
     const c = g.cards[id];
     if (c.sacAtEnd) sacrifice(g, c);
-    else if (c.exileAtEnd && c.zone === 'battlefield') {
+    else if (c.exileAtEndFinal && c.zone === 'battlefield') {
+      log(g, `${cardName(c)} 被放逐`, c.controller);
+      moveCard(g, c, 'exile');
+    } else if (c.exileAtEnd && c.zone === 'battlefield') {
       // 折躍：放逐，之後的回合可以從放逐區施放
       log(g, `${cardName(c)} 折躍結束，被放逐（之後的回合可以再施放）`, c.controller);
       moveCard(g, c, 'exile');

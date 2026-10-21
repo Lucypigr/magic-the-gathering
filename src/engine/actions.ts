@@ -56,6 +56,8 @@ export function manaSources(g: GameState, pid: PID, exclude?: number, convoke = 
     const cr = isCreature(c);
     if (cr && c.sick && !hasKw(g, c, 'haste')) continue;
     out.push({ id, produces: c.def.produces, isCreature: cr, sac: c.def.sacOnMana, filter: c.def.filterMana, pain: c.def.painMana });
+    // 「{T}：加{C}{C}」（艾姆庫的放逐能力）
+    if (c.bonusMana !== undefined && g.cards[c.bonusMana]?.zone === 'exile') out.push({ id: -100000 - id, produces: ['C'], isCreature: false, extra: true });
     // 「每當你為山脈橫置來產生法術力時，額外加一點{R}」
     if (g.players[pid].mountainBonus && c.def.subtypes?.includes('Mountain')) out.push({ id: -2000 - id, produces: ['R'], isCreature: false, extra: true });
   }
@@ -163,7 +165,7 @@ export function castDef(def: CardDef, alt?: CastAlt): CardDef {
     // 循環是起動式異能：任何時候都能起動，不是施放咒語
     d = { ...def, cost: def.cycling.cost, types: ['Instant'], spell: { effects: cycleEffects(def) }, addCost: undefined, costReduce: undefined };
   } else {
-    d = { ...def, cost: def.flashback ?? def.cost };
+    d = { ...def, cost: def.flashback ?? def.cost, ...(def.flashbackAddCost ? { addCost: def.flashbackAddCost } : {}) };
   }
   m[alt] = d;
   return d;
@@ -206,6 +208,7 @@ export function castAlts(g: GameState, pid: PID, c: Card): (CastAlt | undefined)
   if (c.zone === 'exile' && c.owner === pid && c.onAdventure) return [undefined];
   if (c.zone === 'exile' && c.playableTurn === g.turn && c.playableBy === pid) return def.adventure ? [undefined, 'adventure'] : [undefined];
   if (c.zone === 'exile' && c.owner === pid && c.warpExiled !== undefined && c.warpExiled < g.turn) return [undefined];
+  if (c.zone === 'exile' && c.linkedCast && c.linkedCast.by === pid && checkCond(g, c.linkedCast.cond, pid, undefined, [])) return [undefined];
   if (c.zone === 'graveyard' && c.owner === pid) {
     const out: CastAlt[] = [];
     if (def.flashback || c.tempFlashbackTurn === g.turn) out.push('flashback');
@@ -277,6 +280,11 @@ export function spellCost(g: GameState, c: Card, pid: PID, mode?: number, target
       }
     }
   }
+  // 「可以用任何類型的法術力支付」：有色需求都改成一般費用
+  if (c.linkedCast) {
+    const total = cost.generic + cost.W + cost.U + cost.B + cost.R + cost.G + cost.C + (cost.hyb?.length ?? 0);
+    cost = { ...parseCost(''), generic: total };
+  }
   // 稅：永久物讓咒語多花費用（例如「對手施放的非生物咒語費用多{1}」）
   for (const id of g.battlefield) {
     const s = g.cards[id];
@@ -326,6 +334,29 @@ export function wardDiscardCount(g: GameState, pid: PID, targets: (TargetRef | n
     if (tc && tc.zone === 'battlefield' && tc.controller !== pid && tc.def.wardDiscard && !abilitiesSuppressed(g, tc)) n++;
   }
   return n;
+}
+
+/** 守護—犧牲永久物：以對手的永久物為目標時要犧牲的數量 */
+export function wardSacCount(g: GameState, pid: PID, targets: (TargetRef | null)[]): number {
+  let n = 0;
+  for (const t of targets) {
+    if (!t || !('c' in t)) continue;
+    const tc = g.cards[t.c];
+    if (tc && tc.zone === 'battlefield' && tc.controller !== pid && tc.def.wardSac && !abilitiesSuppressed(g, tc)) n += tc.def.wardSac;
+  }
+  return n;
+}
+
+/** 自動犧牲最不重要的永久物：已橫置的地、其他地，然後法術力值最低的非地永久物 */
+function payWardSac(g: GameState, pid: PID, n: number, exclude?: number): void {
+  for (let i = 0; i < n; i++) {
+    const mine = g.battlefield.map((id) => g.cards[id]).filter((x) => x.controller === pid && x.id !== exclude);
+    if (!mine.length) return;
+    const rank = (x: Card) => (isLand(x) ? (x.tapped ? 0 : 1) : 2) * 1000 + manaValue(x.def);
+    mine.sort((a, b) => rank(a) - rank(b));
+    log(g, `守護：犧牲 ${cardName(mine[0])}`, pid);
+    sacrifice(g, mine[0]);
+  }
 }
 
 function payWardDiscard(g: GameState, pid: PID, n: number, exclude?: number): void {
@@ -451,6 +482,16 @@ export function crewChoice(g: GameState, pid: PID, vehicle: Card, n: number): nu
 /** usedThisTurn 中代表「本回合已起動過忠誠異能」的記號 */
 const LOYALTY_USED = 2000;
 
+/** 起動代價「橫置 n 個未橫置的永久物」：優先選不會產生法術力的永久物 */
+export function tapNChoices(g: GameState, pid: PID, f: Filter, n: number, sourceId: number): number[] | null {
+  const cands = g.battlefield
+    .map((id) => g.cards[id])
+    .filter((x) => x.controller === pid && !x.tapped && matches(g, f, x, pid, sourceId));
+  if (cands.length < n) return null;
+  cands.sort((a, b) => Number(!!a.def.produces) - Number(!!b.def.produces) || manaValue(a.def) - manaValue(b.def));
+  return cands.slice(0, n).map((x) => x.id);
+}
+
 export function canActivate(g: GameState, pid: PID, c: Card, idx: number): boolean {
   const ab = abilitiesFor(g, c)[idx];
   if (!ab) return false;
@@ -470,6 +511,7 @@ export function canActivate(g: GameState, pid: PID, c: Card, idx: number): boole
     if (isCreature(c) && c.sick && !hasKw(g, c, 'haste')) return false;
   }
   if (ab.cost.life && g.players[pid].life < ab.cost.life) return false;
+  if (ab.cost.tapN && !tapNChoices(g, pid, ab.cost.tapN.filter, ab.cost.tapN.n, c.id)) return false;
   if (ab.cost.sacOther && sacCandidates(g, pid, ab.cost.sacOther, c.id).length === 0) return false;
   if (ab.cost.craft && craftMaterials(g, pid, ab.cost.craft, c.id, ab.cost.craftCount) == null) return false;
   if (ab.cost.mana) {
@@ -479,6 +521,12 @@ export function canActivate(g: GameState, pid: PID, c: Card, idx: number): boole
       for (const id of g.battlefield) {
         const t = g.cards[id];
         if (t.controller === pid && t.id !== c.id && isCreature(t)) best = Math.max(best, t.def.equipDiscount ?? 0);
+      }
+      if (c.def.equip?.costLessPerCounter) {
+        for (const id of g.battlefield) {
+          const t = g.cards[id];
+          if (t.controller === pid && isCreature(t)) best = Math.max(best, t.counters);
+        }
       }
       cost.generic = Math.max(0, cost.generic - best);
     }
@@ -531,6 +579,13 @@ export function castableCards(g: GameState, pid: PID): Card[] {
   for (const id of p.exile) {
     const c = g.cards[id];
     if ((c.plottedTurn !== undefined && c.plottedTurn < g.turn) || (c.warpExiled !== undefined && c.warpExiled < g.turn)) out.push(c);
+  }
+  // 被對手的手牌放逐、在條件成立時可以施放的牌（例如 Null Summoner）
+  for (const q of g.players) {
+    for (const id of q.exile) {
+      const c = g.cards[id];
+      if (c.linkedCast && c.linkedCast.by === pid && !out.includes(c) && checkCond(g, c.linkedCast.cond, pid, undefined, [])) out.push(c);
+    }
   }
   return out;
 }
@@ -773,6 +828,12 @@ function doCast(g: GameState, pid: PID, a: Extract<PriorityAction, { type: 'cast
   let discardCard: Card | undefined;
   if (def.addCost?.discard) {
     discardCard = a.discard != null ? g.cards[a.discard] : undefined;
+    if (!discardCard) {
+      // 沒有指定時，自動選擇最不重要的牌（非地優先棄法術力值低的；全是地就棄地）
+      const hand = p.hand.filter((id) => id !== c.id).map((id) => g.cards[id]);
+      hand.sort((x, y) => Number(isLand(y)) - Number(isLand(x)) || manaValue(x.def) - manaValue(y.def));
+      discardCard = hand[0];
+    }
     if (!discardCard || discardCard.zone !== 'hand' || discardCard.owner !== pid || discardCard.id === c.id)
       return '請選擇要棄掉的牌';
   }
@@ -792,6 +853,7 @@ function doCast(g: GameState, pid: PID, a: Extract<PriorityAction, { type: 'cast
     loseLife(g, pid, wl);
   }
   payWardDiscard(g, pid, wardDiscardCount(g, pid, targets), c.id);
+  payWardSac(g, pid, wardSacCount(g, pid, targets), c.id);
   if (def.addCost?.life) {
     p.life -= def.addCost.life;
     p.lifeLostThisTurn += def.addCost.life;
@@ -834,6 +896,9 @@ function doCast(g: GameState, pid: PID, a: Extract<PriorityAction, { type: 'cast
   const how = alt === 'adventure' ? '施放冒險 ' : alt === 'flashback' ? '返照施放 ' : '施放 ';
   log(g, `${how}${alt === 'adventure' ? (def.zh ?? def.name) : displayName(def)}${x !== undefined ? `（X=${x}）` : ''}${modeText}${describeTargets(g, targets)}`, pid, 'cast');
   emit(g, { type: 'cast', card: c.id, player: pid, opponentTurn: g.active !== pid });
+  if (def.castEffects?.length) {
+    g.stack.push({ sid: g.nextSid++, kind: 'trigger', controller: pid, cardId: c.id, targets: [], targetSpecs: [], effects: def.castEffects, text: '當你施放此咒語時' });
+  }
   for (const t of targets) if (t && 'c' in t && g.cards[t.c].zone === 'battlefield') emit(g, { type: 'targeted', card: t.c, by: pid, spell: true });
   return null;
 }
@@ -857,7 +922,9 @@ function doActivate(g: GameState, pid: PID, a: Extract<PriorityAction, { type: '
   if (ab.isEquip) {
     const t = targets[0];
     const d = t && 'c' in t ? g.cards[t.c]?.def.equipDiscount ?? 0 : 0;
-    cost.generic = Math.max(0, cost.generic - d);
+    const tc = t && 'c' in t ? g.cards[t.c] : undefined;
+    const perCounter = c.def.equip?.costLessPerCounter && tc ? tc.counters : 0;
+    cost.generic = Math.max(0, cost.generic - d - perCounter);
   }
   if (ab.powerUp && c.enteredTurn === g.turn) Object.assign(cost, reduceCost(cost, parseCost(c.def.cost)));
   cost.generic += wardTax(g, pid, targets);
@@ -874,7 +941,14 @@ function doActivate(g: GameState, pid: PID, a: Extract<PriorityAction, { type: '
     loseLife(g, pid, wl);
   }
   payWardDiscard(g, pid, wardDiscardCount(g, pid, targets));
+  payWardSac(g, pid, wardSacCount(g, pid, targets), c.id);
   if (ab.cost.tap) c.tapped = true;
+  if (ab.cost.tapN) {
+    for (const id of tapNChoices(g, pid, ab.cost.tapN.filter, ab.cost.tapN.n, c.id) ?? []) {
+      g.cards[id].tapped = true;
+      log(g, `橫置 ${cardName(g.cards[id])}`, pid);
+    }
+  }
   if (ab.cost.life) {
     g.players[pid].life -= ab.cost.life;
     g.players[pid].lifeLostThisTurn += ab.cost.life;
@@ -884,6 +958,7 @@ function doActivate(g: GameState, pid: PID, a: Extract<PriorityAction, { type: '
   if (ab.cost.loyalty !== undefined) {
     c.loyalty = (c.loyalty ?? 0) + ab.cost.loyalty;
     c.usedThisTurn.push(LOYALTY_USED);
+    g.players[pid].loyaltyActivatedThisTurn = true;
     if (ab.cost.loyalty > 0) emit(g, { type: 'loyaltyPlaced', card: c.id, controller: pid, amount: ab.cost.loyalty });
     emit(g, { type: 'loyaltyActivated', card: c.id, controller: pid, removed: Math.max(0, -ab.cost.loyalty) });
   }
@@ -908,6 +983,7 @@ function doActivate(g: GameState, pid: PID, a: Extract<PriorityAction, { type: '
   log(g, `起動 ${cardName(c)}：${ab.label}${describeTargets(g, targets)}`, pid, 'cast');
   if (sacCard) sacrifice(g, sacCard);
   if (ab.cost.sacSelf) sacrifice(g, c);
+  if (ab.cost.exileSelf && !ab.fromHand && c.zone === 'battlefield') moveCard(g, c, 'exile');
   if (ab.fromGraveyard && !ab.keepSelf && c.zone === 'graveyard') moveCard(g, c, 'exile');
   if (ab.fromHand && c.zone === 'hand') {
     if (ab.cost.discardSelf) discard(g, c);

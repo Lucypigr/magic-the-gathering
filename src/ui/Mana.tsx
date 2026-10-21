@@ -12,7 +12,14 @@ export function ManaSymbol({ sym, size }: { sym: string; size?: number }) {
       </span>
     );
   }
-  if (/^2\/[WUBRG]$/.test(sym)) return <ManaSymbol sym={sym[2]} size={size} />;
+  if (/^2\/[WUBRG]$/.test(sym)) {
+    return (
+      <span className={`mana mana-${sym[2]} mana-two`} style={style} title={`${GLYPH[sym[2]]}色法術力，或兩點任何法術力`}>
+        {GLYPH[sym[2]]}
+        <sup>2</sup>
+      </span>
+    );
+  }
   if (/^[WUBRG]\/[WUBRG]$/.test(sym)) {
     const [a, b] = [sym[0], sym[2]];
     return (

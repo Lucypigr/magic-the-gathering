@@ -50,6 +50,7 @@ export function declareAttackers(g: GameState, pid: PID, ids: number[], targets?
   const attackedPw = new Set<number>();
   for (const c of list) {
     c.attacking = true;
+    c.attackedTurn = g.turn;
     const t = targets?.[c.id];
     c.attackTarget = t != null && pws.has(t) ? t : null;
     // 「每個戰鬥只能有一個生物攻擊此鵬洛客」：多出來的攻擊玩家

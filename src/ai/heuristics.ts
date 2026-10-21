@@ -322,6 +322,16 @@ export function heuristicChoose(g: GameState, d: Extract<Decision, { type: 'choo
       const sorted = byDesc((c) => (isLand(c) ? (want ? 6 : 0.5) : handCardValue(g, pid, c)));
       return take(sorted, d.max);
     }
+    case 'proliferate': {
+      // 己方的正面指示物與忠誠、對手的負面指示物
+      const picks = d.options.filter((id) => {
+        const c = card(id);
+        const mine = c.controller === pid;
+        const pw = c.def.types.includes('Planeswalker') && !isCreature(c);
+        return pw || c.counters > 0 ? mine : !mine;
+      });
+      return picks;
+    }
     case 'searchMany': {
       // 盡量多拿（基本地等），優先拿手牌最缺的類型
       const want = wantsLands(g, pid);

@@ -131,6 +131,15 @@ export const TOKENS: CardDef[] = [
     sacOnMana: true,
     text: '{T}，犧牲此衍生物：加一點任意顏色的法術力。',
   }),
+  T({
+    id: 'tok-lotus',
+    name: 'Lotus',
+    zh: '蓮花',
+    colors: [],
+    types: ['Artifact'],
+    text: '{T}，犧牲此衍生物：加三點任一種顏色的法術力。',
+    abilities: [{ kind: 'activated', cost: { tap: true, sacSelf: true }, effects: [{ e: 'addManaOfChoice', n: 3 }], label: '犧牲：加三點同色法術力' }],
+  }),
   T({ id: 'tok-cadet', name: 'Cadet', zh: '學員', colors: [], types: ['Creature'], subtypes: ['Wizard', 'Soldier'], power: 2, toughness: 2, text: '' }),
   T({
     id: 'tok-construct-x',
