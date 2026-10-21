@@ -1,5 +1,5 @@
 // 由 scripts/gen_cards.py 從 Scryfall 資料自動產生（TDM）：請勿手動修改
-import { add } from '../../dsl';
+import { addGen as add } from '../../dsl';
 
 add({"set": "TDM", "rarity": "U", "name": "Dalkovan Packbeasts", "cost": "{2}{W}", "types": ["Creature"], "subtypes": ["Ox"], "power": 0, "toughness": 4, "keywords": ["vigilance"], "abilities": [{"kind": "trigger", "on": "attacks", "effects": [{"e": "token", "token": "tok-warrior-r11", "n": 3, "tapped": true, "attacking": true, "temp": true}]}], "text": "警戒\n動員3（每當此生物攻擊時，派出三個橫置且進行攻擊的1/1紅色戰士衍生生物。在下一個結束步驟開始時犧牲它們。）"});
 add({"set": "TDM", "rarity": "C", "name": "Dragonback Lancer", "cost": "{3}{W}", "types": ["Creature"], "subtypes": ["Human", "Soldier"], "power": 3, "toughness": 3, "keywords": ["flying"], "abilities": [{"kind": "trigger", "on": "attacks", "effects": [{"e": "token", "token": "tok-warrior-r11", "n": 1, "tapped": true, "attacking": true, "temp": true}]}], "text": "飛行\n動員1（每當此生物攻擊時，派出一個橫置且進行攻擊的1/1紅色戰士衍生生物。在下一個結束步驟開始時犧牲它們。）"});

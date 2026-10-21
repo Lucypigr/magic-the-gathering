@@ -122,7 +122,7 @@ export function DeckBuilder({ profile, go, update }: { profile: Profile; go: (s:
   function canAdd(id: string): boolean {
     if (isBasic(id)) return true;
     const cur = deck.cards[id] ?? 0;
-    return cur < MAX_COPIES && cur < (profile.collection[id] ?? 0);
+    return (cur < MAX_COPIES || !!getDef(id).anyNumber) && cur < (profile.collection[id] ?? 0);
   }
   const add = (id: string) =>
     canAdd(id) &&
@@ -249,7 +249,7 @@ export function DeckBuilder({ profile, go, update }: { profile: Profile; go: (s:
                   <CardFace def={d} size="sm" className={canAdd(d.id) ? 'pickable' : 'maxed'} onClick={() => add(d.id)} title={d.text} />
                   <div className="pool-meta">
                     <span className={inDeck ? 'in-deck' : ''}>
-                      {inDeck}／{Math.min(own, MAX_COPIES)}
+                      {inDeck}／{d.anyNumber ? own : Math.min(own, MAX_COPIES)}
                     </span>
                     <button className="info-btn" onClick={() => setDetail(d)} aria-label="詳細">
                       i

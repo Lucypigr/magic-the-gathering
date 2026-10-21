@@ -1,5 +1,5 @@
 // 由 scripts/gen_cards.py 從 Scryfall 資料自動產生（EOE）：請勿手動修改
-import { add } from '../../dsl';
+import { addGen as add } from '../../dsl';
 
 add({"set": "EOE", "rarity": "C", "name": "Knight Luminary", "cost": "{3}{W}", "types": ["Creature"], "subtypes": ["Human", "Knight"], "power": 3, "toughness": 2, "warp": "{1}{W}", "abilities": [{"kind": "trigger", "on": "etb", "effects": [{"e": "token", "token": "tok-human-soldier"}]}], "text": "當此生物進戰場時，派出一個1/1白色的人類／士兵衍生生物。\n折躍{1}{W}（你可以從手上以折躍費用施放此牌。下一個結束步驟開始時將它放逐，之後的回合你可以從放逐區施放它。）"});
 add({"set": "EOE", "rarity": "U", "name": "Annul", "cost": "{U}", "types": ["Instant"], "spell": {"effects": [{"e": "counter", "what": "T0"}], "targets": [{"kind": "spell", "filter": {"type": ["Artifact", "Enchantment"]}}]}, "text": "反擊目標神器或結界咒語。"});

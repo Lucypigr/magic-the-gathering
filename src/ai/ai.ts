@@ -1,5 +1,5 @@
 import {
-  activatedAbilities,
+  abilitiesFor,
   castDef,
   castTargetSpecs,
   isMainPhase,
@@ -28,7 +28,7 @@ import type {
 } from '../engine/types';
 import { chooseBlocks, crackbackPenalty, type Level } from './combatAI';
 import { creatureValue, evaluate } from './evaluate';
-import { heuristicChoose, keepHand, landCount, polarity, quickTargets, rankTargets } from './heuristics';
+import { heuristicChoose, heuristicMode, keepHand, landCount, polarity, quickTargets, rankTargets } from './heuristics';
 import { TUNING, type Tuning } from './tuning';
 import { projectCombat, resolveAll, safely } from './sim';
 
@@ -103,6 +103,8 @@ export class AIPlayer {
         return { type: 'choose', ids: heuristicChoose(g, d) };
       case 'yesno':
         return { type: 'yesno', yes: true };
+      case 'mode':
+        return { type: 'modes', picks: heuristicMode(g, d) };
     }
   }
 
@@ -237,7 +239,7 @@ export class AIPlayer {
           if (T.holdTricks && isTrick(def, o.mode) && !inCombat && !responding) continue;
         }
       } else if (o.kind === 'activate') {
-        const ab = activatedAbilities(def)[o.ability!];
+        const ab = abilitiesFor(g, c)[o.ability!];
         // 駕駛：只在自己的第一主要階段、載具能攻擊時才駕駛
         if (ab.cost.crew !== undefined && ab.effects.some((e) => e.e === 'saddle')) {
           // 騎乘：自己的第一主要階段、坐騎能攻擊時才騎乘
@@ -267,7 +269,7 @@ export class AIPlayer {
     const me = this.pid;
     const c = g.cards[o.card];
     const effects: Effect[] =
-      o.kind === 'cast' ? (o.effects ?? spellEffects(c.def, o.mode)) : activatedAbilities(c.def)[o.ability!].effects;
+      o.kind === 'cast' ? (o.effects ?? spellEffects(c.def, o.mode)) : abilitiesFor(g, c)[o.ability!].effects;
     const specs = o.specs;
     const lists: (TargetRef | null)[][] = specs.map((spec, i) => {
       let r: (TargetRef | null)[] = rankTargets(g, me, spec, effects, i, c.id).slice(0, specs.length > 1 ? 4 : 8);
@@ -295,7 +297,7 @@ export class AIPlayer {
     for (const targets of combos) {
       if (validateTargets(g, specs, targets, me, c.id)) continue;
       if (o.kind === 'cast') out.push({ type: 'cast', card: c.id, targets, mode: o.mode, sac, alt: o.alt, x: o.maxX });
-      else out.push({ type: 'activate', card: c.id, ability: o.ability!, targets, sac });
+      else out.push({ type: 'activate', card: c.id, ability: o.ability!, targets, sac, x: o.maxX === undefined ? undefined : Math.max(1, Math.floor(o.maxX / 2)) });
     }
     return out;
   }
@@ -337,7 +339,7 @@ export class AIPlayer {
     if (!casts.length || this.rnd() < 0.2) return PASS;
     const o = casts[this.rndInt(casts.length)];
     const c = g.cards[o.card];
-    const effects = o.kind === 'cast' ? (o.effects ?? spellEffects(c.def, o.mode)) : activatedAbilities(c.def)[o.ability!].effects;
+    const effects = o.kind === 'cast' ? (o.effects ?? spellEffects(c.def, o.mode)) : abilitiesFor(g, c)[o.ability!].effects;
     let targets = quickTargets(g, me, o.specs, effects, c.id);
     if (this.rnd() < 0.3) {
       targets = o.specs.map((s) => {
@@ -353,7 +355,7 @@ export class AIPlayer {
     const action: PriorityAction =
       o.kind === 'cast'
         ? { type: 'cast', card: c.id, targets, mode: o.mode, sac, alt: o.alt, x: o.maxX }
-        : { type: 'activate', card: c.id, ability: o.ability!, targets, sac };
+        : { type: 'activate', card: c.id, ability: o.ability!, targets, sac, x: o.maxX === undefined ? undefined : Math.max(1, Math.floor(o.maxX / 2)) };
     const g2 = cloneGame(g);
     return performAction(g2, me, action) ? PASS : action;
   }

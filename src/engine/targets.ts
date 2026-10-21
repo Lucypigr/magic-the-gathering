@@ -47,6 +47,14 @@ export function legalTargets(g: GameState, spec: TargetSpec, controller: PID, so
       for (const pid of [0, 1] as PID[]) out.push({ p: pid });
       break;
     }
+    case 'spellOrCreature':
+      addPerms(true);
+      for (const s of g.stack) {
+        if (s.kind !== 'spell' || s.cardId === sourceId) continue;
+        const c = g.cards[s.cardId];
+        if (matches(g, f, c, controller, sourceId)) out.push({ c: c.id });
+      }
+      break;
     case 'spell':
       for (const s of g.stack) {
         if (s.kind !== 'spell' || s.cardId === sourceId) continue;
@@ -86,7 +94,7 @@ export function isLegalTarget(
     const c = g.cards[t.c];
     if (!c) return false;
     const zoneOk =
-      spec.kind === 'spell' ? c.zone === 'stack' : spec.kind === 'gyCard' ? c.zone === 'graveyard' : c.zone === 'battlefield';
+      spec.kind === 'spell' ? c.zone === 'stack' : spec.kind === 'gyCard' ? c.zone === 'graveyard' : spec.kind === 'spellOrCreature' ? c.zone === 'stack' || c.zone === 'battlefield' : c.zone === 'battlefield';
     if (!zoneOk) return false;
   }
   return legalTargets(g, spec, controller, sourceId).some((x) => sameTarget(x, t));

@@ -211,6 +211,59 @@ export function handCardValue(g: GameState, pid: PID, c: Card): number {
   return v;
 }
 
+/** 選擇模式／選項：回傳選中的選項索引 */
+export function heuristicMode(g: GameState, d: Extract<Decision, { type: 'mode' }>): number[] {
+  const n = d.options.length;
+  const scores: number[] = [];
+  if (d.purpose === 'keyword') {
+    // 優先順序：踐踏、死觸、辟邪、敏捷
+    const order = ['trample', 'deathtouch', 'hexproof', 'haste'];
+    return [d.options.map((o, i) => [order.indexOf(o) < 0 ? 99 : order.indexOf(o), i] as const).sort((a, b) => a[0] - b[0])[0][1]];
+  }
+  if (d.purpose === 'color') {
+    // 選手牌裡最需要的顏色
+    const need: Record<string, number> = {};
+    for (const id of g.players[d.player].hand) {
+      const cost = parseCost(g.cards[id].def.cost);
+      for (const k of ['W', 'U', 'B', 'R', 'G'] as const) need[k] = (need[k] ?? 0) + cost[k];
+    }
+    return [d.options.map((o, i) => [need[o] ?? 0, i] as const).sort((a, b) => b[0] - a[0] || a[1] - b[1])[0][1]];
+  }
+  if (d.purpose === 'count') {
+    // 選數量：對手的指示物能移除就盡量移除，自己的不移除
+    return [d.meta?.preferHigh ? n - 1 : 0];
+  }
+  if (d.purpose === 'creatureType') {
+    // 「消滅所有不是所選類別的生物」：選讓對手損失最大、自己損失最小的類別
+    const val = (c: Card) => creatureValue(g, c);
+    for (let i = 0; i < n; i++) {
+      let s = 0;
+      for (const id of g.battlefield) {
+        const c = g.cards[id];
+        if (!isCreature(c)) continue;
+        const of = c.def.changeling || !!c.def.subtypes?.includes(d.options[i]);
+        if (of) continue;
+        s += (c.controller === d.player ? -1 : 1) * val(c);
+      }
+      scores.push(s);
+    }
+  } else {
+    for (let i = 0; i < n; i++) {
+      const effects = d.meta?.effects[i] ?? [];
+      const specs = d.meta?.specs[i] ?? [];
+      let s = 1;
+      if (specs.some((_, k) => polarity(effects, k) === 'harm')) s = 3;
+      else if (effects.some((e) => ['draw', 'token', 'counters', 'gain', 'pump', 'scry', 'surveil', 'empowerJace', 'tutor', 'toHand', 'reanimate'].includes(e.e))) s = 2;
+      scores.push(s - i * 0.001);
+    }
+  }
+  return scores
+    .map((s, i) => [s, i] as const)
+    .sort((a, b) => b[0] - a[0])
+    .slice(0, d.count)
+    .map((x) => x[1]);
+}
+
 export function heuristicChoose(g: GameState, d: Extract<Decision, { type: 'choose' }>): number[] {
   const pid = d.player;
   const opts = d.options.slice();
@@ -267,6 +320,22 @@ export function heuristicChoose(g: GameState, d: Extract<Decision, { type: 'choo
     case 'dig': {
       const want = wantsLands(g, pid);
       const sorted = byDesc((c) => (isLand(c) ? (want ? 6 : 0.5) : handCardValue(g, pid, c)));
+      return take(sorted, d.max);
+    }
+    case 'proliferate': {
+      // 己方的正面指示物與忠誠、對手的負面指示物
+      const picks = d.options.filter((id) => {
+        const c = card(id);
+        const mine = c.controller === pid;
+        const pw = c.def.types.includes('Planeswalker') && !isCreature(c);
+        return pw || c.counters > 0 ? mine : !mine;
+      });
+      return picks;
+    }
+    case 'searchMany': {
+      // 盡量多拿（基本地等），優先拿手牌最缺的類型
+      const want = wantsLands(g, pid);
+      const sorted = byDesc((c) => (isLand(c) ? (want ? 6 : 3) : handCardValue(g, pid, c)));
       return take(sorted, d.max);
     }
     case 'search': {

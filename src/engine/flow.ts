@@ -13,6 +13,7 @@ import {
   cardName,
   checkCond,
   GameOver,
+  hasStaticFlag,
   isCreature,
   isPermanentDef,
   log,
@@ -23,9 +24,9 @@ import {
   shuffleArr,
   stats,
 } from './state';
-import { isLegalTarget, legalTargets, validateTargets } from './targets';
-import type { Card, Flow, GameState, PID, Response, SubFlow, TargetRef } from './types';
-import { addLore, discard, drawCards, emit, enterBattlefield, enterBattlefieldBack, moveCard, putIntoGraveyard, sacrifice } from './zones';
+import { hasTargetsAvailable, isLegalTarget, legalTargets, validateTargets } from './targets';
+import type { Card, Effect, Flow, GameState, PID, Response, SubFlow, TargetRef, TargetSpec } from './types';
+import { addLore, discard, drawCards, emit, enterBattlefield, enterBattlefieldBack, moveCard, putCounters, putIntoGraveyard, sacrifice } from './zones';
 
 // ------------------------------------------------------------
 // 狀態動作
@@ -45,7 +46,7 @@ export function checkSBA(g: GameState): void {
     for (const id of g.battlefield) {
       const c = g.cards[id];
       // 鵬洛客：忠誠為0時置入墳墓場
-      if (c.def.types.includes('Planeswalker') && !isCreature(c) && (c.loyalty ?? 0) <= 0) {
+      if (c.def.types.includes('Planeswalker') && !isCreature(c) && (c.loyalty ?? 0) <= 0 && !hasStaticFlag(g, c.controller, 'noZeroLoyaltyDeath')) {
         dying.push(c);
         continue;
       }
@@ -88,6 +89,7 @@ export function checkSBA(g: GameState): void {
     }
     // 傳奇規則：保留最新進場的那個
     for (const pid of [0, 1] as PID[]) {
+      if (g.legendExempt && g.legendExempt.pid === pid && g.legendExempt.turn === g.turn) continue;
       const seen = new Map<string, Card>();
       const extra: Card[] = [];
       for (const id of g.battlefield) {
@@ -110,14 +112,66 @@ export function checkSBA(g: GameState): void {
 // ------------------------------------------------------------
 // 觸發式能力上堆疊
 // ------------------------------------------------------------
+/** 把效果中的目標參照（T0、T1…）整體平移，用來合併多個模式 */
+export function shiftRefs<T>(v: T, offset: number): T {
+  if (offset === 0) return v;
+  if (Array.isArray(v)) return v.map((x) => shiftRefs(x, offset)) as unknown as T;
+  if (v && typeof v === 'object') {
+    const o = v as Record<string, unknown>;
+    const out: Record<string, unknown> = {};
+    for (const k of Object.keys(o)) {
+      const x = o[k];
+      if (typeof x === 'string' && /^T\d+$/.test(x) && k !== 'text') out[k] = 'T' + (Number(x.slice(1)) + offset);
+      else if (k === 't' && o.c === 'targetIs' && typeof x === 'number') out[k] = x + offset;
+      else out[k] = shiftRefs(x, offset);
+    }
+    return out as T;
+  }
+  return v;
+}
+
 function* flushTriggers(g: GameState): SubFlow {
   const list = g.pending.splice(0);
   const ordered = [...list.filter((t) => t.controller === g.active), ...list.filter((t) => t.controller !== g.active)];
   for (const t of ordered) {
-    const ab = t.ability;
+    let ab = t.ability;
+    const src = g.cards[t.source];
+    if (ab.modes) {
+      // 模式式觸發：先選模式，再選目標
+      const legal = ab.modes.map((_, i) => i).filter((i) => hasTargetsAvailable(g, ab.modes![i].targets ?? [], t.controller, t.source));
+      const count = Math.min(ab.chooseN ?? 1, legal.length);
+      if (count === 0) {
+        log(g, `${cardName(src)} 的觸發式能力沒有可選的模式`, t.controller);
+        continue;
+      }
+      let picks = legal;
+      if (legal.length > count) {
+        const r: Response = yield {
+          type: 'mode',
+          player: t.controller,
+          prompt: `${cardName(src)}：選擇${count === 1 ? '一項' : `${count}項`}`,
+          source: t.source,
+          options: legal.map((i) => ab.modes![i].text),
+          count,
+          purpose: 'trigger',
+          meta: { effects: legal.map((i) => ab.modes![i].effects), specs: legal.map((i) => ab.modes![i].targets ?? []) },
+        };
+        const chosen = r.type === 'modes' ? [...new Set(r.picks)].filter((k) => k >= 0 && k < legal.length).slice(0, count) : [];
+        while (chosen.length < count) for (let k = 0; k < legal.length && chosen.length < count; k++) if (!chosen.includes(k)) chosen.push(k);
+        picks = chosen.sort((a, b) => a - b).map((k) => legal[k]);
+      }
+      const eff: Effect[] = [];
+      const sp: TargetSpec[] = [];
+      for (const i of picks) {
+        const m = ab.modes[i];
+        eff.push(...shiftRefs(m.effects, sp.length));
+        sp.push(...(m.targets ?? []));
+      }
+      ab = { ...ab, modes: undefined, effects: eff, targets: sp.length ? sp : undefined };
+      log(g, `${cardName(src)}：選擇了「${picks.map((i) => t.ability.modes![i].text).join('」「')}」`, t.controller);
+    }
     const specs = ab.targets ?? [];
     let targets: (TargetRef | null)[] = [];
-    const src = g.cards[t.source];
     if (specs.length) {
       const options = specs.map((s) => legalTargets(g, s, t.controller, t.source));
       if (specs.some((s, i) => !s.optional && options[i].length === 0)) {
@@ -198,6 +252,7 @@ export function* resolveTop(g: GameState): SubFlow {
     ev: item.ev,
     lkiPower: item.lkiPower,
     x: item.x,
+    alt: item.alt,
   };
   if (item.kind === 'spell') {
     const def = src.def;
@@ -223,13 +278,28 @@ export function* resolveTop(g: GameState): SubFlow {
         }
         enterBattlefield(g, src, item.controller);
         src.attachedTo = t.c;
+        // 讓永久物變成生物的光環
+        const anim = def.aura.grant.animate;
+        const host = g.cards[t.c];
+        if (anim && host && !host.auraBaseDef) {
+          host.auraBaseDef = host.def;
+          host.def = {
+            ...host.def,
+            types: [...new Set([...host.def.types, 'Creature' as const])],
+            subtypes: [...(host.def.subtypes ?? []), ...(anim.subtype ? [anim.subtype] : [])],
+            power: anim.p,
+            toughness: anim.t,
+          };
+        }
         log(g, `${cardName(src)} 結附於 ${cardName(g.cards[t.c])}`, item.controller);
       } else if (item.alt === 'back') {
         enterBattlefieldBack(g, src, item.controller);
         log(g, `${cardName(src)} 進入戰場`, item.controller);
       } else {
         enterBattlefield(g, src, item.controller);
-        if (def.etbCountersX && item.x) src.counters += item.x;
+        src.wasCast = true;
+        if (item.x !== undefined) src.castX = item.x;
+        if (def.etbCountersX && item.x) putCounters(g, src, item.x);
         log(g, `${cardName(src)} 進入戰場`, item.controller);
         if (item.alt === 'warp') src.exileAtEnd = true;
         if (item.alt === 'offspring') {
@@ -245,7 +315,7 @@ export function* resolveTop(g: GameState): SubFlow {
       if (src.zone === 'stack') moveCard(g, src, 'graveyard');
     }
   } else {
-    if (item.cond && !checkCond(g, item.cond, item.controller, item.cardId, legal)) return;
+    if (item.cond && !checkCond(g, item.cond, item.controller, item.cardId, legal, item.ev)) return;
     if (item.may) {
       const r: Response = yield { type: 'yesno', player: item.controller, prompt: item.may, source: item.cardId, purpose: 'may' };
       if (r.type !== 'yesno' || !r.yes) return;
@@ -269,6 +339,11 @@ export function* priorityStep(g: GameState): SubFlow {
       if (passes >= 2) {
         if (g.stack.length === 0) {
           g.priority = null;
+          // 步驟結束：法術力池清空
+          for (const pl of g.players) {
+            pl.pool = [];
+            pl.poolNoncreature = [];
+          }
           return;
         }
         yield* resolveTop(g);
@@ -401,11 +476,27 @@ function* turn(g: GameState): SubFlow {
     p.drawsThisTurn = 0;
     p.nonlandEtbThisTurn = 0;
     p.permToGyThisTurn = false;
+    p.scriedThisTurn = false;
+    p.libToGyThisTurn = 0;
+    p.noncombatLastTurn = !!p.noncombatThisTurn;
+    p.noncombatThisTurn = false;
+    p.noncreatureThisTurn = 0;
+    p.nextSpellUncounterable = false;
+    p.discardedThisTurn = 0;
+    p.extraLandsThisTurn = 0;
+    p.loyaltyActivatedThisTurn = false;
+    p.mountainBonus = false;
+    p.pool = [];
+    p.poolNoncreature = [];
     p.lifeLostThisTurn = 0;
   }
   g.attackedThisTurn = false;
   g.creatureDiedThisTurn = false;
+  g.creaturesDiedCount = 0;
   g.voidThisTurn = false;
+  // 「直到你的下一個回合」的延遲觸發與效果持續到該玩家的回合開始
+  g.delayed = (g.delayed ?? []).filter((d) => d.until !== undefined && d.until !== a);
+  g.eot = g.eot.filter((e) => e.until === undefined || e.until !== a);
   for (const id of g.battlefield) g.cards[id].usedThisTurn = [];
   log(g, `—— 第 ${g.turn} 回合：${pl.name} ——`, a, 'turn');
   if (g.turn > g.maxTurns) {
@@ -419,7 +510,7 @@ function* turn(g: GameState): SubFlow {
     const c = g.cards[id];
     if (c.controller !== a) continue;
     c.sick = false;
-    if (c.tapped) {
+    if (c.tapped && !stats(g, c).noUntap) {
       if (c.stun > 0) c.stun--;
       else c.tapped = false;
     }
@@ -431,10 +522,12 @@ function* turn(g: GameState): SubFlow {
   yield* priorityStep(g);
   // 抓牌
   g.phase = 'draw';
+  emit(g, { type: 'step', step: 'draw', player: a });
   if (g.turn > 1) drawCards(g, a, 1);
   yield* priorityStep(g);
   // 主要階段一：傳奇在抓牌步驟後前進一章
   g.phase = 'main1';
+  emit(g, { type: 'step', step: 'main1', player: a });
   for (const id of [...g.battlefield]) {
     const c = g.cards[id];
     if (c.controller === a && c.def.saga) addLore(g, c, 1);
@@ -450,7 +543,10 @@ function* turn(g: GameState): SubFlow {
   for (const id of [...g.battlefield]) {
     const c = g.cards[id];
     if (c.sacAtEnd) sacrifice(g, c);
-    else if (c.exileAtEnd && c.zone === 'battlefield') {
+    else if (c.exileAtEndFinal && c.zone === 'battlefield') {
+      log(g, `${cardName(c)} 被放逐`, c.controller);
+      moveCard(g, c, 'exile');
+    } else if (c.exileAtEnd && c.zone === 'battlefield') {
       // 折躍：放逐，之後的回合可以從放逐區施放
       log(g, `${cardName(c)} 折躍結束，被放逐（之後的回合可以再施放）`, c.controller);
       moveCard(g, c, 'exile');
@@ -487,7 +583,7 @@ function* turn(g: GameState): SubFlow {
       c.baseDef = undefined;
     }
   }
-  g.eot = [];
+  g.eot = g.eot.filter((e) => e.until !== undefined);
   // 清除階段若有觸發，再給一次優先權
   if (g.pending.length) yield* priorityStep(g);
 }

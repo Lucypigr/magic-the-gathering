@@ -191,6 +191,10 @@ def target_spec(noun):
             zmid += '不具飛行異能的'
         else:
             raise Unsupported('target part ' + p)
+    if _pw:
+        # 「生物或鵬洛客」：改為任何永久物目標，限制在這兩種類別
+        f['type'] = ['Creature', 'Planeswalker']
+        return {'kind': 'permanent', 'filter': f}, '目標' + zctrl + zpre + zmid + '生物或鵬洛客'
     spec = {'kind': 'creature'}
     if f:
         spec['filter'] = f
@@ -2005,7 +2009,7 @@ def main():
     for s, lst in per_set.items():
         with open(os.path.join(OUT, s.lower() + '.ts'), 'w', encoding='utf-8') as f:
             f.write(f'// 由 scripts/gen_cards.py 從 Scryfall 資料自動產生（{s}）：請勿手動修改\n')
-            f.write("import { add } from '../../dsl';\n\n")
+            f.write("import { addGen as add } from '../../dsl';\n\n")
             for d in lst:
                 dd = {k: v for k, v in d.items() if k != 'id'}
                 f.write('add(' + json.dumps(dd, ensure_ascii=False) + ');\n')

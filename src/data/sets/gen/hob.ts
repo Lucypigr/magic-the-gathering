@@ -1,5 +1,5 @@
 // 由 scripts/gen_cards.py 從 Scryfall 資料自動產生（HOB）：請勿手動修改
-import { add } from '../../dsl';
+import { addGen as add } from '../../dsl';
 
 add({"set": "HOB", "rarity": "U", "name": "Lake-town Toymaker", "cost": "{3}{W}", "types": ["Creature"], "subtypes": ["Human", "Artificer"], "power": 3, "toughness": 4, "abilities": [{"kind": "trigger", "on": "combatStart", "effects": [{"e": "pump", "what": "T0", "p": 3, "t": 0, "kw": ["first_strike"]}], "cond": {"c": "drawsGte", "n": 2}, "targets": [{"kind": "creature", "filter": {"ctrl": "you"}, "notSelf": true}]}], "text": "在你回合的戰鬥開始時，若你本回合已抓了兩張或更多牌，另一個目標由你操控的生物得+3/+0並獲得先攻異能直到回合結束。"});
 add({"set": "HOB", "rarity": "C", "name": "Bilbo Baggins, Burglar", "cost": "{2}{U}", "types": ["Creature"], "supertypes": ["Legendary"], "subtypes": ["Halfling", "Rogue"], "power": 2, "toughness": 1, "abilities": [{"kind": "trigger", "on": "etb", "effects": [{"e": "draw", "n": 1}]}], "text": "當此生物進戰場時，抓一張牌。\n冒險—《Take a Glance》{U}（法術）：占卜2。\n（你可以改為施放這個冒險法術。結算後此牌會被放逐，之後你可以從放逐區施放本體。）", "adventure": {"name": "Take a Glance", "cost": "{U}", "types": ["Sorcery"], "text": "占卜2。", "spell": {"effects": [{"e": "scry", "n": 2}]}}, "imageName": "Bilbo Baggins, Burglar // Take a Glance"});

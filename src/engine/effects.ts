@@ -1,4 +1,4 @@
-import { canPayCost, manaSources, payCost } from './actions';
+import { canPayCost, castDuringResolution, castTargetSpecs, manaSources, payCost, spellEffects } from './actions';
 import { colorsOf, findPayment, manaValue, parseCost } from './mana';
 import {
   cardName,
@@ -9,27 +9,42 @@ import {
   landsOf,
   log,
   matches,
+  newCard,
   other,
+  randInt,
   shuffleArr,
   stats,
 } from './state';
-import type { Amt, Card, Effect, GameEvent, GameState, PID, Ref, Response, SubFlow, TargetRef } from './types';
+import { legalTargets, validateTargets } from './targets';
+import type { Amt, Card, Effect, GameEvent, GameState, PID, Ref, Response, SubFlow, TargetRef, TriggeredAbility } from './types';
 import {
   createToken,
   dealDamage,
   destroyCards,
   discard,
+  discardMany,
   drawCards,
   emit,
   enterBattlefield,
   gainLife,
   loseLife,
   moveCard,
+  putCounters,
   sacrifice,
   enterBattlefieldBack,
   transformCard,
 } from './zones';
 import { putFaceDown } from './facedown';
+
+/** 「複製」生物的衍生物所帶的異能：在結束步驟開始時，若你沒有操控鵬洛客，犧牲它 */
+const COPY_SAC: TriggeredAbility = {
+  kind: 'trigger',
+  on: 'eachEndStep',
+  cond: { c: 'not', cond: { c: 'controls', filter: { type: 'Planeswalker' } } },
+  effects: [{ e: 'sac', what: 'self' }],
+};
+
+const TYPE_ZH_E: Record<string, string> = { Creature: '生物', Planeswalker: '鵬洛客', Artifact: '神器', Enchantment: '結界', Instant: '瞬間', Sorcery: '法術' };
 
 export interface Ctx {
   controller: PID;
@@ -41,6 +56,16 @@ export interface Ctx {
   lkiPower?: number;
   /** 施放時決定的 X */
   x?: number;
+  /** 上一個效果實際處理的數量（抓牌、放逐等） */
+  count?: number;
+  /** 上一個傷害效果造成的過量傷害 */
+  excess?: number;
+  /** 這次效果碾磨的牌 */
+  milled?: number[];
+  /** 此咒語的施放方式 */
+  alt?: import('./types').CastAlt;
+  /** 此效果中派出的所有衍生物 */
+  createdList?: number[];
 }
 
 // ------------------------------------------------------------
@@ -81,6 +106,24 @@ export function resolveRef(g: GameState, ctx: Ctx, ref: Ref): Resolved {
       if (c && c.zone === 'battlefield') out.cards.push(c);
       break;
     }
+    case 'selfAny': {
+      const c = g.cards[ctx.source];
+      if (c) out.cards.push(c);
+      break;
+    }
+    case 'evCard': {
+      const ev = ctx.ev;
+      if (ev && 'card' in ev && g.cards[ev.card]) out.cards.push(g.cards[ev.card]);
+      break;
+    }
+    case 'evAttackers': {
+      const ev = ctx.ev;
+      if (ev && ev.type === 'youAttack') for (const id of ev.attackers) if (g.cards[id]?.zone === 'battlefield') out.cards.push(g.cards[id]);
+      break;
+    }
+    case 'allCreated':
+      for (const id of ctx.createdList ?? []) if (g.cards[id]?.zone === 'battlefield') out.cards.push(g.cards[id]);
+      break;
     case 'you':
       out.players.push(ctx.controller);
       break;
@@ -92,7 +135,7 @@ export function resolveRef(g: GameState, ctx: Ctx, ref: Ref): Resolved {
       break;
     case 'trig': {
       const ev = ctx.ev;
-      const id = ev && 'card' in ev ? ev.card : ev && ev.type === 'combatDamage' ? ev.source : undefined;
+      const id = ev && 'card' in ev ? ev.card : ev && ev.type === 'combatDamage' ? ev.source : ev && ev.type === 'youAttack' ? ev.attackers[0] : undefined;
       if (id != null && g.cards[id]?.zone === 'battlefield') out.cards.push(g.cards[id]);
       break;
     }
@@ -143,8 +186,49 @@ export function amount(g: GameState, ctx: Ctx, a: Amt): number {
     if (ev && 'amount' in ev) return ev.amount;
     return 0;
   }
+  if ('negOf' in a) return -amount(g, ctx, a.negOf);
+  if ('last' in a) return ctx.count ?? 0;
+  if ('gyThirds' in a) return Math.floor(g.players[ctx.controller].graveyard.length / 3);
+  if ('gyMaxMv' in a) return Math.max(0, ...g.players[ctx.controller].graveyard.map((id) => manaValue(g.cards[id].def)));
+  if ('distinctPowers' in a) {
+    const ps = new Set<number>();
+    for (const id of g.battlefield) {
+      const c = g.cards[id];
+      if (c.controller === ctx.controller && isCreature(c)) ps.add(stats(g, c).p);
+    }
+    return ps.size;
+  }
+  if ('pwTypes' in a) {
+    const ts = new Set<string>();
+    for (const id of g.battlefield) {
+      const c = g.cards[id];
+      if (c.controller === ctx.controller && c.def.types.includes('Planeswalker')) for (const s of c.def.subtypes ?? []) ts.add(s);
+    }
+    return ts.size;
+  }
+  if ('artifactColors' in a) {
+    const cs = new Set<string>();
+    for (const id of g.battlefield) {
+      const c = g.cards[id];
+      if (c.controller === ctx.controller && id !== ctx.source && c.def.types.includes('Artifact')) for (const k of colorsOf(c.def)) cs.add(k);
+    }
+    return cs.size;
+  }
+  if ('excess' in a) return ctx.excess ?? 0;
+  if ('discardedThisTurn' in a) return g.players[ctx.controller].discardedThisTurn ?? 0;
+  if ('maxPower' in a) {
+    let m = 0;
+    for (const id of g.battlefield) {
+      const c = g.cards[id];
+      if (c.controller === ctx.controller && matches(g, a.maxPower, c, ctx.controller, ctx.source)) m = Math.max(m, stats(g, c).p);
+    }
+    return m;
+  }
+  if ('lifeGained' in a) return g.players[ctx.controller].lifeGainedThisTurn;
+  if ('libToGy' in a) return resolveRef(g, ctx, a.libToGy).players.reduce<number>((s, p) => s + (g.players[p].libToGyThisTurn ?? 0), 0);
+  if ('lkiCounters' in a) return Math.max(0, g.cards[ctx.source]?.lastCounters ?? 0);
   if ('hand' in a) return g.players[ctx.controller].hand.length;
-  if ('x' in a) return ctx.x ?? 0;
+  if ('x' in a) return ctx.x ?? g.cards[ctx.source]?.castX ?? 0;
   if ('spellsCast' in a) return g.players[ctx.controller].spellsThisTurn;
   if ('selfCounters' in a) return Math.max(0, g.cards[ctx.source]?.counters ?? 0);
   if ('colors' in a) {
@@ -207,15 +291,21 @@ function* runEffect(g: GameState, ctx: Ctx, ef: Effect): SubFlow {
     case 'damage': {
       const n = amount(g, ctx, ef.n);
       const r = resolveRef(g, ctx, ef.to);
-      for (const p of r.players) dealDamage(g, src, me, { p }, n, { noLifeGain: ef.noLifeGain });
-      for (const c of r.cards) dealDamage(g, src, me, { c: c.id }, n);
+      const dsrc = ef.from ? resolveRef(g, ctx, ef.from).cards[0] ?? src : src;
+      for (const p of r.players) dealDamage(g, dsrc, me, { p }, n, { noLifeGain: ef.noLifeGain });
+      for (const c of r.cards) {
+        // 過量傷害：超過致命傷害的部分
+        const lethal = isCreature(c) ? Math.max(0, stats(g, c).t - c.damage) : c.def.types.includes('Planeswalker') ? Math.max(0, c.loyalty ?? 0) : 0;
+        if (c.zone === 'battlefield') ctx.excess = Math.max(0, n - lethal);
+        dealDamage(g, dsrc, me, { c: c.id }, n);
+      }
       break;
     }
     case 'draw': {
       const n = amount(g, ctx, ef.n);
       for (const p of resolveRef(g, ctx, ef.who ?? 'you').players) {
-        drawCards(g, p, n);
-        log(g, `抽 ${n} 張牌`, p);
+        ctx.count = drawCards(g, p, n);
+        log(g, `抽 ${ctx.count} 張牌`, p);
       }
       break;
     }
@@ -223,8 +313,16 @@ function* runEffect(g: GameState, ctx: Ctx, ef: Effect): SubFlow {
       const n = amount(g, ctx, ef.n);
       for (const p of resolveRef(g, ctx, ef.who).players) {
         const hand = g.players[p].hand.slice();
+        if (ef.random) {
+          // 隨機棄牌
+          const pick: number[] = [];
+          for (let i = 0; i < n && hand.length; i++) pick.push(hand.splice(randInt(g, hand.length), 1)[0]);
+          log(g, `隨機棄掉 ${pick.length} 張牌`, p);
+          discardMany(g, pick.map((id) => g.cards[id]));
+          continue;
+        }
         const ids = yield* choose(g, p, `選擇 ${n} 張牌棄掉`, hand, n, n, 'discard');
-        for (const id of ids) discard(g, g.cards[id]);
+        discardMany(g, ids.map((id) => g.cards[id]));
       }
       break;
     }
@@ -264,11 +362,14 @@ function* runEffect(g: GameState, ctx: Ctx, ef: Effect): SubFlow {
       break;
     }
     case 'exile': {
+      let n = 0;
       for (const c of resolveRef(g, ctx, ef.what).cards) {
         if (c.zone !== 'battlefield') continue;
         log(g, `${cardName(c)} 被放逐`, c.controller);
         moveCard(g, c, 'exile');
+        n++;
       }
+      ctx.count = n;
       break;
     }
     case 'exileLinked': {
@@ -284,6 +385,12 @@ function* runEffect(g: GameState, ctx: Ctx, ef: Effect): SubFlow {
     }
     case 'bounce': {
       for (const c of resolveRef(g, ctx, ef.what).cards) {
+        if (c.zone === 'stack') {
+          // 將咒語移回其擁有者手上（衍生物複製會消失）
+          log(g, `${cardName(c)} 回到擁有者手上`, c.controller);
+          moveCard(g, c, c.token ? 'exile' : 'hand');
+          continue;
+        }
         if (c.zone !== 'battlefield') continue;
         log(g, `${cardName(c)} 回到擁有者手上`, c.controller);
         moveCard(g, c, 'hand');
@@ -301,7 +408,7 @@ function* runEffect(g: GameState, ctx: Ctx, ef: Effect): SubFlow {
     case 'stun':
       for (const c of resolveRef(g, ctx, ef.what).cards) {
         if (c.zone !== 'battlefield') continue;
-        c.stun += ef.n ?? 1;
+        c.stun += ef.n === undefined ? 1 : amount(g, ctx, ef.n);
         c.tapped = true;
       }
       g.version++;
@@ -346,7 +453,7 @@ function* runEffect(g: GameState, ctx: Ctx, ef: Effect): SubFlow {
       const t = amount(g, ctx, ef.t);
       for (const c of resolveRef(g, ctx, ef.what).cards) {
         if (c.zone !== 'battlefield') continue;
-        g.eot.push({ card: c.id, p, t, kw: ef.kw ?? [] });
+        g.eot.push({ card: c.id, p, t, kw: ef.kw ?? [], ...(ef.untilNext ? { until: me } : {}) });
       }
       g.version++;
       break;
@@ -355,17 +462,17 @@ function* runEffect(g: GameState, ctx: Ctx, ef: Effect): SubFlow {
       const n = amount(g, ctx, ef.n);
       for (const c of resolveRef(g, ctx, ef.what).cards) {
         if (c.zone !== 'battlefield' || !isCreature(c)) continue;
-        c.counters += n;
-        if (n > 0) emit(g, { type: 'counterPlaced', card: c.id, controller: c.controller, amount: n });
-        log(g, n >= 0 ? `${cardName(c)} 得到 ${n} 個 +1/+1 指示物` : `${cardName(c)} 得到 ${-n} 個 -1/-1 指示物`, c.controller);
+        let k = n;
+        if (n > 0) k = putCounters(g, c, n);
+        else c.counters += n;
+        log(g, k >= 0 ? `${cardName(c)} 得到 ${k} 個 +1/+1 指示物` : `${cardName(c)} 得到 ${-k} 個 -1/-1 指示物`, c.controller);
       }
       break;
     }
     case 'amass': {
       let army = g.battlefield.map((id) => g.cards[id]).find((c) => c.controller === me && c.def.subtypes?.includes('Army'));
       if (!army) army = createToken(g, 'tok-goblin-army', me);
-      army.counters += ef.n;
-      emit(g, { type: 'counterPlaced', card: army.id, controller: me, amount: ef.n });
+      putCounters(g, army, ef.n);
       log(g, `集結鬼怪 ${ef.n}`, me);
       break;
     }
@@ -418,19 +525,44 @@ function* runEffect(g: GameState, ctx: Ctx, ef: Effect): SubFlow {
       const opts = lib.filter((id) => matches(g, ef.filter, g.cards[id], me));
       const picked = yield* choose(g, me, '從牌庫中搜尋一張牌', opts, 0, 1, 'tutor', true);
       for (const id of picked) {
-        moveCard(g, g.cards[id], 'hand');
-        log(g, `搜尋 ${cardName(g.cards[id])} 放到手上`, me);
+        if (ef.to === 'graveyard') {
+          moveCard(g, g.cards[id], 'graveyard');
+          log(g, `搜尋 ${cardName(g.cards[id])} 置入墳墓場`, me);
+        } else if (ef.to === 'battlefield') {
+          enterBattlefield(g, g.cards[id], me);
+          log(g, `搜尋 ${cardName(g.cards[id])} 放進戰場`, me);
+        } else if (ef.to === 'top') {
+          // 展示後洗牌，再放到牌庫頂
+          shuffleArr(g, lib);
+          moveCard(g, g.cards[id], 'library');
+          log(g, `搜尋 ${cardName(g.cards[id])} 放到牌庫頂`, me);
+        } else {
+          moveCard(g, g.cards[id], 'hand');
+          log(g, `搜尋 ${cardName(g.cards[id])} 放到手上`, me);
+        }
       }
-      shuffleArr(g, lib);
+      if (ef.to !== 'top' || !picked.length) shuffleArr(g, lib);
       break;
     }
     case 'removeCounters':
       for (const c of resolveRef(g, ctx, ef.what).cards) {
-        if (c.zone !== 'battlefield' || c.counters === 0) continue;
-        const k = Math.min(ef.n, Math.abs(c.counters));
-        c.counters -= Math.sign(c.counters) * k;
-        log(g, `移除 ${cardName(c)} 上的 ${k} 個指示物`, c.controller);
+        if (c.zone !== 'battlefield') continue;
+        const isPw = c.def.types.includes('Planeswalker') && !isCreature(c);
+        const have = isPw ? Math.max(0, c.loyalty ?? 0) : Math.abs(c.counters);
+        if (have === 0) continue;
+        let k = Math.min(ef.n, have);
+        if (ef.upTo && k > 0) {
+          // 「至多」：由玩家選擇要移除幾個
+          const options = Array.from({ length: k + 1 }, (_, i) => String(i));
+          const r: Response = yield { type: 'mode', player: me, prompt: `要從 ${cardName(c)} 上移除幾個指示物？`, source: ctx.source, options, count: 1, purpose: 'count', meta: { effects: [], specs: [], preferHigh: c.controller !== me } };
+          k = r.type === 'modes' ? Math.min(k, Math.max(0, r.picks[0] ?? 0)) : k;
+        }
+        if (k === 0) continue;
+        if (isPw) c.loyalty = (c.loyalty ?? 0) - k;
+        else c.counters -= Math.sign(c.counters) * k;
+        log(g, `移除 ${cardName(c)} 上的 ${k} 個${isPw ? '忠誠' : ''}指示物`, c.controller);
       }
+      g.version++;
       break;
     case 'earthbend': {
       const n = amount(g, ctx, ef.n);
@@ -466,12 +598,224 @@ function* runEffect(g: GameState, ctx: Ctx, ef: Effect): SubFlow {
         g.version++;
       }
       break;
-    case 'prepare':
-      if (src && src.zone === 'battlefield' && src.def.prepare) {
-        src.prepared = true;
-        log(g, `${cardName(src)} 成為已準備`, me);
-        g.version++;
+    case 'unprepare':
+      for (const c of resolveRef(g, ctx, ef.what).cards) {
+        if (c.prepared) {
+          c.prepared = false;
+          log(g, `${cardName(c)} 不再是已準備`, c.controller);
+          g.version++;
+        }
       }
+      break;
+    case 'setBase':
+      for (const c of resolveRef(g, ctx, ef.what).cards) {
+        if (c.zone !== 'battlefield') continue;
+        g.eot.push({ card: c.id, p: 0, t: 0, kw: [], base: { p: ef.p, t: ef.t } });
+        log(g, `${cardName(c)} 的基礎力量與防禦力變為 ${ef.p}/${ef.t}（直到回合結束）`, c.controller);
+      }
+      g.version++;
+      break;
+    case 'topOrBottom':
+      for (const c of resolveRef(g, ctx, ef.what).cards) {
+        if (c.zone !== 'battlefield') continue;
+        const top = yield* yesno(g, c.owner, `要把 ${cardName(c)} 放在牌庫頂嗎？（不要則放在牌庫底）`, ctx.source, 'may');
+        log(g, `${cardName(c)} 被放在${top ? '牌庫頂' : '牌庫底'}`, c.owner);
+        moveCard(g, c, 'library', !top);
+        if (top && ef.damageTop) dealDamage(g, src, me, { p: c.owner }, ef.damageTop);
+      }
+      break;
+    case 'win':
+      log(g, `${g.players[me].name} 贏得遊戲`, me, 'result');
+      g.players[me].drewFromEmpty = false;
+      g.players[other(me)].lost = true;
+      break;
+    case 'delayed': {
+      (g.delayed ??= []).push({ controller: me, source: ctx.source, on: ef.on, effects: ef.effects, once: ef.once ?? true, ...(ef.untilNext ? { until: me } : {}) });
+      log(g, ef.untilNext ? '延遲觸發已設定（持續到你的下一個回合）' : '本回合的延遲觸發已設定', me);
+      break;
+    }
+    case 'nextSpellUncounterable':
+      g.players[me].nextSpellUncounterable = true;
+      break;
+    case 'wheel':
+      for (const p of [g.active, other(g.active)]) {
+        const yes = yield* yesno(g, p, '要棄掉你的手牌並抓七張牌嗎？', ctx.source, 'may');
+        if (!yes) continue;
+        discardMany(g, g.players[p].hand.map((id) => g.cards[id]));
+        drawCards(g, p, 7);
+        log(g, '棄掉手牌並抓七張牌', p);
+      }
+      break;
+    case 'copyOfSelf': {
+      const s = g.cards[ctx.source];
+      if (!s) break;
+      const t = newCard(g, s.def, me, true);
+      t.zone = 'exile';
+      enterBattlefield(g, t, me);
+      log(g, `派出 ${cardName(s)} 的衍生物複製`, me);
+      break;
+    }
+    case 'copySpell': {
+      const ev = ctx.ev;
+      const item = ev && ev.type === 'cast' ? g.stack.find((it) => it.kind === 'spell' && it.cardId === ev.card) : undefined;
+      if (!item) break;
+      const orig = g.cards[item.cardId];
+      const cp = newCard(g, orig.def, me, true);
+      cp.zone = 'stack';
+      let targets = item.targets.slice();
+      if (item.targetSpecs.length) {
+        // 可以選擇新目標
+        const r: Response = yield { type: 'targets', player: me, source: cp.id, specs: item.targetSpecs, text: orig.def.text, effects: item.effects };
+        if (r.type === 'targets') {
+          const chosen = item.targetSpecs.map((_, i) => r.targets[i] ?? null);
+          if (!validateTargets(g, item.targetSpecs, chosen, me, cp.id)) targets = chosen;
+        }
+      }
+      g.stack.push({ ...item, sid: g.nextSid++, cardId: cp.id, controller: me, targets, alt: undefined, uncounterable: false });
+      log(g, `複製了 ${cardName(orig)}`, me, 'cast');
+      g.version++;
+      break;
+    }
+    case 'jaceInstant':
+      g.loyaltyInstant = { pid: me, turn: g.turn };
+      log(g, '本回合你可以在瞬間時機起動傑斯的忠誠異能', me);
+      break;
+    case 'cryomancer': {
+      drawCards(g, me, 2);
+      const hand = g.players[me].hand.slice();
+      const ids = yield* choose(g, me, '選擇 2 張牌棄掉', hand, Math.min(2, hand.length), Math.min(2, hand.length), 'discard');
+      const nonland = ids.filter((id) => !isLand(g.cards[id])).length;
+      discardMany(g, ids.map((id) => g.cards[id]));
+      if (nonland > 0) {
+        const specs = Array.from({ length: nonland }, () => ({ kind: 'creature' as const, optional: true, prompt: '選擇要橫置並放上暈眩指示物的生物（可以不選）' }));
+        const efs: Effect[] = specs.flatMap((_, i) => [{ e: 'tap' as const, what: `T${i}` as Ref }, { e: 'stun' as const, what: `T${i}` as Ref }]);
+        const r: Response = yield { type: 'targets', player: me, source: ctx.source, specs, text: src?.def.text ?? '', effects: efs };
+        let targets = specs.map((_, i) => (r.type === 'targets' ? r.targets[i] ?? null : null));
+        // 同一個生物不能重複選擇
+        targets = targets.map((t, i) => (t && 'c' in t && targets.findIndex((u) => u && 'c' in u && u.c === t.c) !== i ? null : t));
+        if (validateTargets(g, specs, targets, me, ctx.source)) targets = specs.map(() => null);
+        g.stack.push({ sid: g.nextSid++, kind: 'trigger', controller: me, cardId: ctx.source, targets, targetSpecs: specs, effects: efs, text: src?.def.text ?? '' });
+      }
+      break;
+    }
+    case 'chooseColor': {
+      if (!src || src.zone !== 'battlefield') break;
+      const cols = ['W', 'U', 'B', 'R', 'G'] as const;
+      const r: Response = yield { type: 'mode', player: me, prompt: `${cardName(src)}：選擇一種顏色`, source: src.id, options: [...cols], count: 1, purpose: 'color' };
+      src.chosenColor = cols[r.type === 'modes' ? r.picks[0] ?? 0 : 0] ?? 'W';
+      log(g, `${cardName(src)} 選定了顏色`, me);
+      g.version++;
+      break;
+    }
+    case 'edictEach': {
+      let mine = false;
+      for (const p of [me, other(me)]) {
+        const opts = g.battlefield.filter((id) => g.cards[id].controller === p && isCreature(g.cards[id]));
+        if (!opts.length) continue;
+        const ids = yield* choose(g, p, '選擇一個生物犧牲', opts, 1, 1, 'sacrifice');
+        for (const id of ids) {
+          sacrifice(g, g.cards[id]);
+          if (p === me) mine = true;
+        }
+      }
+      if (mine) yield* runEffects(g, ctx, ef.then);
+      break;
+    }
+    case 'discardNonlandOrDraw': {
+      for (const p of resolveRef(g, ctx, 'opp').players) {
+        const hand = g.players[p].hand.slice();
+        const n = Math.min(ef.n, hand.length);
+        const ids = n ? yield* choose(g, p, `選擇 ${ef.n} 張牌棄掉`, hand, n, n, 'discard') : [];
+        const nonland = ids.filter((id) => !isLand(g.cards[id])).length;
+        discardMany(g, ids.map((id) => g.cards[id]));
+        if (nonland < ef.n) {
+          drawCards(g, me, 1);
+          log(g, `${g.players[p].name} 沒有棄掉 ${ef.n} 張非地牌，你抓一張牌`, me);
+        }
+      }
+      break;
+    }
+    case 'exileLibraryButBottom':
+      for (const p of resolveRef(g, ctx, ef.who).players) {
+        const lib = g.players[p].library;
+        const n = Math.max(0, lib.length - 1);
+        for (const id of lib.slice(0, n)) moveCard(g, g.cards[id], 'exile');
+        log(g, `${g.players[p].name} 的牌庫：放逐了 ${n} 張牌，只留下最底下的一張`, me);
+      }
+      g.version++;
+      break;
+    case 'impulseCastOrDamage': {
+      const lib = g.players[me].library;
+      if (!lib.length) break;
+      const c = g.cards[lib[0]];
+      moveCard(g, c, 'exile');
+      log(g, `放逐牌庫頂的 ${cardName(c)}`, me);
+      let cast = false;
+      if (!isLand(c)) {
+        const yes = yield* yesno(g, me, `要施放 ${cardName(c)} 嗎？（不施放的話，${cardName(src ?? c)}會對每位對手造成 ${ef.n} 點傷害）`, ctx.source, 'may');
+        if (yes) {
+          c.playableTurn = g.turn;
+          c.playableBy = me;
+          const specs = castTargetSpecs(c.def, undefined);
+          let targets: (TargetRef | null)[] = [];
+          if (specs.length) {
+            const options = specs.map((s) => legalTargets(g, s, me, c.id));
+            if (!specs.some((s, i) => !s.optional && options[i].length === 0)) {
+              const r: Response = yield { type: 'targets', player: me, source: c.id, specs, text: c.def.text, effects: [] };
+              targets = specs.map((_, i) => (r.type === 'targets' ? r.targets[i] ?? null : null));
+              if (validateTargets(g, specs, targets, me, c.id)) targets = specs.map((s, i) => (s.optional ? null : options[i][0] ?? null));
+            } else targets = [null];
+          }
+          cast = castDuringResolution(g, me, c.id, targets) === null;
+          if (!cast) {
+            c.playableTurn = undefined;
+            c.playableBy = undefined;
+          }
+        }
+      }
+      if (!cast) {
+        log(g, `沒有施放，造成 ${ef.n} 點傷害`, me);
+        for (const p of resolveRef(g, ctx, 'opp').players) dealDamage(g, src ?? c, me, { p }, ef.n);
+      }
+      break;
+    }
+    case 'prepare': {
+      const list = ef.what ? resolveRef(g, ctx, ef.what).cards : src ? [src] : [];
+      for (const c of list) {
+        if (c.zone === 'battlefield' && c.def.prepare && !c.prepared) {
+          c.prepared = true;
+          log(g, `${cardName(c)} 成為已準備`, me);
+          g.version++;
+        }
+      }
+      break;
+    }
+    case 'bonusMana':
+      for (const c of resolveRef(g, ctx, ef.what).cards) {
+        if (c.zone === 'battlefield' && src) {
+          c.bonusMana = src.id;
+          log(g, `${cardName(c)} 獲得「{T}：加{C}{C}」`, me);
+        }
+      }
+      g.version++;
+      break;
+    case 'allowCastFromExile':
+      if (src && src.zone === 'exile') {
+        src.linkedCast = { by: me, cond: { c: 'always' } };
+        log(g, `${cardName(src)} 被放逐，你可以從放逐區施放它`, me);
+      }
+      break;
+    case 'becomeCopy':
+      for (const t of resolveRef(g, ctx, ef.what).cards) {
+        if (!src || src.zone !== 'battlefield' || t.zone !== 'battlefield') continue;
+        if (!src.baseDef) src.baseDef = src.def;
+        src.def = { ...t.def, id: src.baseDef.id };
+        log(g, `${cardName(src)} 成為 ${cardName(t)} 的複製直到回合結束`, me);
+      }
+      g.version++;
+      break;
+    case 'legendExempt':
+      g.legendExempt = { pid: me, turn: g.turn };
       break;
     case 'saddle':
       if (src && src.zone === 'battlefield') {
@@ -482,7 +826,7 @@ function* runEffect(g: GameState, ctx: Ctx, ef: Effect): SubFlow {
     case 'endure': {
       const n = amount(g, ctx, ef.n);
       if (src && src.zone === 'battlefield') {
-        src.counters += n;
+        putCounters(g, src, n);
         log(g, `${cardName(src)} 堅忍 ${n}`, me);
       } else {
         const t = createToken(g, 'tok-spirit-endure', me);
@@ -507,6 +851,7 @@ function* runEffect(g: GameState, ctx: Ctx, ef: Effect): SubFlow {
           const t = createToken(g, ef.token, p, { tapped: ef.tapped, attacking: ef.attacking, attachTo: host?.id });
           if (ef.temp) t.sacAtEnd = true;
           ctx.created = t.id;
+          (ctx.createdList ??= []).push(t.id);
         }
         log(g, `派出 ${n} 個衍生物`, p);
       }
@@ -516,7 +861,11 @@ function* runEffect(g: GameState, ctx: Ctx, ef: Effect): SubFlow {
       const n = amount(g, ctx, ef.n);
       for (const p of resolveRef(g, ctx, ef.who ?? 'you').players) {
         const lib = g.players[p].library;
-        for (let i = 0; i < n && lib.length; i++) moveCard(g, g.cards[lib[0]], 'graveyard');
+        ctx.milled = [];
+        for (let i = 0; i < n && lib.length; i++) {
+          ctx.milled.push(lib[0]);
+          moveCard(g, g.cards[lib[0]], 'graveyard');
+        }
         log(g, `碾磨 ${n} 張牌`, p);
       }
       break;
@@ -526,13 +875,26 @@ function* runEffect(g: GameState, ctx: Ctx, ef: Effect): SubFlow {
       const bottom = yield* choose(g, me, `占卜 ${ef.n}：選擇要放到牌庫底的牌`, top, 0, top.length, 'scryBottom', true);
       for (const id of bottom) moveCard(g, g.cards[id], 'library', true);
       log(g, `占卜 ${ef.n}`, me);
+      g.players[me].scriedThisTurn = true;
+      emit(g, { type: 'scry', player: me });
       break;
     }
     case 'surveil': {
       const top = g.players[me].library.slice(0, ef.n);
       const gy = yield* choose(g, me, `刺探 ${ef.n}：選擇要置入墳墓場的牌`, top, 0, top.length, 'surveilGy', true);
-      for (const id of gy) moveCard(g, g.cards[id], 'graveyard');
+      const lifeGained = g.players[me].lifeGainedThisTurn ?? 0;
+      for (const id of gy) {
+        const c = g.cards[id];
+        moveCard(g, c, 'graveyard');
+        const r = ef.retrieve;
+        if (r && c.zone === 'graveyard' && matches(g, r.filter, c, me) && (!r.mvLeLife || manaValue(c.def) <= lifeGained)) {
+          moveCard(g, c, 'hand');
+          log(g, `${cardName(c)} 被放到手上`, me);
+        }
+      }
       log(g, `刺探 ${ef.n}`, me);
+      g.players[me].scriedThisTurn = true;
+      emit(g, { type: 'scry', player: me });
       break;
     }
     case 'dig': {
@@ -587,7 +949,7 @@ function* runEffect(g: GameState, ctx: Ctx, ef: Effect): SubFlow {
     case 'counter': {
       for (const c of resolveRef(g, ctx, ef.what).cards) {
         if (c.zone !== 'stack') continue;
-        if (c.def.uncounterable) {
+        if (c.def.uncounterable || g.stack.some((it) => it.cardId === c.id && it.uncounterable)) {
           log(g, `${cardName(c)} 不能被反擊`, c.controller);
           continue;
         }
@@ -598,7 +960,7 @@ function* runEffect(g: GameState, ctx: Ctx, ef: Effect): SubFlow {
     }
     case 'counterUnless': {
       for (const c of resolveRef(g, ctx, ef.what).cards) {
-        if (c.zone !== 'stack' || c.def.uncounterable) continue;
+        if (c.zone !== 'stack' || c.def.uncounterable || g.stack.some((it) => it.cardId === c.id && it.uncounterable)) continue;
         const payer = c.controller;
         const cost = { ...parseCost(''), generic: ef.pay };
         let paid = false;
@@ -619,9 +981,11 @@ function* runEffect(g: GameState, ctx: Ctx, ef: Effect): SubFlow {
       const a = resolveRef(g, ctx, ef.a).cards[0];
       const b = resolveRef(g, ctx, ef.b).cards[0];
       if (!a || !b || a.zone !== 'battlefield' || b.zone !== 'battlefield') break;
-      if (!isCreature(a) || !isCreature(b)) break;
-      const pa = stats(g, a).p;
-      const pb = stats(g, b).p;
+      const byLoyalty = ef.e === 'bite' && ef.byLoyalty;
+      if (byLoyalty ? !a.def.types.includes('Planeswalker') : !isCreature(a)) break;
+      if (ef.e === 'fight' ? !isCreature(b) : !isCreature(b) && !b.def.types.includes('Planeswalker')) break;
+      const pa = byLoyalty ? Math.max(0, a.loyalty ?? 0) : stats(g, a).p;
+      const pb = isCreature(b) ? stats(g, b).p : 0;
       dealDamage(g, a, a.controller, { c: b.id }, pa);
       if (ef.e === 'fight') dealDamage(g, b, b.controller, { c: a.id }, pb);
       break;
@@ -637,7 +1001,315 @@ function* runEffect(g: GameState, ctx: Ctx, ef: Effect): SubFlow {
       for (const c of resolveRef(g, ctx, ef.what).cards) {
         if (c.zone !== 'graveyard') continue;
         log(g, `${cardName(c)} 從墳墓場回到戰場`, me);
+        enterBattlefield(g, c, ef.owner ? c.owner : me, !!ef.tapped);
+        if (ef.counters) putCounters(g, c, ef.counters);
+        if (ef.finality) c.finality = true;
+      }
+      break;
+    case 'reanimateAll': {
+      const ids = g.players[me].graveyard.filter((id) => matches(g, ef.filter, g.cards[id], me));
+      for (const id of ids) {
+        const c = g.cards[id];
+        if (c.zone !== 'graveyard') continue;
         enterBattlefield(g, c, me);
+      }
+      if (ids.length) log(g, `${ids.length} 張牌從墳墓場回到戰場`, me);
+      break;
+    }
+    case 'kindredJudgment': {
+      const types = new Set<string>();
+      for (const id of g.battlefield) {
+        const c = g.cards[id];
+        if (!isCreature(c) || c.def.changeling) continue;
+        for (const s of c.def.subtypes ?? []) types.add(s);
+      }
+      // 最後多一個「沒有任何生物的類別」：等於消滅所有生物
+      const options = [...types].sort();
+      const NONE = '（任何戰場上沒有生物的類別）';
+      const r: Response = yield { type: 'mode', player: me, prompt: '選擇一個生物類別：消滅所有不是該類別的生物', source: ctx.source, options: [...options, NONE], count: 1, purpose: 'creatureType' };
+      const pick = r.type === 'modes' ? r.picks[0] : options.length;
+      const chosen = options[pick] ?? NONE;
+      log(g, `選擇的生物類別：${chosen}`, me);
+      const dying = g.battlefield.map((id) => g.cards[id]).filter((c) => isCreature(c) && !(c.def.changeling || c.def.subtypes?.includes(chosen)));
+      destroyCards(g, dying);
+      break;
+    }
+    case 'exileIfDies':
+      for (const c of resolveRef(g, ctx, ef.what).cards) if (c.zone === 'battlefield') c.exileOnDeathTurn = g.turn;
+      break;
+    case 'grantFlashback':
+      for (const c of resolveRef(g, ctx, ef.what).cards) {
+        if (c.zone !== 'graveyard') continue;
+        c.tempFlashbackTurn = g.turn;
+        log(g, `${cardName(c)} 直到回合結束獲得返照`, me);
+      }
+      break;
+    case 'mountainBonus':
+      g.players[me].mountainBonus = true;
+      log(g, '直到回合結束，山脈額外產生{R}', me);
+      break;
+    case 'addMana': {
+      const times = ef.n === undefined ? 1 : amount(g, ctx, ef.n);
+      const added = Array.from({ length: Math.max(0, times) }, () => ef.mana).flat();
+      if (ef.only === 'noncreature') (g.players[me].poolNoncreature ??= []).push(...added);
+      else (g.players[me].pool ??= []).push(...added);
+      if (added.length) log(g, `加入法術力：${added.map((m) => `{${m}}`).join('')}`, me);
+      break;
+    }
+    case 'chargeCounter':
+      for (const c of resolveRef(g, ctx, ef.what).cards) {
+        if (c.zone !== 'battlefield') continue;
+        c.counters += amount(g, ctx, ef.n);
+        log(g, `${cardName(c)} 上放置了充能指示物（${c.counters}）`, c.controller);
+      }
+      g.version++;
+      break;
+    case 'extraLandThisTurn':
+      g.players[me].extraLandsThisTurn = (g.players[me].extraLandsThisTurn ?? 0) + 1;
+      log(g, '本回合你可以多打出一個地', me);
+      break;
+    case 'loseAbilitiesEot':
+      for (const c of resolveRef(g, ctx, ef.what).cards) {
+        if (c.zone !== 'battlefield') continue;
+        c.loseAbilitiesTurn = g.turn;
+        g.loseAbilities = true;
+        log(g, `${cardName(c)} 直到回合結束失去所有異能`, c.controller);
+      }
+      g.version++;
+      break;
+    case 'retrieveMilled': {
+      const opts = (ctx.milled ?? []).filter((id) => g.cards[id].zone === 'graveyard' && matches(g, ef.filter, g.cards[id], me));
+      const ids = yield* choose(g, me, '從碾磨的牌中選擇一張置於手上', opts, 0, 1, 'dig', true);
+      for (const id of ids) {
+        moveCard(g, g.cards[id], 'hand');
+        log(g, `將 ${cardName(g.cards[id])} 置於手上`, me);
+      }
+      break;
+    }
+    case 'pumpChoice': {
+      const r: Response = yield { type: 'mode', player: me, prompt: '選擇一項異能', source: ctx.source, options: ef.kws.map((k) => k as string), count: 1, purpose: 'keyword' };
+      const kw = ef.kws[r.type === 'modes' ? r.picks[0] ?? 0 : 0] ?? ef.kws[0];
+      for (const c of resolveRef(g, ctx, ef.what).cards) {
+        if (c.zone !== 'battlefield') continue;
+        g.eot.push({ card: c.id, p: 0, t: 0, kw: [kw] });
+        log(g, `${cardName(c)} 獲得 ${kw} 直到回合結束`, c.controller);
+      }
+      g.version++;
+      break;
+    }
+    case 'tutorMany': {
+      const lib = g.players[me].library;
+      const n = amount(g, ctx, ef.n);
+      let opts = lib.filter((id) => matches(g, ef.filter, g.cards[id], me));
+      if (ef.distinct) {
+        const seen = new Set<string>();
+        opts = opts.filter((id) => (seen.has(g.cards[id].def.name) ? false : (seen.add(g.cards[id].def.name), true)));
+      }
+      let picked = yield* choose(g, me, `從你的牌庫中搜尋至多 ${n} 張牌`, opts, 0, n, 'searchMany', true);
+      if (ef.distinct) {
+        const names = new Set<string>();
+        picked = picked.filter((id) => (names.has(g.cards[id].def.name) ? false : (names.add(g.cards[id].def.name), true)));
+      }
+      for (const id of picked) {
+        if (ef.to === 'battlefield') enterBattlefield(g, g.cards[id], me, !!ef.tapped);
+        else moveCard(g, g.cards[id], 'hand');
+      }
+      if (picked.length) log(g, `搜尋 ${picked.map((id) => cardName(g.cards[id])).join('、')}`, me);
+      shuffleArr(g, lib);
+      break;
+    }
+    case 'addManaOfChoice': {
+      const n = amount(g, ctx, ef.n);
+      if (n <= 0) break;
+      const COLORS = ['W', 'U', 'B', 'R', 'G'] as const;
+      const r: Response = yield { type: 'mode', player: me, prompt: `選擇一種顏色（加入 ${n} 點該顏色的法術力）`, source: ctx.source, options: [...COLORS], count: 1, purpose: 'color' };
+      const col = COLORS[r.type === 'modes' ? r.picks[0] ?? 0 : 0] ?? 'W';
+      (g.players[me].pool ??= []).push(...Array.from({ length: n }, () => col));
+      log(g, `加入 ${n} 點{${col}}法術力`, me);
+      break;
+    }
+    case 'revealUntil': {
+      const lib = g.players[me].library;
+      const revealed: number[] = [];
+      let found: Card | undefined;
+      for (const id of lib) {
+        revealed.push(id);
+        if (matches(g, ef.filter, g.cards[id], me)) {
+          found = g.cards[id];
+          break;
+        }
+      }
+      log(g, `展示：${revealed.map((id) => cardName(g.cards[id])).join('、') || '（無）'}`, me);
+      const rest = revealed.filter((id) => id !== found?.id);
+      if (found) enterBattlefield(g, found, me);
+      // 其餘以隨機順序置於牌庫底
+      for (let i = rest.length - 1; i > 0; i--) {
+        const j = randInt(g, i + 1);
+        [rest[i], rest[j]] = [rest[j], rest[i]];
+      }
+      for (const id of rest) moveCard(g, g.cards[id], 'library', true);
+      break;
+    }
+    case 'copyCreatures': {
+      for (const p of resolveRef(g, ctx, ef.who).players) {
+        const originals = g.battlefield.map((id) => g.cards[id]).filter((c) => c.controller === p && isCreature(c));
+        for (const o of originals) {
+          const def = {
+            ...o.def,
+            keywords: [...new Set([...(o.def.keywords ?? []), 'haste' as const])],
+            abilities: [...(o.def.abilities ?? []), COPY_SAC],
+            text: `${o.def.text}\n敏捷\n在結束步驟開始時，若你沒有操控鵬洛客，犧牲此生物。`,
+          };
+          const t = newCard(g, def, me, true);
+          t.zone = 'exile';
+          enterBattlefield(g, t, me);
+        }
+        log(g, `派出 ${originals.length} 個生物的衍生物複製`, me);
+      }
+      break;
+    }
+    case 'reflexive': {
+      const specs = ef.targets;
+      const options = specs.map((s) => legalTargets(g, s, me, ctx.source));
+      if (specs.some((s, i) => !s.optional && options[i].length === 0)) break;
+      const r: Response = yield { type: 'targets', player: me, source: ctx.source, specs, text: src?.def.text ?? '', effects: ef.effects };
+      let targets = specs.map((_, i) => (r.type === 'targets' ? r.targets[i] ?? null : null));
+      if (validateTargets(g, specs, targets, me, ctx.source)) targets = specs.map((s, i) => (s.optional ? null : options[i][0] ?? null));
+      g.stack.push({ sid: g.nextSid++, kind: 'trigger', controller: me, cardId: ctx.source, targets, targetSpecs: specs, effects: ef.effects, text: src?.def.text ?? '' });
+      break;
+    }
+    case 'exileFromHandLinked': {
+      for (const p of resolveRef(g, ctx, ef.who).players) {
+        const hand = g.players[p].hand;
+        log(g, `${g.players[p].name} 展示手牌：${hand.map((id) => cardName(g.cards[id])).join('、') || '（空）'}`, p);
+        const opts = hand.filter((id) => matches(g, ef.filter, g.cards[id], me));
+        const ids = yield* choose(g, me, '選擇一張牌放逐', opts, 1, 1, 'opponentDiscard', true);
+        for (const id of ids) {
+          const c = g.cards[id];
+          moveCard(g, c, 'exile');
+          // 墳墓場中有七張或更多牌時，你可以施放它
+          c.linkedCast = { by: me, cond: { c: 'gyCount', filter: {}, n: 7 } };
+          log(g, `放逐 ${cardName(c)}`, me);
+        }
+      }
+      break;
+    }
+    case 'exileThenSteal':
+      for (const c of resolveRef(g, ctx, ef.what).cards) {
+        if (c.zone !== 'battlefield') continue;
+        const mv = manaValue(c.def);
+        log(g, `${cardName(c)} 被放逐`, c.controller);
+        moveCard(g, c, 'exile');
+        if (mv <= ef.mvMax && !c.token) {
+          enterBattlefield(g, c, me, true);
+          c.exileAtEndFinal = true;
+          log(g, `${cardName(c)} 在你的操控下橫置回到戰場（下一個結束步驟開始時放逐）`, me);
+        }
+      }
+      break;
+    case 'countersEachOf': {
+      const n = amount(g, ctx, ef.n);
+      for (const p of resolveRef(g, ctx, ef.who).players) {
+        for (const c of g.battlefield.map((id) => g.cards[id]).filter((x) => x.controller === p && isCreature(x))) putCounters(g, c, n);
+      }
+      break;
+    }
+    case 'toLibraryBottom':
+      for (const c of resolveRef(g, ctx, ef.what).cards) {
+        if (c.zone !== 'graveyard') continue;
+        moveCard(g, c, 'library', true);
+        log(g, `${cardName(c)} 被放到牌庫底`, c.owner);
+      }
+      break;
+    case 'proliferate': {
+      const times = amount(g, ctx, ef.times);
+      for (let i = 0; i < times; i++) {
+        const opts = g.battlefield.filter((id) => {
+          const c = g.cards[id];
+          return c.counters !== 0 || (c.def.types.includes('Planeswalker') && (c.loyalty ?? 0) > 0);
+        });
+        if (!opts.length) break;
+        const ids = yield* choose(g, me, '增殖：選擇要多放一個指示物的永久物', opts, 0, opts.length, 'proliferate', true);
+        for (const id of ids) {
+          const c = g.cards[id];
+          if (c.def.types.includes('Planeswalker') && !isCreature(c)) {
+            c.loyalty = (c.loyalty ?? 0) + 1;
+            emit(g, { type: 'loyaltyPlaced', card: c.id, controller: c.controller, amount: 1 });
+          } else if (c.counters > 0 && isCreature(c)) putCounters(g, c, 1);
+          else c.counters += c.counters < 0 ? -1 : 1;
+        }
+        if (ids.length) log(g, `增殖 ${ids.length} 個永久物`, me);
+        g.version++;
+      }
+      break;
+    }
+    case 'theorix': {
+      const pl = g.players[me];
+      const order = ['Creature', 'Planeswalker', 'Artifact', 'Enchantment', 'Instant', 'Sorcery'] as const;
+      const chosen: number[] = [];
+      for (const ty of order) {
+        const opts = pl.graveyard.filter((id) => !chosen.includes(id) && !g.cards[id].def.types.includes('Land') && g.cards[id].def.types.includes(ty));
+        if (!opts.length) continue;
+        const ids = yield* choose(g, me, `放逐你墳墓場中的一張${TYPE_ZH_E[ty]}牌（至多一張）`, opts, 0, 1, 'dig', true);
+        if (ids.length) chosen.push(ids[0]);
+      }
+      const copies: Card[] = [];
+      for (const id of chosen) {
+        const o = g.cards[id];
+        moveCard(g, o, 'exile');
+        const cp = newCard(g, o.def, me, true);
+        cp.zone = 'exile';
+        copies.push(cp);
+      }
+      if (!copies.length) break;
+      log(g, `放逐並複製：${chosen.map((id) => cardName(g.cards[id])).join('、')}`, me);
+      const pickIds = yield* choose(g, me, '選擇要免費施放的複製品（總法術力值不能超過 6）', copies.map((c) => c.id), 0, copies.length, 'dig', true);
+      let total = 0;
+      for (const id of pickIds) {
+        const cp = g.cards[id];
+        const mv = manaValue(cp.def);
+        if (total + mv > 6) continue;
+        total += mv;
+        const isSpell = cp.def.types.some((t) => t === 'Instant' || t === 'Sorcery');
+        if (!isSpell) {
+          // 以此法施放的永久物咒語會成為衍生物
+          if (cp.def.aura) continue;
+          enterBattlefield(g, cp, me);
+          log(g, `免費施放 ${cardName(cp)}`, me);
+          continue;
+        }
+        let mode: number | undefined;
+        if (cp.def.spell?.modes) {
+          const rm: Response = yield { type: 'mode', player: me, prompt: `${cardName(cp)}：選擇模式`, source: cp.id, options: cp.def.spell.modes.map((m) => m.text), count: 1, purpose: 'trigger', meta: { effects: cp.def.spell.modes.map((m) => m.effects), specs: cp.def.spell.modes.map((m) => m.targets ?? []) } };
+          mode = rm.type === 'modes' ? rm.picks[0] ?? 0 : 0;
+        }
+        const specs = castTargetSpecs(cp.def, mode);
+        let targets = specs.map(() => null as TargetRef | null);
+        if (specs.length) {
+          const options = specs.map((s) => legalTargets(g, s, me, cp.id));
+          if (specs.some((s, i) => !s.optional && options[i].length === 0)) continue;
+          const rt: Response = yield { type: 'targets', player: me, source: cp.id, specs, text: cp.def.text, effects: spellEffects(cp.def, mode) };
+          targets = specs.map((_, i) => (rt.type === 'targets' ? rt.targets[i] ?? null : null));
+          if (validateTargets(g, specs, targets, me, cp.id)) targets = specs.map((s, i) => (s.optional ? null : options[i][0] ?? null));
+        }
+        cp.zone = 'stack';
+        g.stack.push({ sid: g.nextSid++, kind: 'spell', controller: me, cardId: cp.id, targets, targetSpecs: specs, effects: spellEffects(cp.def, mode), text: cp.def.text, modeIndex: mode });
+        log(g, `免費施放 ${cardName(cp)}`, me, 'cast');
+      }
+      g.version++;
+      break;
+    }
+    case 'edictMax':
+      for (const p of resolveRef(g, ctx, ef.who).players) {
+        const cands = g.battlefield.filter((id) => {
+          const c = g.cards[id];
+          return c.controller === p && (isCreature(c) || c.def.types.includes('Planeswalker'));
+        });
+        if (!cands.length) continue;
+        const top = Math.max(...cands.map((id) => manaValue(g.cards[id].def)));
+        const opts = cands.filter((id) => manaValue(g.cards[id].def) === top);
+        const ids = yield* choose(g, p, '選擇法術力值最大的生物或鵬洛客犧牲', opts, 1, 1, 'sacrifice');
+        for (const id of ids) sacrifice(g, g.cards[id]);
       }
       break;
     case 'edict':
@@ -680,7 +1352,7 @@ function* runEffect(g: GameState, ctx: Ctx, ef: Effect): SubFlow {
       break;
     }
     case 'if': {
-      const ok = checkCond(g, ef.cond, me, ctx.source, ctx.targets);
+      const ok = ef.cond.c === 'castFromGy' ? ctx.alt === 'flashback' || ctx.alt === 'harmonize' || ctx.alt === 'mayhem' : checkCond(g, ef.cond, me, ctx.source, ctx.targets, ctx.ev);
       yield* runEffects(g, ctx, ok ? ef.then : ef.else ?? []);
       break;
     }
@@ -715,10 +1387,30 @@ function* runEffect(g: GameState, ctx: Ctx, ef: Effect): SubFlow {
           paid = true;
         }
       } else if (cost.discard) {
-        const ids = yield* choose(g, me, ef.prompt, g.players[me].hand.slice(), 0, 1, 'discard');
+        const hand = g.players[me].hand.filter((id) => !cost.discardFilter || matches(g, cost.discardFilter, g.cards[id], me));
+        const ids = yield* choose(g, me, ef.prompt, hand, 0, 1, 'discard');
         if (ids.length) {
           discard(g, g.cards[ids[0]]);
           paid = true;
+        }
+      } else if (cost.exileGy) {
+        const opts = g.players[me].graveyard.filter((id) => id !== ctx.source && matches(g, cost.exileGy, g.cards[id], me));
+        const ids = yield* choose(g, me, ef.prompt, opts, 0, 1, 'dig', true);
+        if (ids.length) {
+          moveCard(g, g.cards[ids[0]], 'exile');
+          log(g, `放逐墳墓場中的 ${cardName(g.cards[ids[0]])}`, me);
+          paid = true;
+        }
+      } else if (cost.exileNamed) {
+        const name = src?.def.name;
+        const same = g.players[me].graveyard.filter((id) => id !== ctx.source && g.cards[id].def.name === name);
+        if (src && same.length >= cost.exileNamed) {
+          const yes = yield* yesno(g, me, ef.prompt, ctx.source, 'may');
+          if (yes) {
+            for (const id of same.slice(0, cost.exileNamed)) moveCard(g, g.cards[id], 'exile');
+            if (src.zone === 'stack') moveCard(g, src, 'exile');
+            paid = true;
+          }
         }
       } else if (cost.mana) {
         const c = parseCost(cost.mana);
@@ -774,7 +1466,7 @@ function* runEffect(g: GameState, ctx: Ctx, ef: Effect): SubFlow {
           moveCard(g, top, 'hand');
           continue;
         }
-        if (isCreature(c)) c.counters += 1;
+        if (isCreature(c)) putCounters(g, c, 1);
         const gy = yield* choose(g, c.controller, `探險：要把 ${cardName(top)} 置入墳墓場嗎？（不選則留在牌庫頂）`, [top.id], 0, 1, 'surveilGy', true);
         if (gy.length) moveCard(g, top, 'graveyard');
       }
@@ -787,7 +1479,7 @@ function* runEffect(g: GameState, ctx: Ctx, ef: Effect): SubFlow {
         log(g, `${cardName(c)} 被放逐後回到戰場`, c.owner);
         moveCard(g, c, 'exile');
         enterBattlefield(g, c, c.owner);
-        if (ef.counters) c.counters += ef.counters;
+        if (ef.counters) putCounters(g, c, ef.counters);
       }
       break;
     }
@@ -797,14 +1489,16 @@ function* runEffect(g: GameState, ctx: Ctx, ef: Effect): SubFlow {
         if (c.zone !== 'battlefield' || !c.def.types.includes('Planeswalker')) continue;
         c.loyalty = (c.loyalty ?? 0) + n;
         log(g, `${cardName(c)} 的忠誠${n >= 0 ? '+' : ''}${n}（${c.loyalty}）`, c.controller);
+        if (n > 0) emit(g, { type: 'loyaltyPlaced', card: c.id, controller: c.controller, amount: n });
       }
       g.version++;
       break;
     }
     case 'empowerJace': {
+      const n = amount(g, ctx, ef.n);
+      if (n <= 0) break;
       let jace = g.battlefield.map((id) => g.cards[id]).find((c) => c.controller === me && c.def.id === 'tok-jace');
       if (!jace) jace = createToken(g, 'tok-jace', me);
-      const n = amount(g, ctx, ef.n);
       jace.loyalty = (jace.loyalty ?? 0) + n;
       log(g, `強化傑斯 ${n}（忠誠 ${jace.loyalty}）`, me);
       g.version++;

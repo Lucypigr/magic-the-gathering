@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useReducer, useRef, useState, type CSS
 import type { Level } from '../../ai/combatAI';
 import { expandDeck, type DeckList } from '../../data';
 import {
-  activatedAbilities,
+  abilitiesFor,
   castOptionsFor,
   playOptions,
   sacChoices,
@@ -25,7 +25,7 @@ import { LEVEL_ZH } from '../i18n';
 import { ManaCost } from '../Mana';
 import { Avatar, CreatureZone, LandZone, OppHand, OtherZone, PhaseTrack, Piles, StackView, type Marks } from './Board';
 import { ArrowLayer, Spotlight } from './Fx';
-import { ChooseModal, GameOverModal, MulliganModal, PileModal, YesNoModal } from './Modals';
+import { ChooseModal, GameOverModal, ModeModal, MulliganModal, PileModal, YesNoModal } from './Modals';
 
 export interface BattleResult {
   won: boolean;
@@ -87,6 +87,8 @@ function specPrompt(spec: TargetSpec): string {
       return '選擇堆疊上的咒語';
     case 'gyCard':
       return '選擇墳墓場中的牌';
+    case 'spellOrCreature':
+      return '選擇一個咒語或生物';
   }
 }
 
@@ -335,7 +337,7 @@ export function Battle(props: Props) {
     const a: PriorityAction =
       dr.kind === 'cast'
         ? { type: 'cast', card: dr.source, targets: dr.targets, mode: dr.mode, sac: dr.sac, alt: dr.alt, x: dr.x }
-        : { type: 'activate', card: dr.source, ability: dr.ability!, targets: dr.targets, sac: dr.sac };
+        : { type: 'activate', card: dr.source, ability: dr.ability!, targets: dr.targets, sac: dr.sac, x: dr.x };
     submitAction(a);
   }
 
@@ -370,7 +372,7 @@ export function Battle(props: Props) {
       label: o.label,
     };
     // X 咒語：先決定 X
-    if (o.kind === 'cast' && o.maxX !== undefined) {
+    if ((o.kind === 'cast' || o.kind === 'activate') && o.maxX !== undefined) {
       setXPick({ draft: dr, max: o.maxX, value: o.maxX });
       return;
     }
@@ -831,8 +833,8 @@ export function Battle(props: Props) {
                   <button key={i} className="btn btn-primary btn-block" onClick={() => startOption(o)}>
                     {o.kind === 'play' ? '打出' : o.kind === 'activate' ? (/^[+−0]/.test(o.label ?? '') ? o.label : `起動：${o.label}`) : o.alt || inspected.def.spell?.modes ? o.label : inspected.def.adventure ? `施放本體` : '施放'}
                     {o.kind === 'cast' && <ManaCost cost={costToString(spellCost(g, inspected, 0, o.mode, undefined, o.alt))} size={15} />}
-                    {o.kind === 'activate' && activatedAbilities(inspected.def)[o.ability!].cost.mana && (
-                      <ManaCost cost={activatedAbilities(inspected.def)[o.ability!].cost.mana} size={15} />
+                    {o.kind === 'activate' && abilitiesFor(g, inspected)[o.ability!].cost.mana && (
+                      <ManaCost cost={abilitiesFor(g, inspected)[o.ability!].cost.mana} size={15} />
                     )}
                   </button>
                 ))}
@@ -863,6 +865,7 @@ export function Battle(props: Props) {
         <MulliganModal g={g} mulligans={d.mulligans} onKeep={() => ctl.submit({ type: 'keep', keep: true })} onMull={() => ctl.submit({ type: 'keep', keep: false })} />
       )}
       {d?.type === 'choose' && d.player === 0 && <ChooseModal key={seq} g={g} d={d} onSubmit={(ids) => ctl.submit({ type: 'choose', ids })} />}
+      {d?.type === 'mode' && d.player === 0 && <ModeModal key={seq} g={g} d={d} onSubmit={(picks) => ctl.submit({ type: 'modes', picks })} />}
       {d?.type === 'yesno' && d.player === 0 && <YesNoModal g={g} d={d} onAnswer={(yes) => ctl.submit({ type: 'yesno', yes })} />}
       {gySpec && draft && (
         <PileModal
@@ -893,7 +896,7 @@ export function Battle(props: Props) {
       {xPick && (
         <Modal title={`決定 X 的值`} onClose={() => setXPick(null)}>
           <div className="x-pick">
-            <p className="muted small">{xPick.draft.label}：X 越大效果越強，但要多付 X 點法術力。你現在最多能付 X = {xPick.max}。</p>
+            <p className="muted small">{xPick.draft.label}：{xPick.draft.kind === 'activate' ? 'X 越大效果越強，但要多移除 X 個忠誠指示物。你現在最多能選 X' : 'X 越大效果越強，但要多付 X 點法術力。你現在最多能付 X'} = {xPick.max}。</p>
             <div className="x-row">
               <button className="btn" disabled={xPick.value <= 0} onClick={() => setXPick({ ...xPick, value: xPick.value - 1 })} aria-label="減少">
                 −

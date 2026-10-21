@@ -2,11 +2,13 @@ import { displayName } from '../data/names';
 import { colorsOf, manaValue } from './mana';
 import { getDef } from './registry';
 import type {
+  Ability,
   Card,
   CardDef,
   CardType,
   Cond,
   Filter,
+  GameEvent,
   GameState,
   Grant,
   Keyword,
@@ -227,14 +229,34 @@ export interface Stats {
   kw: Set<Keyword>;
   cantAttack: boolean;
   cantBlock: boolean;
+  ignoreDefender?: boolean;
+  damageByToughness?: boolean;
+  noUntap?: boolean;
+  damageAbs?: boolean;
+}
+
+/** 這張永久物是否因為光環而失去所有異能 */
+export function abilitiesSuppressed(g: GameState, c: Card): boolean {
+  if (!g.loseAbilities || c.zone !== 'battlefield') return false;
+  if (c.loseAbilitiesTurn === g.turn) return true;
+  return g.battlefield.some((id) => {
+    const a = g.cards[id];
+    return a.attachedTo === c.id && !!a.def.aura?.grant?.loseAbilities;
+  });
+}
+
+/** 永久物目前實際擁有的異能（失去所有異能時為空） */
+export function abilitiesOf(g: GameState, c: Card): Ability[] {
+  return abilitiesSuppressed(g, c) ? [] : c.def.abilities ?? [];
 }
 
 export function stats(g: GameState, c: Card, ignoreEot = false): Stats {
   const d = c.def;
+  const lost = abilitiesSuppressed(g, c);
   const st: Stats = {
     p: d.power ?? 0,
     t: d.toughness ?? 0,
-    kw: new Set<Keyword>(d.keywords ?? []),
+    kw: new Set<Keyword>(lost ? [] : d.keywords ?? []),
     cantAttack: false,
     cantBlock: false,
   };
@@ -242,6 +264,15 @@ export function stats(g: GameState, c: Card, ignoreEot = false): Stats {
   if (c.suspected) {
     st.kw.add('menace');
     st.cantBlock = true;
+  }
+  // 直到回合結束的基礎力量與防禦力（在指示物與加成之前套用）
+  if (!ignoreEot) {
+    for (const e of g.eot) {
+      if (e.card === c.id && e.base) {
+        st.p = e.base.p;
+        st.t = e.base.t;
+      }
+    }
   }
   st.p += c.counters;
   st.t += c.counters;
@@ -251,15 +282,41 @@ export function stats(g: GameState, c: Card, ignoreEot = false): Stats {
     if (gr.kw) for (const k of gr.kw) st.kw.add(k);
     if (gr.cantAttack) st.cantAttack = true;
     if (gr.cantBlock) st.cantBlock = true;
+    if (gr.ignoreDefender) st.ignoreDefender = true;
+    if (gr.damageByToughness) st.damageByToughness = true;
+    if (gr.noUntap) st.noUntap = true;
+    if (gr.damageAbs) st.damageAbs = true;
   };
   for (const sid of g.battlefield) {
     const s = g.cards[sid];
-    const abs = s.def.abilities;
-    if (abs) {
+    const abs = abilitiesOf(g, s);
+    if (abs.length) {
       for (const ab of abs) {
         if (ab.kind !== 'static') continue;
         if (ab.anthem && matches(g, ab.anthem.filter, c, s.controller, s.id)) apply(ab.anthem.grant);
         if (ab.self && s.id === c.id && (!ab.self.cond || checkCond(g, ab.self.cond, s.controller, s.id, []))) apply(ab.self.grant);
+        if (ab.selfPumpGraveyardTypes && s.id === c.id) {
+          const types = new Set<string>();
+          for (const pl of g.players) for (const id of pl.graveyard) for (const ty of g.cards[id].def.types) types.add(ty);
+          st.p += types.size;
+          st.t += types.size;
+        }
+        if (ab.selfPowerDomain && s.id === c.id) {
+          const basics = new Set<string>();
+          for (const id of g.battlefield) {
+            const l = g.cards[id];
+            if (l.controller !== s.controller || !l.def.types.includes('Land')) continue;
+            for (const sub of l.def.subtypes ?? []) if (['Plains', 'Island', 'Swamp', 'Mountain', 'Forest'].includes(sub)) basics.add(sub);
+          }
+          st.p += basics.size;
+        }
+        if (ab.selfPumpPerGy && s.id === c.id) {
+          let n = 0;
+          for (const id of g.players[s.controller].graveyard) if (matches(g, ab.selfPumpPerGy.filter, g.cards[id], s.controller, s.id)) n++;
+          n = Math.floor(n / (ab.selfPumpPerGy.per ?? 1));
+          st.p += n * (ab.selfPumpPerGy.p ?? 0);
+          st.t += n * (ab.selfPumpPerGy.t ?? 0);
+        }
       }
     }
     if (s.attachedTo === c.id) {
@@ -287,6 +344,8 @@ export function hasKw(g: GameState, c: Card, kw: Keyword): boolean {
 // 篩選
 // ------------------------------------------------------------
 export function matches(g: GameState, f: Filter | undefined, c: Card, pov: PID, sourceId?: number): boolean {
+  // 徽記不是永久物（只有明確要求徽記時才符合）
+  if (c.def.types.includes('Emblem') && !(f?.type && asArr(f.type).includes('Emblem'))) return false;
   if (!f) return true;
   const d = c.def;
   if (f.type && !asArr(f.type).some((t) => d.types.includes(t))) return false;
@@ -302,6 +361,7 @@ export function matches(g: GameState, f: Filter | undefined, c: Card, pov: PID, 
   }
   if (f.sub && !(d.changeling && d.types.includes('Creature')) && !asArr(f.sub).some((s) => d.subtypes?.includes(s))) return false;
   if (f.nonSub && (d.changeling || asArr(f.nonSub).some((s) => d.subtypes?.includes(s)))) return false;
+  if (f.attackedThisTurn !== undefined && (c.attackedTurn === g.turn) !== f.attackedThisTurn) return false;
   if (f.legendary !== undefined && !!d.supertypes?.includes('Legendary') !== f.legendary) return false;
   if (f.basic !== undefined && !!d.supertypes?.includes('Basic') !== f.basic) return false;
   if (f.mvMax !== undefined && manaValue(d) > f.mvMax) return false;
@@ -311,7 +371,9 @@ export function matches(g: GameState, f: Filter | undefined, c: Card, pov: PID, 
   if (f.inCombat && !c.attacking && c.blocking == null) return false;
   if (f.other && c.id === sourceId) return false;
   if (f.token !== undefined && c.token !== f.token) return false;
+  if (f.enteredThisTurn !== undefined && (c.enteredTurn === g.turn) !== f.enteredThisTurn) return false;
   if (f.stunned && c.stun <= 0) return false;
+  if (f.plusCounters !== undefined && c.counters > 0 !== f.plusCounters) return false;
   if (f.hasCounters !== undefined && (c.counters !== 0) !== f.hasCounters) return false;
   if (f.or && !f.or.some((x) => matches(g, x, c, pov, sourceId))) return false;
   if (f.vanilla !== undefined && (d.text.trim() === '' && !d.keywords?.length) !== f.vanilla) return false;
@@ -326,6 +388,7 @@ export function matches(g: GameState, f: Filter | undefined, c: Card, pov: PID, 
     f.powMax !== undefined ||
     f.powMin !== undefined ||
     f.toughMin !== undefined ||
+    f.toughMax !== undefined ||
     f.sumPTMax !== undefined
   ) {
     const st = stats(g, c);
@@ -334,6 +397,7 @@ export function matches(g: GameState, f: Filter | undefined, c: Card, pov: PID, 
     if (f.powMax !== undefined && st.p > f.powMax) return false;
     if (f.powMin !== undefined && st.p < f.powMin) return false;
     if (f.toughMin !== undefined && st.t < f.toughMin) return false;
+    if (f.toughMax !== undefined && st.t > f.toughMax) return false;
     if (f.sumPTMax !== undefined && st.p + st.t > f.sumPTMax) return false;
   }
   return true;
@@ -354,6 +418,7 @@ export function checkCond(
   controller: PID,
   sourceId: number | undefined,
   targets: (TargetRef | null)[],
+  ev?: GameEvent,
 ): boolean {
   const me = g.players[controller];
   const opp = g.players[other(controller)];
@@ -406,12 +471,60 @@ export function checkCond(
       return me.spellsThisTurn === 2;
     case 'void':
       return !!g.voidThisTurn;
+    case 'scried':
+      return !!me.scriedThisTurn;
+    case 'creaturesDiedGte':
+      return (g.creaturesDiedCount ?? 0) >= cond.n;
+    case 'not':
+      return !checkCond(g, cond.cond, controller, sourceId, targets, ev);
+    case 'handHas':
+      return me.hand.some((id) => matches(g, cond.filter, g.cards[id], controller, sourceId));
+    case 'loyaltyActivatedThisTurn':
+      return !!me.loyaltyActivatedThisTurn;
+    case 'selfWasCast':
+      return sourceId != null && !!g.cards[sourceId]?.wasCast;
+    case 'castFromGy':
+      return false;
+    case 'selfNoCombatDamage':
+      return sourceId != null && !g.cards[sourceId]?.dealtCombat;
+    case 'handGte':
+      return me.hand.length >= cond.n;
+    case 'evCardIs': {
+      const id = ev && 'card' in ev ? ev.card : undefined;
+      return id != null && !!g.cards[id] && matches(g, cond.filter, g.cards[id], controller, sourceId);
+    }
+    case 'noncreatureCastEq':
+      return (me.noncreatureThisTurn ?? 0) === cond.n;
+    case 'noncreatureCastGte':
+      return (me.noncreatureThisTurn ?? 0) >= cond.n;
+    case 'libraryEmpty':
+      return me.library.length === 0;
+    case 'selfNotToken':
+      return sourceId != null && !g.cards[sourceId]?.token;
+    case 'oppNoncombatThisTurn':
+      return !!opp.noncombatThisTurn;
+    case 'oppNoncombatLastTurn':
+      return !!opp.noncombatLastTurn;
     case 'notPrepared':
       return sourceId != null && !g.cards[sourceId]?.prepared;
     case 'saddled':
       return sourceId != null && g.cards[sourceId]?.saddledTurn === g.turn;
     case 'maxSpeed':
       return (me.speed ?? 0) >= 4;
+    case 'always':
+      return true;
+    case 'selfCounters':
+      return sourceId != null && (g.cards[sourceId]?.counters ?? 0) >= cond.n;
+    case 'or':
+      return cond.conds.some((x) => checkCond(g, x, controller, sourceId, targets, ev));
+    case 'jaceLoyaltyGte': {
+      let n = 0;
+      for (const id of g.battlefield) {
+        const c = g.cards[id];
+        if (c.controller === controller && c.def.types.includes('Planeswalker') && c.def.subtypes?.includes('Jace')) n += c.loyalty ?? 0;
+      }
+      return n >= cond.n;
+    }
     case 'morbid':
       return !!g.creatureDiedThisTurn;
     case 'delirium': {
@@ -431,12 +544,30 @@ export function checkCond(
   }
 }
 
+/** 玩家操控的永久物中，有任何一個具有這個靜態標記 */
+export function hasStaticFlag(g: GameState, pid: PID, key: 'noZeroLoyaltyDeath' | 'pwOneAttacker' | 'exileOppDying'): boolean {
+  for (const id of g.battlefield) {
+    const c = g.cards[id];
+    if (c.controller !== pid) continue;
+    for (const ab of abilitiesOf(g, c)) if (ab.kind === 'static' && ab[key]) return true;
+  }
+  return false;
+}
+
 export function lifegainBonus(g: GameState, pid: PID): number {
   let n = 0;
   for (const id of g.battlefield) {
     const c = g.cards[id];
     if (c.controller !== pid) continue;
-    for (const ab of c.def.abilities ?? []) if (ab.kind === 'static' && ab.lifegainPlus) n += ab.lifegainPlus;
+    for (const ab of abilitiesOf(g, c)) if (ab.kind === 'static' && ab.lifegainPlus) n += ab.lifegainPlus;
   }
   return n;
+}
+
+/** 場上有「神器與生物進戰場不會使異能觸發」 */
+export function etbTriggersSuppressed(g: GameState): boolean {
+  for (const id of g.battlefield) {
+    for (const ab of abilitiesOf(g, g.cards[id])) if (ab.kind === 'static' && ab.suppressEtbTriggers) return true;
+  }
+  return false;
 }

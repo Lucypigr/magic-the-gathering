@@ -1,5 +1,5 @@
 // 由 scripts/gen_cards.py 從 Scryfall 資料自動產生（BLB）：請勿手動修改
-import { add } from '../../dsl';
+import { addGen as add } from '../../dsl';
 
 add({"set": "BLB", "rarity": "C", "name": "Intrepid Rabbit", "cost": "{2}{W}", "types": ["Creature"], "subtypes": ["Rabbit", "Soldier"], "power": 3, "toughness": 2, "offspring": "{1}", "abilities": [{"kind": "trigger", "on": "etb", "effects": [{"e": "pump", "what": "T0", "p": 1, "t": 1}], "targets": [{"kind": "creature", "filter": {"ctrl": "you"}}]}], "text": "子嗣{1}（你施放此咒語時可以額外支付{1}。若你如此作，它進戰場時派出一個它的1/1衍生物複製。）\n當此生物進戰場時，目標由你操控的生物得+1/+1直到回合結束。"});
 add({"set": "BLB", "rarity": "C", "name": "Nettle Guard", "cost": "{1}{W}", "types": ["Creature"], "subtypes": ["Mouse", "Soldier"], "power": 3, "toughness": 1, "abilities": [{"kind": "trigger", "on": "targeted", "effects": [{"e": "pump", "what": "self", "p": 0, "t": 2}], "oncePerTurn": true}, {"kind": "activated", "cost": {"mana": "{1}", "sacSelf": true}, "effects": [{"e": "destroy", "what": "T0"}], "label": "消滅目標神器或結界", "targets": [{"kind": "permanent", "filter": {"type": ["Artifact", "Enchantment"]}}]}], "text": "英勇—每當此生物每回合第一次成為你的咒語或異能的目標時，此生物得+0/+2直到回合結束。\n{1}，犧牲此生物：消滅目標神器或結界。"});

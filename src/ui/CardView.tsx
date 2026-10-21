@@ -26,6 +26,7 @@ const TYPE_GLYPH: Record<string, string> = {
   Artifact: '⚙',
   Land: '⛰',
   Planeswalker: '✪',
+  Emblem: '✧',
 };
 
 export function glyphFor(def: CardDef): string {

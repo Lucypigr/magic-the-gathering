@@ -334,7 +334,7 @@ export function checkDeck(p: Profile, d: SavedDeck, format: Format = 'free'): De
   for (const [id, n] of Object.entries(d.cards)) {
     if (isBasic(id)) continue;
     if (format === 'standard' && !isStandardLegal(getDef(id))) errors.push(`${displayName(getDef(id))} 不能用於標準賽`);
-    if (n > MAX_COPIES) errors.push(`同名卡最多 ${MAX_COPIES} 張`);
+    if (n > MAX_COPIES && !getDef(id).anyNumber) errors.push(`同名卡最多 ${MAX_COPIES} 張`);
     const own = p.collection[id] ?? 0;
     if (n > own) errors.push(`收藏不足：需要 ${n} 張，只有 ${own} 張`);
   }

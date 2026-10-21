@@ -12,6 +12,8 @@ export interface ManaCost {
   C: number;
   /** 混色法術力，例如 'WB' 代表 {W/B}（可用其中任一色支付） */
   hyb?: string[];
+  /** 單色混合法術力 {2/R}：可以用一點該色法術力，或兩點任何法術力支付 */
+  twoHyb?: Mana[];
   /** 費用中 {X} 的數量（施放時由玩家決定 X） */
   x?: number;
 }
@@ -25,7 +27,7 @@ export function emptyCost(): ManaCost {
 export function parseCost(cost: string | undefined): ManaCost {
   if (!cost) return emptyCost();
   const cached = costCache.get(cost);
-  if (cached) return { ...cached, hyb: cached.hyb?.slice() };
+  if (cached) return { ...cached, hyb: cached.hyb?.slice(), twoHyb: cached.twoHyb?.slice() };
   const out = emptyCost();
   const re = /\{([^}]+)\}/g;
   let m: RegExpExecArray | null;
@@ -35,15 +37,14 @@ export function parseCost(cost: string | undefined): ManaCost {
     else if (sym === 'X') out.x = (out.x ?? 0) + 1;
     else if (sym === 'W' || sym === 'U' || sym === 'B' || sym === 'R' || sym === 'G' || sym === 'C') out[sym] += 1;
     else if (/^[WUBRG]\/[WUBRG]$/.test(sym)) (out.hyb ??= []).push(sym[0] + sym[2]);
-    // {2/R}：簡化為該顏色的一點法術力
-    else if (/^2\/[WUBRG]$/.test(sym)) out[sym[2] as 'W'] += 1;
+    else if (/^2\/[WUBRG]$/.test(sym)) (out.twoHyb ??= []).push(sym[2] as Mana);
   }
-  costCache.set(cost, { ...out, hyb: out.hyb?.slice() });
+  costCache.set(cost, { ...out, hyb: out.hyb?.slice(), twoHyb: out.twoHyb?.slice() });
   return out;
 }
 
 export function costTotal(c: ManaCost): number {
-  return c.generic + c.W + c.U + c.B + c.R + c.G + c.C + (c.hyb?.length ?? 0);
+  return c.generic + c.W + c.U + c.B + c.R + c.G + c.C + (c.hyb?.length ?? 0) + (c.twoHyb?.length ?? 0) * 2;
 }
 
 export function manaValue(def: CardDef): number {
@@ -60,12 +61,13 @@ export function addCosts(a: ManaCost, b: ManaCost): ManaCost {
     G: a.G + b.G,
     C: a.C + b.C,
     hyb: a.hyb || b.hyb ? [...(a.hyb ?? []), ...(b.hyb ?? [])] : undefined,
+    twoHyb: a.twoHyb || b.twoHyb ? [...(a.twoHyb ?? []), ...(b.twoHyb ?? [])] : undefined,
   };
 }
 
 /** 從費用中扣除（不會低於 0；有色部分無法扣除時改扣通用） */
 export function reduceCost(c: ManaCost, by: ManaCost): ManaCost {
-  const out = { ...c, hyb: c.hyb?.slice() };
+  const out = { ...c, hyb: c.hyb?.slice(), twoHyb: c.twoHyb?.slice() };
   let extra = 0;
   for (const k of ['W', 'U', 'B', 'R', 'G', 'C'] as const) {
     const r = Math.min(out[k], by[k]);
@@ -87,7 +89,7 @@ export function reduceCost(c: ManaCost, by: ManaCost): ManaCost {
 export function colorsOf(def: CardDef): Color[] {
   if (def.colors) return def.colors;
   const c = parseCost(def.cost);
-  return COLORS.filter((k) => c[k] > 0 || c.hyb?.some((h) => h.includes(k)));
+  return COLORS.filter((k) => c[k] > 0 || c.hyb?.some((h) => h.includes(k)) || c.twoHyb?.includes(k));
 }
 
 export function costToString(c: ManaCost): string {
@@ -95,11 +97,14 @@ export function costToString(c: ManaCost): string {
   if (c.generic > 0 || costTotal(c) === 0) s += `{${c.generic}}`;
   for (const k of ['C', 'W', 'U', 'B', 'R', 'G'] as const) s += `{${k}}`.repeat(c[k]);
   for (const h of c.hyb ?? []) s += `{${h[0]}/${h[1]}}`;
+  for (const k of c.twoHyb ?? []) s += `{2/${k}}`;
   return s;
 }
 
 export interface ManaSource {
   id: number;
+  /** 只能用來施放非生物咒語 */
+  noncreatureOnly?: boolean;
   produces: Mana[];
   isCreature: boolean;
   /** 用完就要犧牲（珍寶）：最後才使用 */
@@ -110,6 +115,10 @@ export interface ManaSource {
   pain?: boolean;
   /** 召集：橫置生物來支付 */
   convoke?: boolean;
+  /** 來自法術力池（用掉就從池中移除；優先使用） */
+  pool?: boolean;
+  /** 額外的一點法術力（來自某個永久物的加成，不會橫置任何東西；排在最後才用） */
+  extra?: boolean;
 }
 
 /**
@@ -117,6 +126,30 @@ export interface ManaSource {
  * 有色需求以回溯法分配；通用費用優先使用「最不重要」的來源。
  */
 export function findPayment(cost: ManaCost, sources: ManaSource[]): { id: number; mana: Mana }[] | null {
+  const th = cost.twoHyb ?? [];
+  if (!th.length) return findPaymentBase(cost, sources);
+  // {2/R} 這類費用：每個可以用一點該色法術力，或兩點任何法術力；優先用顏色（組合由多色到少色）
+  const k = th.length;
+  const masks = Array.from({ length: 1 << k }, (_, m) => m).sort((a, b) => bits(b) - bits(a));
+  for (const m of masks) {
+    const c: ManaCost = { ...cost, twoHyb: undefined, hyb: cost.hyb?.slice() };
+    th.forEach((col, i) => {
+      if (m & (1 << i)) c[col as 'W'] += 1;
+      else c.generic += 2;
+    });
+    const r = findPaymentBase(c, sources);
+    if (r) return r;
+  }
+  return null;
+}
+
+const bits = (n: number): number => {
+  let c = 0;
+  for (; n; n >>= 1) c += n & 1;
+  return c;
+};
+
+function findPaymentBase(cost: ManaCost, sources: ManaSource[]): { id: number; mana: Mana }[] | null {
   // 每項需求是可接受的顏色清單（混色有兩種選擇）
   const need: Mana[][] = [];
   for (const k of ['W', 'U', 'B', 'R', 'G', 'C'] as const) for (let i = 0; i < cost[k]; i++) need.push([k]);
@@ -130,7 +163,7 @@ export function findPayment(cost: ManaCost, sources: ManaSource[]): { id: number
   need.sort((a, b) => supply(a) - supply(b));
 
   // 優先使用：非生物、產出顏色少的來源
-  const rank = (s: ManaSource) => (s.convoke ? 2000 : 0) + (s.sac ? 1000 : 0) + (s.isCreature ? 100 : 0) + (s.pain ? 50 : 0) + s.produces.length;
+  const rank = (s: ManaSource) => (s.pool ? -1000 : 0) + (s.extra ? 5000 : 0) + (s.convoke ? 2000 : 0) + (s.sac ? 1000 : 0) + (s.isCreature ? 100 : 0) + (s.pain ? 50 : 0) + s.produces.length;
   const ordered = [...sources].sort((a, b) => rank(a) - rank(b));
 
   const used = new Set<number>();
