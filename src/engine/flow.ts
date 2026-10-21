@@ -458,11 +458,14 @@ function* turn(g: GameState): SubFlow {
     p.libToGyThisTurn = 0;
     p.noncombatLastTurn = !!p.noncombatThisTurn;
     p.noncombatThisTurn = false;
+    p.noncreatureThisTurn = 0;
+    p.nextSpellUncounterable = false;
     p.lifeLostThisTurn = 0;
   }
   g.attackedThisTurn = false;
   g.creatureDiedThisTurn = false;
   g.voidThisTurn = false;
+  g.delayed = [];
   for (const id of g.battlefield) g.cards[id].usedThisTurn = [];
   log(g, `—— 第 ${g.turn} 回合：${pl.name} ——`, a, 'turn');
   if (g.turn > g.maxTurns) {
@@ -476,7 +479,7 @@ function* turn(g: GameState): SubFlow {
     const c = g.cards[id];
     if (c.controller !== a) continue;
     c.sick = false;
-    if (c.tapped) {
+    if (c.tapped && !stats(g, c).noUntap) {
       if (c.stun > 0) c.stun--;
       else c.tapped = false;
     }

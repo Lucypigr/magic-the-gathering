@@ -65,6 +65,7 @@ export interface Filter {
   powMax?: number;
   powMin?: number;
   toughMin?: number;
+  toughMax?: number;
   mvMax?: number;
   mvMin?: number;
   sumPTMax?: number;
@@ -136,6 +137,8 @@ export type Amt =
   | { x: true }
   /** 你本回合獲得的生命總量 */
   | { lifeGained: true }
+  /** 另一個數量的負值 */
+  | { negOf: Amt }
   /** 本回合從牌庫置入該玩家墳墓場的牌數 */
   | { libToGy: Ref }
   /** 來源離開戰場前的 +1/+1 指示物數量（最後已知資訊） */
@@ -151,6 +154,10 @@ export interface Grant {
   ignoreDefender?: boolean;
   /** 防禦力大於力量時，以防禦力代替力量造成戰鬥傷害 */
   damageByToughness?: boolean;
+  /** 失去所有異能 */
+  loseAbilities?: boolean;
+  /** 在其操控者的重置步驟中不會重置 */
+  noUntap?: boolean;
 }
 
 export type Cond =
@@ -199,6 +206,14 @@ export type Cond =
   | { c: 'void' }
   /** 你本回合占卜或刺探過 */
   | { c: 'scried' }
+  /** 你本回合施放的非生物咒語恰好是第 n 個（用於「每回合第一個」） */
+  | { c: 'noncreatureCastEq'; n: number }
+  /** 你本回合已施放過至少 n 個非生物咒語 */
+  | { c: 'noncreatureCastGte'; n: number }
+  /** 你的牌庫是空的 */
+  | { c: 'libraryEmpty' }
+  /** 此來源不是衍生物（用於「若它不是衍生物」） */
+  | { c: 'selfNotToken' }
   /** 本回合有對手被造成非戰鬥傷害 */
   | { c: 'oppNoncombatThisTurn' }
   /** 上一個回合有對手被造成非戰鬥傷害 */
@@ -209,6 +224,8 @@ export type Cond =
   | { c: 'maxSpeed' };
 
 export interface ExtraCost {
+  /** 從你的墳墓場放逐 n 張與此來源同名的牌（以及此咒語本身） */
+  exileNamed?: number;
   mana?: string;
   life?: number;
   discard?: number;
@@ -252,7 +269,7 @@ export type Effect =
   /** 招募：抓一張牌，然後棄一張牌；若棄掉的不是地，派出 1/1 人類士兵 */
   | { e: 'recruit' }
   /** 從牌庫中搜尋一張符合條件的牌放到手上 */
-  | { e: 'tutor'; filter: Filter; to?: 'hand' | 'top' }
+  | { e: 'tutor'; filter: Filter; to?: 'hand' | 'top' | 'battlefield' }
   /** 移除至多 n 個指示物 */
   | { e: 'removeCounters'; what: Ref; n: number }
   /** 大地彎折（簡化）：派出一個 0/0 具敏捷的大地元素，並放上 n 個 +1/+1 指示物 */
@@ -269,6 +286,24 @@ export type Effect =
   | { e: 'kindredJudgment' }
   /** 此生物成為已準備 */
   | { e: 'prepare' }
+  /** 取消準備 */
+  | { e: 'unprepare'; what: Ref }
+  /** 直到回合結束，該生物的基礎力量與防禦力 */
+  | { e: 'setBase'; what: Ref; p: number; t: number }
+  /** 擁有者選擇把永久物放在牌庫頂或牌庫底 */
+  | { e: 'topOrBottom'; what: Ref }
+  /** 你贏得這場遊戲 */
+  | { e: 'win' }
+  /** 本回合的延遲觸發（once：只觸發一次） */
+  | { e: 'delayed'; on: TriggerOn; effects: Effect[]; once?: boolean; what?: Ref }
+  /** 複製觸發的咒語（可以選擇新目標） */
+  | { e: 'copySpell' }
+  /** 你本回合施放的下一個咒語不能被反擊 */
+  | { e: 'nextSpellUncounterable' }
+  /** 每位玩家可以棄掉手牌，然後抓七張牌 */
+  | { e: 'wheel' }
+  /** 派出一個此來源的衍生物複製 */
+  | { e: 'copyOfSelf' }
   /** 懷疑：該生物具有威懾且不能阻擋 */
   | { e: 'suspect'; what: Ref }
   | { e: 'mill'; n: Amt; who?: Ref }
@@ -355,6 +390,12 @@ export type TriggerOn =
   | 'noncombatOpp'
   /** 每當有玩家棄牌時 */
   | 'anyDiscard'
+  /** 在每個結束步驟開始時（任何玩家的回合） */
+  | 'eachEndStep'
+  /** 每當此永久物成為對手的咒語或異能的目標時 */
+  | 'targetedByOpp'
+  /** 在你的回合中，有一個或更多對手被造成戰鬥傷害時（每個傷害步驟一次） */
+  | 'oppCombatDamaged'
   /** 當你棄掉這張牌時（來源在墳墓場） */
   | 'discardSelf';
 
@@ -375,6 +416,10 @@ export interface TriggeredAbility {
   orTargets?: Filter;
   /** 攻擊類觸發：只有在單獨一個生物攻擊玩家時 */
   alone?: boolean;
+  /** 起動忠誠異能的觸發：至少要移除幾個忠誠指示物 */
+  minRemoved?: number;
+  /** 觸發條件：只在事件發生時檢查（和 cond 不同，結算時不再檢查） */
+  when?: Cond;
   /** 觸發物件需要符合的條件（例如 allyEtb 的進場生物、castAny 的咒語） */
   filter?: Filter;
   /** 施放類觸發：任何玩家施放都會觸發 */
@@ -432,6 +477,8 @@ export interface StaticAbility {
   grantAbilities?: { filter: Filter; abilities: ActivatedAbility[] };
   /** 由你操控的鵬洛客忠誠為 0 時不會置入墳墓場 */
   noZeroLoyaltyDeath?: boolean;
+  /** 你操控的瞬間與法術咒語具有切割 */
+  splitSecondSpells?: boolean;
   /** 由你操控的鵬洛客每個戰鬥只能被一個生物攻擊 */
   pwOneAttacker?: boolean;
   /** 戰鬥中，所有玩家都不能施放咒語或起動異能（法術力異能除外） */
@@ -521,8 +568,12 @@ export interface CardDef {
   cycling?: { cost: string; search?: Filter };
   /** 變形者：具有所有生物類別 */
   changeling?: boolean;
+  /** 套牌中可以有任意數量的同名卡 */
+  anyNumber?: boolean;
   /** 此咒語不能被反擊 */
   uncounterable?: boolean;
+  /** 切割：堆疊上有此咒語時，玩家不能施放咒語或起動異能 */
+  splitSecond?: boolean;
   /** 偽裝：可以支付 {3} 面朝下施放，之後支付此費用翻成正面 */
   disguise?: string;
   /** 預謀：可以支付此費用從手上放逐此牌，之後的回合免費施放 */
@@ -650,6 +701,10 @@ export interface Player {
   permToGyThisTurn?: boolean;
   /** 本回合占卜或刺探過 */
   scriedThisTurn?: boolean;
+  /** 本回合施放的非生物咒語數量 */
+  noncreatureThisTurn?: number;
+  /** 你本回合施放的下一個咒語不能被反擊 */
+  nextSpellUncounterable?: boolean;
   /** 本回合從牌庫置入墳墓場的牌數 */
   libToGyThisTurn?: number;
   /** 本回合被造成非戰鬥傷害 */
@@ -695,6 +750,8 @@ export interface StackItem {
   alt?: CastAlt;
   /** 施放時決定的 X */
   x?: number;
+  /** 不能被反擊 */
+  uncounterable?: boolean;
 }
 
 export interface EotEffect {
@@ -702,6 +759,17 @@ export interface EotEffect {
   p: number;
   t: number;
   kw: Keyword[];
+  /** 直到回合結束的基礎力量與防禦力 */
+  base?: { p: number; t: number };
+}
+
+/** 延遲觸發：本回合內，事件發生時觸發 */
+export interface DelayedTrigger {
+  controller: PID;
+  source: number;
+  on: TriggerOn;
+  effects: Effect[];
+  once: boolean;
 }
 
 export type Phase =
@@ -737,6 +805,7 @@ export type GameEvent =
   | { type: 'drawSecond'; player: PID }
   | { type: 'turnedFaceUp'; card: number }
   | { type: 'scry'; player: PID }
+  | { type: 'combatBatch'; attacker: PID; damaged: PID }
   | { type: 'loyaltyPlaced'; card: number; controller: PID; amount: number }
   | { type: 'loyaltyActivated'; card: number; controller: PID; removed: number }
   | { type: 'noncombat'; player: PID; amount: number; sourceController: PID }
@@ -795,6 +864,10 @@ export interface GameState {
   attackedThisTurn: boolean;
   /** 本回合有生物死去 */
   creatureDiedThisTurn?: boolean;
+  /** 本回合的延遲觸發 */
+  delayed?: DelayedTrigger[];
+  /** 場上有「失去所有異能」的光環（用來避免不必要的檢查） */
+  loseAbilities?: boolean;
   /** 虛空：本回合有非地永久物離開戰場，或有咒語以折躍施放 */
   voidThisTurn?: boolean;
   maxTurns: number;

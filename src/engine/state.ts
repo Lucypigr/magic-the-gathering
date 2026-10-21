@@ -2,6 +2,7 @@ import { displayName } from '../data/names';
 import { colorsOf, manaValue } from './mana';
 import { getDef } from './registry';
 import type {
+  Ability,
   Card,
   CardDef,
   CardType,
@@ -229,14 +230,30 @@ export interface Stats {
   cantBlock: boolean;
   ignoreDefender?: boolean;
   damageByToughness?: boolean;
+  noUntap?: boolean;
+}
+
+/** 這張永久物是否因為光環而失去所有異能 */
+export function abilitiesSuppressed(g: GameState, c: Card): boolean {
+  if (!g.loseAbilities || c.zone !== 'battlefield') return false;
+  return g.battlefield.some((id) => {
+    const a = g.cards[id];
+    return a.attachedTo === c.id && !!a.def.aura?.grant?.loseAbilities;
+  });
+}
+
+/** 永久物目前實際擁有的異能（失去所有異能時為空） */
+export function abilitiesOf(g: GameState, c: Card): Ability[] {
+  return abilitiesSuppressed(g, c) ? [] : c.def.abilities ?? [];
 }
 
 export function stats(g: GameState, c: Card, ignoreEot = false): Stats {
   const d = c.def;
+  const lost = abilitiesSuppressed(g, c);
   const st: Stats = {
     p: d.power ?? 0,
     t: d.toughness ?? 0,
-    kw: new Set<Keyword>(d.keywords ?? []),
+    kw: new Set<Keyword>(lost ? [] : d.keywords ?? []),
     cantAttack: false,
     cantBlock: false,
   };
@@ -244,6 +261,15 @@ export function stats(g: GameState, c: Card, ignoreEot = false): Stats {
   if (c.suspected) {
     st.kw.add('menace');
     st.cantBlock = true;
+  }
+  // 直到回合結束的基礎力量與防禦力（在指示物與加成之前套用）
+  if (!ignoreEot) {
+    for (const e of g.eot) {
+      if (e.card === c.id && e.base) {
+        st.p = e.base.p;
+        st.t = e.base.t;
+      }
+    }
   }
   st.p += c.counters;
   st.t += c.counters;
@@ -255,11 +281,12 @@ export function stats(g: GameState, c: Card, ignoreEot = false): Stats {
     if (gr.cantBlock) st.cantBlock = true;
     if (gr.ignoreDefender) st.ignoreDefender = true;
     if (gr.damageByToughness) st.damageByToughness = true;
+    if (gr.noUntap) st.noUntap = true;
   };
   for (const sid of g.battlefield) {
     const s = g.cards[sid];
-    const abs = s.def.abilities;
-    if (abs) {
+    const abs = abilitiesOf(g, s);
+    if (abs.length) {
       for (const ab of abs) {
         if (ab.kind !== 'static') continue;
         if (ab.anthem && matches(g, ab.anthem.filter, c, s.controller, s.id)) apply(ab.anthem.grant);
@@ -331,6 +358,7 @@ export function matches(g: GameState, f: Filter | undefined, c: Card, pov: PID, 
     f.powMax !== undefined ||
     f.powMin !== undefined ||
     f.toughMin !== undefined ||
+    f.toughMax !== undefined ||
     f.sumPTMax !== undefined
   ) {
     const st = stats(g, c);
@@ -339,6 +367,7 @@ export function matches(g: GameState, f: Filter | undefined, c: Card, pov: PID, 
     if (f.powMax !== undefined && st.p > f.powMax) return false;
     if (f.powMin !== undefined && st.p < f.powMin) return false;
     if (f.toughMin !== undefined && st.t < f.toughMin) return false;
+    if (f.toughMax !== undefined && st.t > f.toughMax) return false;
     if (f.sumPTMax !== undefined && st.p + st.t > f.sumPTMax) return false;
   }
   return true;
@@ -413,6 +442,14 @@ export function checkCond(
       return !!g.voidThisTurn;
     case 'scried':
       return !!me.scriedThisTurn;
+    case 'noncreatureCastEq':
+      return (me.noncreatureThisTurn ?? 0) === cond.n;
+    case 'noncreatureCastGte':
+      return (me.noncreatureThisTurn ?? 0) >= cond.n;
+    case 'libraryEmpty':
+      return me.library.length === 0;
+    case 'selfNotToken':
+      return sourceId != null && !g.cards[sourceId]?.token;
     case 'oppNoncombatThisTurn':
       return !!opp.noncombatThisTurn;
     case 'oppNoncombatLastTurn':
@@ -447,7 +484,7 @@ export function hasStaticFlag(g: GameState, pid: PID, key: 'noZeroLoyaltyDeath' 
   for (const id of g.battlefield) {
     const c = g.cards[id];
     if (c.controller !== pid) continue;
-    for (const ab of c.def.abilities ?? []) if (ab.kind === 'static' && ab[key]) return true;
+    for (const ab of abilitiesOf(g, c)) if (ab.kind === 'static' && ab[key]) return true;
   }
   return false;
 }
@@ -457,7 +494,7 @@ export function lifegainBonus(g: GameState, pid: PID): number {
   for (const id of g.battlefield) {
     const c = g.cards[id];
     if (c.controller !== pid) continue;
-    for (const ab of c.def.abilities ?? []) if (ab.kind === 'static' && ab.lifegainPlus) n += ab.lifegainPlus;
+    for (const ab of abilitiesOf(g, c)) if (ab.kind === 'static' && ab.lifegainPlus) n += ab.lifegainPlus;
   }
   return n;
 }

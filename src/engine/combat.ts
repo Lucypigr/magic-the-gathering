@@ -194,10 +194,15 @@ export function combatDamage(g: GameState, step: DamageStep): void {
     const p = combatPower(g, b);
     if (p > 0) hits.push({ src: b, card: a, n: p });
   }
+  const damagedPlayers = new Set<number>();
   for (const h of hits) {
-    if (h.player !== undefined) dealDamage(g, h.src, h.src.controller, { p: h.player }, h.n, { combat: true });
-    else if (h.card) dealDamage(g, h.src, h.src.controller, { c: h.card.id }, h.n, { combat: true });
+    if (h.player !== undefined) {
+      dealDamage(g, h.src, h.src.controller, { p: h.player }, h.n, { combat: true });
+      damagedPlayers.add(h.src.controller * 2 + h.player);
+    } else if (h.card) dealDamage(g, h.src, h.src.controller, { c: h.card.id }, h.n, { combat: true });
   }
+  // 每個傷害步驟中，「一個或更多對手被造成戰鬥傷害」只觸發一次
+  for (const k of damagedPlayers) emit(g, { type: 'combatBatch', attacker: (k >> 1) as PID, damaged: (k & 1) as PID });
   g.version++;
 }
 

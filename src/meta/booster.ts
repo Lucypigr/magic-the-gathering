@@ -111,8 +111,9 @@ export function addToCollection(p: Profile, cards: string[], specialIdx = -1): P
   for (const id of cards) {
     const have = p.collection[id] ?? 0;
     isNew.push(have === 0);
-    if (have >= MAX_COPIES) {
-      const def = CARDS.find((c) => c.id === id)!;
+    const def0 = CARDS.find((c) => c.id === id)!;
+    if (have >= MAX_COPIES && !def0.anyNumber) {
+      const def = def0;
       gold += DUPLICATE_GOLD[def.rarity];
       converted.push(true);
     } else {

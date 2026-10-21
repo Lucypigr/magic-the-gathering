@@ -9,10 +9,12 @@ import {
   landsOf,
   log,
   matches,
+  newCard,
   other,
   shuffleArr,
   stats,
 } from './state';
+import { validateTargets } from './targets';
 import type { Amt, Card, Effect, GameEvent, GameState, PID, Ref, Response, SubFlow, TargetRef } from './types';
 import {
   createToken,
@@ -144,6 +146,7 @@ export function amount(g: GameState, ctx: Ctx, a: Amt): number {
     if (ev && 'amount' in ev) return ev.amount;
     return 0;
   }
+  if ('negOf' in a) return -amount(g, ctx, a.negOf);
   if ('lifeGained' in a) return g.players[ctx.controller].lifeGainedThisTurn;
   if ('libToGy' in a) return resolveRef(g, ctx, a.libToGy).players.reduce<number>((s, p) => s + (g.players[p].libToGyThisTurn ?? 0), 0);
   if ('lkiCounters' in a) return Math.max(0, g.cards[ctx.source]?.lastCounters ?? 0);
@@ -422,7 +425,10 @@ function* runEffect(g: GameState, ctx: Ctx, ef: Effect): SubFlow {
       const opts = lib.filter((id) => matches(g, ef.filter, g.cards[id], me));
       const picked = yield* choose(g, me, '從牌庫中搜尋一張牌', opts, 0, 1, 'tutor', true);
       for (const id of picked) {
-        if (ef.to === 'top') {
+        if (ef.to === 'battlefield') {
+          enterBattlefield(g, g.cards[id], me);
+          log(g, `搜尋 ${cardName(g.cards[id])} 放進戰場`, me);
+        } else if (ef.to === 'top') {
           // 展示後洗牌，再放到牌庫頂
           shuffleArr(g, lib);
           moveCard(g, g.cards[id], 'library');
@@ -477,6 +483,83 @@ function* runEffect(g: GameState, ctx: Ctx, ef: Effect): SubFlow {
         g.version++;
       }
       break;
+    case 'unprepare':
+      for (const c of resolveRef(g, ctx, ef.what).cards) {
+        if (c.prepared) {
+          c.prepared = false;
+          log(g, `${cardName(c)} 不再是已準備`, c.controller);
+          g.version++;
+        }
+      }
+      break;
+    case 'setBase':
+      for (const c of resolveRef(g, ctx, ef.what).cards) {
+        if (c.zone !== 'battlefield') continue;
+        g.eot.push({ card: c.id, p: 0, t: 0, kw: [], base: { p: ef.p, t: ef.t } });
+        log(g, `${cardName(c)} 的基礎力量與防禦力變為 ${ef.p}/${ef.t}（直到回合結束）`, c.controller);
+      }
+      g.version++;
+      break;
+    case 'topOrBottom':
+      for (const c of resolveRef(g, ctx, ef.what).cards) {
+        if (c.zone !== 'battlefield') continue;
+        const top = yield* yesno(g, c.owner, `要把 ${cardName(c)} 放在牌庫頂嗎？（不要則放在牌庫底）`, ctx.source, 'may');
+        log(g, `${cardName(c)} 被放在${top ? '牌庫頂' : '牌庫底'}`, c.owner);
+        moveCard(g, c, 'library', !top);
+      }
+      break;
+    case 'win':
+      log(g, `${g.players[me].name} 贏得遊戲`, me, 'result');
+      g.players[me].drewFromEmpty = false;
+      g.players[other(me)].lost = true;
+      break;
+    case 'delayed': {
+      (g.delayed ??= []).push({ controller: me, source: ctx.source, on: ef.on, effects: ef.effects, once: ef.once ?? true });
+      log(g, '本回合的延遲觸發已設定', me);
+      break;
+    }
+    case 'nextSpellUncounterable':
+      g.players[me].nextSpellUncounterable = true;
+      break;
+    case 'wheel':
+      for (const p of [g.active, other(g.active)]) {
+        const yes = yield* yesno(g, p, '要棄掉你的手牌並抓七張牌嗎？', ctx.source, 'may');
+        if (!yes) continue;
+        for (const id of g.players[p].hand.slice()) discard(g, g.cards[id]);
+        drawCards(g, p, 7);
+        log(g, '棄掉手牌並抓七張牌', p);
+      }
+      break;
+    case 'copyOfSelf': {
+      const s = g.cards[ctx.source];
+      if (!s) break;
+      const t = newCard(g, s.def, me, true);
+      t.zone = 'exile';
+      enterBattlefield(g, t, me);
+      log(g, `派出 ${cardName(s)} 的衍生物複製`, me);
+      break;
+    }
+    case 'copySpell': {
+      const ev = ctx.ev;
+      const item = ev && ev.type === 'cast' ? g.stack.find((it) => it.kind === 'spell' && it.cardId === ev.card) : undefined;
+      if (!item) break;
+      const orig = g.cards[item.cardId];
+      const cp = newCard(g, orig.def, me, true);
+      cp.zone = 'stack';
+      let targets = item.targets.slice();
+      if (item.targetSpecs.length) {
+        // 可以選擇新目標
+        const r: Response = yield { type: 'targets', player: me, source: cp.id, specs: item.targetSpecs, text: orig.def.text, effects: item.effects };
+        if (r.type === 'targets') {
+          const chosen = item.targetSpecs.map((_, i) => r.targets[i] ?? null);
+          if (!validateTargets(g, item.targetSpecs, chosen, me, cp.id)) targets = chosen;
+        }
+      }
+      g.stack.push({ ...item, sid: g.nextSid++, cardId: cp.id, controller: me, targets, alt: undefined, uncounterable: false });
+      log(g, `複製了 ${cardName(orig)}`, me, 'cast');
+      g.version++;
+      break;
+    }
     case 'prepare':
       if (src && src.zone === 'battlefield' && src.def.prepare) {
         src.prepared = true;
@@ -602,7 +685,7 @@ function* runEffect(g: GameState, ctx: Ctx, ef: Effect): SubFlow {
     case 'counter': {
       for (const c of resolveRef(g, ctx, ef.what).cards) {
         if (c.zone !== 'stack') continue;
-        if (c.def.uncounterable) {
+        if (c.def.uncounterable || g.stack.some((it) => it.cardId === c.id && it.uncounterable)) {
           log(g, `${cardName(c)} 不能被反擊`, c.controller);
           continue;
         }
@@ -613,7 +696,7 @@ function* runEffect(g: GameState, ctx: Ctx, ef: Effect): SubFlow {
     }
     case 'counterUnless': {
       for (const c of resolveRef(g, ctx, ef.what).cards) {
-        if (c.zone !== 'stack' || c.def.uncounterable) continue;
+        if (c.zone !== 'stack' || c.def.uncounterable || g.stack.some((it) => it.cardId === c.id && it.uncounterable)) continue;
         const payer = c.controller;
         const cost = { ...parseCost(''), generic: ef.pay };
         let paid = false;
@@ -764,6 +847,17 @@ function* runEffect(g: GameState, ctx: Ctx, ef: Effect): SubFlow {
         if (ids.length) {
           discard(g, g.cards[ids[0]]);
           paid = true;
+        }
+      } else if (cost.exileNamed) {
+        const name = src?.def.name;
+        const same = g.players[me].graveyard.filter((id) => id !== ctx.source && g.cards[id].def.name === name);
+        if (src && same.length >= cost.exileNamed) {
+          const yes = yield* yesno(g, me, ef.prompt, ctx.source, 'may');
+          if (yes) {
+            for (const id of same.slice(0, cost.exileNamed)) moveCard(g, g.cards[id], 'exile');
+            if (src.zone === 'stack') moveCard(g, src, 'exile');
+            paid = true;
+          }
         }
       } else if (cost.mana) {
         const c = parseCost(cost.mana);

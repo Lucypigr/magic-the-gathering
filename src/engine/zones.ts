@@ -1,5 +1,6 @@
 import { getDef } from './registry';
 import {
+  abilitiesOf,
   cardName,
   checkCond,
   hasKw,
@@ -109,13 +110,19 @@ function triggerMatches(g: GameState, c: Card, ab: TriggeredAbility, ev: GameEve
     case 'loyaltyPlaced':
       return ev.type === 'loyaltyPlaced' && ev.controller === pov;
     case 'loyaltyActivated':
-      return ev.type === 'loyaltyActivated' && ev.controller === pov && (!ab.filter || matches(g, ab.filter, g.cards[ev.card], pov, c.id));
+      return ev.type === 'loyaltyActivated' && ev.controller === pov && ev.removed >= (ab.minRemoved ?? 0) && (!ab.filter || matches(g, ab.filter, g.cards[ev.card], pov, c.id));
     case 'noncombatOpp':
       return ev.type === 'noncombat' && ev.player !== pov;
     case 'anyDiscard':
       return ev.type === 'discard';
     case 'discardSelf':
       return ev.type === 'discard' && ev.card === c.id && ev.player === pov;
+    case 'eachEndStep':
+      return ev.type === 'step' && ev.step === 'endStep';
+    case 'targetedByOpp':
+      return ev.type === 'targeted' && ev.card === c.id && ev.by !== pov;
+    case 'oppCombatDamaged':
+      return ev.type === 'combatBatch' && ev.attacker === pov && ev.damaged !== pov;
   }
 }
 
@@ -139,14 +146,15 @@ export function emit(g: GameState, ev: GameEvent): void {
     if (ev.type === 'cast' && hasKw(g, c, 'prowess') && triggerMatches(g, c, PROWESS, ev)) {
       g.pending.push({ source: c.id, controller: c.controller, ability: PROWESS, abilityIndex: -1, ev });
     }
-    const abs = c.def.abilities;
-    if (!abs) continue;
+    const abs = abilitiesOf(g, c);
+    if (!abs.length) continue;
     for (let i = 0; i < abs.length; i++) {
       const ab = abs[i];
       if (ab.kind !== 'trigger') continue;
       if (!triggerMatches(g, c, ab, ev)) continue;
       if (ab.oncePerTurn && c.usedThisTurn.includes(i)) continue;
       if (ab.cond && !checkCond(g, ab.cond, c.controller, c.id, [])) continue;
+      if (ab.when && !checkCond(g, ab.when, c.controller, c.id, [])) continue;
       if (ab.oncePerTurn) c.usedThisTurn.push(i);
       g.pending.push({
         source: c.id,
@@ -156,6 +164,19 @@ export function emit(g: GameState, ev: GameEvent): void {
         ev,
         lkiPower: ev.type === 'dies' && ev.card === c.id ? ev.power : undefined,
       });
+    }
+  }
+  // 本回合的延遲觸發（例如「當你下一次施放瞬間或法術時……」）
+  if (g.delayed?.length) {
+    for (const d of [...g.delayed]) {
+      const src = g.cards[d.source];
+      if (!src) continue;
+      const ab: TriggeredAbility = { kind: 'trigger', on: d.on, effects: d.effects };
+      // 延遲觸發的控制者是建立它的玩家，不一定是來源目前的控制者
+      const probe = src.controller === d.controller ? src : { ...src, controller: d.controller };
+      if (!triggerMatches(g, probe, ab, ev)) continue;
+      g.pending.push({ source: d.source, controller: d.controller, ability: ab, abilityIndex: -1, ev });
+      if (d.once) g.delayed = g.delayed.filter((x) => x !== d);
     }
   }
 }
@@ -296,10 +317,11 @@ export function enterBattlefield(g: GameState, c: Card, controller: PID, tapped 
     for (const id of g.battlefield) {
       const s = g.cards[id];
       if (s.controller !== controller) continue;
-      for (const ab of s.def.abilities ?? []) if (ab.kind === 'static' && ab.counterPlus) c.counters += ab.counterPlus;
+      for (const ab of abilitiesOf(g, s)) if (ab.kind === 'static' && ab.counterPlus) c.counters += ab.counterPlus;
     }
   }
   if (c.def.etbPrepared) c.prepared = true;
+  if (c.def.aura?.grant?.loseAbilities) g.loseAbilities = true;
   if (c.def.types.includes('Planeswalker')) c.loyalty = c.def.loyalty ?? 0;
   c.playableTurn = undefined;
   g.version++;
@@ -371,7 +393,7 @@ export function putCounters(g: GameState, c: Card, n: number): number {
     for (const id of g.battlefield) {
       const s = g.cards[id];
       if (s.controller !== c.controller) continue;
-      for (const ab of s.def.abilities ?? []) if (ab.kind === 'static' && ab.counterPlus) n += ab.counterPlus;
+      for (const ab of abilitiesOf(g, s)) if (ab.kind === 'static' && ab.counterPlus) n += ab.counterPlus;
     }
   }
   c.counters += n;
@@ -472,7 +494,7 @@ export function dealDamage(
       for (const id of g.battlefield) {
         const s = g.cards[id];
         if (s.controller !== srcController) continue;
-        for (const ab of s.def.abilities ?? []) if (ab.kind === 'static' && ab.noncombatPlus) n += ab.noncombatPlus;
+        for (const ab of abilitiesOf(g, s)) if (ab.kind === 'static' && ab.noncombatPlus) n += ab.noncombatPlus;
       }
     }
   }

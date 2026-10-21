@@ -1,6 +1,8 @@
 import { displayName } from '../data/names';
 import { addCosts, colorsOf, costToString, findPayment, manaValue, parseCost, reduceCost, type ManaCost, type ManaSource } from './mana';
 import {
+  abilitiesOf,
+  abilitiesSuppressed,
   cardName,
   checkCond,
   countMatching,
@@ -49,6 +51,7 @@ export function manaSources(g: GameState, pid: PID, exclude?: number, convoke = 
     if (c.controller !== pid || c.tapped || !c.def.produces || id === exclude) continue;
     // 限定用途的法術力（例如只能用來施放鵬洛客咒語）
     if (c.def.manaOnly === 'planeswalker' && !forDef?.types.includes('Planeswalker')) continue;
+    if (abilitiesSuppressed(g, c)) continue;
     const cr = isCreature(c);
     if (cr && c.sick && !hasKw(g, c, 'haste')) continue;
     out.push({ id, produces: c.def.produces, isCreature: cr, sac: c.def.sacOnMana, filter: c.def.filterMana, pain: c.def.painMana });
@@ -62,7 +65,7 @@ export function extraLandDrops(g: GameState, pid: PID): number {
   for (const id of g.battlefield) {
     const c = g.cards[id];
     if (c.controller !== pid) continue;
-    for (const ab of c.def.abilities ?? []) if (ab.kind === 'static' && ab.extraLand) n += ab.extraLand;
+    for (const ab of abilitiesOf(g, c)) if (ab.kind === 'static' && ab.extraLand) n += ab.extraLand;
   }
   return n;
 }
@@ -236,7 +239,7 @@ export function spellCost(g: GameState, c: Card, pid: PID, mode?: number, target
   for (const id of g.battlefield) {
     const s = g.cards[id];
     if (s.controller !== pid) continue;
-    for (const ab of s.def.abilities ?? []) {
+    for (const ab of abilitiesOf(g, s)) {
       if (ab.kind === 'static' && ab.spellCostLess && matches(g, ab.spellCostLess.filter, c, pid)) {
         cost = reduceCost(cost, { ...parseCost(''), generic: ab.spellCostLess.n });
       }
@@ -245,7 +248,7 @@ export function spellCost(g: GameState, c: Card, pid: PID, mode?: number, target
   // 稅：永久物讓咒語多花費用（例如「對手施放的非生物咒語費用多{1}」）
   for (const id of g.battlefield) {
     const s = g.cards[id];
-    for (const ab of s.def.abilities ?? []) {
+    for (const ab of abilitiesOf(g, s)) {
       if (ab.kind !== 'static' || !ab.spellCostMore) continue;
       const m = ab.spellCostMore;
       if ((m.who === 'all' || s.controller !== pid) && matches(g, m.filter, c, pid)) cost.generic += m.n;
@@ -277,7 +280,7 @@ export function wardLifeTax(g: GameState, pid: PID, targets: (TargetRef | null)[
   for (const t of targets) {
     if (!t || !('c' in t)) continue;
     const tc = g.cards[t.c];
-    if (tc && tc.zone === 'battlefield' && tc.controller !== pid && tc.def.wardLife) n += tc.def.wardLife;
+    if (tc && tc.zone === 'battlefield' && tc.controller !== pid && tc.def.wardLife && !abilitiesSuppressed(g, tc)) n += tc.def.wardLife;
   }
   return n;
 }
@@ -287,7 +290,7 @@ export function wardTax(g: GameState, pid: PID, targets: (TargetRef | null)[]): 
   for (const t of targets) {
     if (!t || !('c' in t)) continue;
     const tc = g.cards[t.c];
-    if (tc && tc.zone === 'battlefield' && tc.controller !== pid && tc.def.ward) n += tc.def.ward;
+    if (tc && tc.zone === 'battlefield' && tc.controller !== pid && tc.def.ward && !abilitiesSuppressed(g, tc)) n += tc.def.ward;
   }
   return n;
 }
@@ -326,7 +329,7 @@ export function grantedAbilities(g: GameState, c: Card): ActivatedAbility[] {
   for (const id of g.battlefield) {
     const s = g.cards[id];
     if (s.controller !== c.controller) continue;
-    for (const ab of s.def.abilities ?? []) {
+    for (const ab of abilitiesOf(g, s)) {
       if (ab.kind === 'static' && ab.grantAbilities && matches(g, ab.grantAbilities.filter, c, c.controller, s.id)) out.push(...ab.grantAbilities.abilities);
     }
   }
@@ -335,6 +338,7 @@ export function grantedAbilities(g: GameState, c: Card): ActivatedAbility[] {
 
 /** 這張牌目前所有的起動式異能（含授予的；索引依序接在本身的異能後面） */
 export function abilitiesFor(g: GameState, c: Card): ActivatedAbility[] {
+  if (abilitiesSuppressed(g, c)) return [];
   const base = activatedAbilities(c.def);
   const extra = grantedAbilities(g, c);
   return extra.length ? [...base, ...extra] : base;
@@ -560,9 +564,25 @@ function castOptionsAs(g: GameState, pid: PID, c: Card, alt: CastAlt | undefined
 }
 
 /** 戰鬥中不能施放咒語或起動異能（例如「戰鬥中，所有玩家都不能施放咒語」） */
+/** 堆疊上有切割（split second）咒語時，不能施放咒語或起動異能 */
+export function splitSecondLocked(g: GameState): boolean {
+  return g.stack.some((it) => {
+    if (it.kind !== 'spell') return false;
+    const c = g.cards[it.cardId];
+    if (!c) return false;
+    if (c.def.splitSecond) return true;
+    if (!c.def.types.some((t) => t === 'Instant' || t === 'Sorcery')) return false;
+    return g.battlefield.some((id) => {
+      const s = g.cards[id];
+      return s.controller === it.controller && abilitiesOf(g, s).some((a) => a.kind === 'static' && a.splitSecondSpells);
+    });
+  });
+}
+
 export function combatLocked(g: GameState): boolean {
+  if (splitSecondLocked(g)) return true;
   if (!g.phase.startsWith('combat')) return false;
-  return g.battlefield.some((id) => g.cards[id].def.abilities?.some((a) => a.kind === 'static' && a.noCombatActions));
+  return g.battlefield.some((id) => abilitiesOf(g, g.cards[id]).some((a) => a.kind === 'static' && a.noCombatActions));
 }
 
 export function playOptions(g: GameState, pid: PID): PlayOption[] {
@@ -599,7 +619,7 @@ export function sacChoices(g: GameState, pid: PID, f: Filter, sourceId?: number)
 // 執行動作（回傳錯誤訊息或 null）
 // ------------------------------------------------------------
 export function performAction(g: GameState, pid: PID, a: PriorityAction): string | null {
-  if ((a.type === 'cast' || a.type === 'activate') && combatLocked(g)) return '戰鬥中不能施放咒語或起動異能';
+  if ((a.type === 'cast' || a.type === 'activate') && combatLocked(g)) return splitSecondLocked(g) ? '切割咒語在堆疊上時，不能施放咒語或起動異能' : '戰鬥中不能施放咒語或起動異能';
   if (a.type === 'play') return doPlay(g, pid, a.card);
   if (a.type === 'cast') return doCast(g, pid, a);
   if (a.type === 'activate') return doActivate(g, pid, a);
@@ -747,6 +767,11 @@ function doCast(g: GameState, pid: PID, a: Extract<PriorityAction, { type: 'cast
   if (sacCard) sacrifice(g, sacCard);
   p.spellsThisTurn++;
   if (def.types.includes('Instant') || def.types.includes('Sorcery')) p.instSorcThisTurn++;
+  if (!def.types.includes('Creature')) p.noncreatureThisTurn = (p.noncreatureThisTurn ?? 0) + 1;
+  if (p.nextSpellUncounterable) {
+    p.nextSpellUncounterable = false;
+    g.stack[g.stack.length - 1].uncounterable = true;
+  }
   const how = alt === 'adventure' ? '施放冒險 ' : alt === 'flashback' ? '返照施放 ' : '施放 ';
   log(g, `${how}${alt === 'adventure' ? (def.zh ?? def.name) : displayName(def)}${x !== undefined ? `（X=${x}）` : ''}${modeText}${describeTargets(g, targets)}`, pid, 'cast');
   emit(g, { type: 'cast', card: c.id, player: pid, opponentTurn: g.active !== pid });
