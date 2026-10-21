@@ -45,6 +45,11 @@ function triggerMatches(g: GameState, c: Card, ab: TriggeredAbility, ev: GameEve
     }
     case 'castAny': {
       if (ev.type !== 'cast' || !(ev.player === pov || ab.anyPlayer)) return false;
+      // 該咒語以對手或其生物為目標
+      if (ab.targetsOpp) {
+        const item = g.stack.find((s) => s.kind === 'spell' && s.cardId === ev.card);
+        return !!item?.targets.some((t) => t && ('p' in t ? t.p !== pov : g.cards[t.c] && isCreature(g.cards[t.c]) && g.cards[t.c].controller !== pov));
+      }
       if (matches(g, ab.filter, g.cards[ev.card], pov, c.id)) return true;
       // 或是該咒語的目標中有符合條件的永久物
       if (ab.orTargets) {
@@ -64,6 +69,7 @@ function triggerMatches(g: GameState, c: Card, ab: TriggeredAbility, ev: GameEve
     }
     case 'allyDies': {
       if (ev.type !== 'dies' || ev.controller !== pov) return false;
+      if (!ab.includePw && !isCreature(g.cards[ev.card])) return false;
       if (ev.card === c.id && !ab.includeSelf) return false;
       return matches(g, ab.filter, g.cards[ev.card], pov, c.id);
     }
@@ -91,7 +97,7 @@ function triggerMatches(g: GameState, c: Card, ab: TriggeredAbility, ev: GameEve
     case 'sacrifice':
       return ev.type === 'sacrifice' && matches(g, ab.filter, g.cards[ev.card], pov, c.id);
     case 'otherDies':
-      return ev.type === 'dies' && ev.card !== c.id && matches(g, ab.filter, g.cards[ev.card], pov, c.id);
+      return ev.type === 'dies' && ev.card !== c.id && (ab.includePw || isCreature(g.cards[ev.card])) && matches(g, ab.filter, g.cards[ev.card], pov, c.id);
     case 'allyPermEtb':
       return ev.type === 'etb' && ev.card !== c.id && ev.controller === pov && matches(g, ab.filter, g.cards[ev.card], pov, c.id);
     case 'allyCounters':
@@ -117,6 +123,8 @@ function triggerMatches(g: GameState, c: Card, ab: TriggeredAbility, ev: GameEve
       return ev.type === 'discard';
     case 'discardSelf':
       return ev.type === 'discard' && ev.card === c.id && ev.player === pov;
+    case 'oppLoyaltyActivated':
+      return ev.type === 'loyaltyActivated' && ev.controller !== pov;
     case 'eachEndStep':
       return ev.type === 'step' && ev.step === 'endStep';
     case 'targetedByOpp':
@@ -164,6 +172,20 @@ export function emit(g: GameState, ev: GameEvent): void {
         ev,
         lkiPower: ev.type === 'dies' && ev.card === c.id ? ev.power : undefined,
       });
+    }
+  }
+  // 來源在墳墓場時也會觸發的觸發式異能（例如「回到戰場」）
+  for (const p of g.players) {
+    for (const id of p.graveyard.slice()) {
+      const gc = g.cards[id];
+      const gabs = gc.def.abilities ?? [];
+      for (let i = 0; i < gabs.length; i++) {
+        const ab = gabs[i];
+        if (ab.kind !== 'trigger' || !ab.fromGraveyard || !triggerMatches(g, gc, ab, ev)) continue;
+        if (ab.cond && !checkCond(g, ab.cond, gc.controller, gc.id, [])) continue;
+        if (ab.when && !checkCond(g, ab.when, gc.controller, gc.id, [])) continue;
+        g.pending.push({ source: gc.id, controller: gc.owner, ability: ab, abilityIndex: i, ev });
+      }
     }
   }
   // 本回合的延遲觸發（例如「當你下一次施放瞬間或法術時……」）
@@ -407,7 +429,10 @@ export function putIntoGraveyard(g: GameState, cards: Card[]): void {
   for (const c of list) {
     if (isCreature(c)) {
       g.creatureDiedThisTurn = true;
+      g.creaturesDiedCount = (g.creaturesDiedCount ?? 0) + 1;
       emit(g, { type: 'dies', card: c.id, controller: c.controller, power: stats(g, c).p });
+    } else if (c.def.types.includes('Planeswalker')) {
+      emit(g, { type: 'dies', card: c.id, controller: c.controller, power: 0 });
     }
   }
   for (const c of list) moveCard(g, c, 'graveyard');
@@ -426,13 +451,15 @@ export function sacrifice(g: GameState, c: Card): void {
   putIntoGraveyard(g, [c]);
 }
 
-export function drawCards(g: GameState, pid: PID, n: number): void {
+export function drawCards(g: GameState, pid: PID, n: number): number {
   const p = g.players[pid];
+  let drawn = 0;
   for (let i = 0; i < n; i++) {
     if (!p.library.length) {
       p.drewFromEmpty = true;
-      return;
+      return drawn;
     }
+    drawn++;
     const id = p.library.shift()!;
     const c = g.cards[id];
     c.zone = 'hand';
@@ -441,13 +468,22 @@ export function drawCards(g: GameState, pid: PID, n: number): void {
     if (p.drawsThisTurn === 2) emit(g, { type: 'drawSecond', player: pid });
   }
   g.version++;
+  return drawn;
 }
 
-export function discard(g: GameState, c: Card): void {
+/** 棄牌；silent 時不發出事件（同時棄多張牌時由 discardMany 統一發出一次） */
+export function discard(g: GameState, c: Card, silent = false): void {
   log(g, `棄掉 ${cardName(c)}`, c.owner);
   moveCard(g, c, 'graveyard');
   c.discardedTurn = g.turn;
-  emit(g, { type: 'discard', player: c.owner, card: c.id });
+  if (!silent) emit(g, { type: 'discard', player: c.owner, card: c.id });
+}
+
+/** 同時棄掉多張牌：「一個或更多張」的觸發只會觸發一次 */
+export function discardMany(g: GameState, cards: Card[]): void {
+  for (const c of cards) discard(g, c, true);
+  const first = cards[0];
+  if (first) emit(g, { type: 'discard', player: first.owner, card: first.id });
 }
 
 export function gainLife(g: GameState, pid: PID, n: number): void {

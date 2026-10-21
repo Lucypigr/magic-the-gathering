@@ -215,6 +215,10 @@ export function handCardValue(g: GameState, pid: PID, c: Card): number {
 export function heuristicMode(g: GameState, d: Extract<Decision, { type: 'mode' }>): number[] {
   const n = d.options.length;
   const scores: number[] = [];
+  if (d.purpose === 'count') {
+    // 選數量：對手的指示物能移除就盡量移除，自己的不移除
+    return [d.meta?.preferHigh ? n - 1 : 0];
+  }
   if (d.purpose === 'creatureType') {
     // 「消滅所有不是所選類別的生物」：選讓對手損失最大、自己損失最小的類別
     const val = (c: Card) => creatureValue(g, c);

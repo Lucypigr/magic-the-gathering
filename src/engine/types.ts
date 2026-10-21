@@ -104,6 +104,8 @@ export interface TargetSpec {
 
 /** 效果作用對象 */
 export type Ref =
+  /** 來源本身，不論它在哪個區域（例如從墳墓場回到戰場） */
+  | 'selfAny'
   | 'T0'
   | 'T1'
   | 'T2'
@@ -139,6 +141,10 @@ export type Amt =
   | { lifeGained: true }
   /** 另一個數量的負值 */
   | { negOf: Amt }
+  /** 這次效果中，上一個效果實際處理的數量（例如實際抓到的牌數、實際放逐的數量） */
+  | { last: true }
+  /** 由你操控的符合條件的生物中最大的力量 */
+  | { maxPower: Filter }
   /** 本回合從牌庫置入該玩家墳墓場的牌數 */
   | { libToGy: Ref }
   /** 來源離開戰場前的 +1/+1 指示物數量（最後已知資訊） */
@@ -156,6 +162,8 @@ export interface Grant {
   damageByToughness?: boolean;
   /** 失去所有異能 */
   loseAbilities?: boolean;
+  /** 力量為負時，戰鬥傷害以其絕對值計算 */
+  damageAbs?: boolean;
   /** 在其操控者的重置步驟中不會重置 */
   noUntap?: boolean;
 }
@@ -204,6 +212,8 @@ export type Cond =
   | { c: 'saddled' }
   /** 虛空 */
   | { c: 'void' }
+  /** 本回合有 n 個或更多生物死去 */
+  | { c: 'creaturesDiedGte'; n: number }
   /** 你本回合占卜或刺探過 */
   | { c: 'scried' }
   /** 你本回合施放的非生物咒語恰好是第 n 個（用於「每回合第一個」） */
@@ -224,6 +234,8 @@ export type Cond =
   | { c: 'maxSpeed' };
 
 export interface ExtraCost {
+  /** 從你的墳墓場放逐另一張符合條件的牌 */
+  exileGy?: Filter;
   /** 從你的墳墓場放逐 n 張與此來源同名的牌（以及此咒語本身） */
   exileNamed?: number;
   mana?: string;
@@ -271,7 +283,7 @@ export type Effect =
   /** 從牌庫中搜尋一張符合條件的牌放到手上 */
   | { e: 'tutor'; filter: Filter; to?: 'hand' | 'top' | 'battlefield' }
   /** 移除至多 n 個指示物 */
-  | { e: 'removeCounters'; what: Ref; n: number }
+  | { e: 'removeCounters'; what: Ref; n: number; upTo?: boolean }
   /** 大地彎折（簡化）：派出一個 0/0 具敏捷的大地元素，並放上 n 個 +1/+1 指示物 */
   | { e: 'earthbend'; n: Amt }
   /** 堅忍 n：在此永久物上放置 n 個 +1/+1 指示物；它不在戰場上時改為派出一個 0/0 白色精靈並放上 n 個指示物 */
@@ -317,7 +329,9 @@ export type Effect =
   | { e: 'bite'; a: Ref; b: Ref }
   | { e: 'toHand'; what: Ref }
   /** counters：額外的 +1/+1 指示物；finality：帶著終結指示物（死去時改為放逐） */
-  | { e: 'reanimate'; what: Ref; counters?: number; finality?: boolean }
+  | { e: 'reanimate'; what: Ref; counters?: number; finality?: boolean; tapped?: boolean }
+  /** 目標對手犧牲其操控的生物與鵬洛客中法術力值最大的一個（由該玩家在並列者中選擇） */
+  | { e: 'edictMax'; who: Ref }
   /** 將符合條件的牌從你的墳墓場全部放進戰場 */
   | { e: 'reanimateAll'; filter: Filter }
   | { e: 'edict'; who: Ref; filter?: Filter }
@@ -392,6 +406,8 @@ export type TriggerOn =
   | 'anyDiscard'
   /** 在每個結束步驟開始時（任何玩家的回合） */
   | 'eachEndStep'
+  /** 每當有對手起動忠誠異能時 */
+  | 'oppLoyaltyActivated'
   /** 每當此永久物成為對手的咒語或異能的目標時 */
   | 'targetedByOpp'
   /** 在你的回合中，有一個或更多對手被造成戰鬥傷害時（每個傷害步驟一次） */
@@ -418,6 +434,12 @@ export interface TriggeredAbility {
   alone?: boolean;
   /** 起動忠誠異能的觸發：至少要移除幾個忠誠指示物 */
   minRemoved?: number;
+  /** 此觸發式異能在來源位於墳墓場時也會觸發 */
+  fromGraveyard?: boolean;
+  /** 施放類觸發：該咒語的目標中有對手，或有由對手操控的生物 */
+  targetsOpp?: boolean;
+  /** 死去類觸發：也包含鵬洛客 */
+  includePw?: boolean;
   /** 觸發條件：只在事件發生時檢查（和 cond 不同，結算時不再檢查） */
   when?: Cond;
   /** 觸發物件需要符合的條件（例如 allyEtb 的進場生物、castAny 的咒語） */
@@ -456,6 +478,8 @@ export interface ActivatedAbility {
   fromGraveyard?: boolean;
   /** 從手上起動，代價包含棄掉或放逐此牌 */
   fromHand?: boolean;
+  /** 從墳墓場起動，但此牌留在墳墓場（例如把自己移回戰場） */
+  keepSelf?: boolean;
   cond?: Cond;
   /** 按鈕上顯示的簡短描述 */
   label: string;
@@ -477,6 +501,8 @@ export interface StaticAbility {
   grantAbilities?: { filter: Filter; abilities: ActivatedAbility[] };
   /** 由你操控的鵬洛客忠誠為 0 時不會置入墳墓場 */
   noZeroLoyaltyDeath?: boolean;
+  /** 此永久物的力量／防禦力隨你墳墓場中符合條件的牌數增加 */
+  selfPumpPerGy?: { filter: Filter; p?: number; t?: number };
   /** 你操控的瞬間與法術咒語具有切割 */
   splitSecondSpells?: boolean;
   /** 由你操控的鵬洛客每個戰鬥只能被一個生物攻擊 */
@@ -568,6 +594,10 @@ export interface CardDef {
   cycling?: { cost: string; search?: Filter };
   /** 變形者：具有所有生物類別 */
   changeling?: boolean;
+  /** 施放條件：不滿足時不能施放此咒語 */
+  castCond?: Cond;
+  /** 守護—棄掉一張牌 */
+  wardDiscard?: boolean;
   /** 套牌中可以有任意數量的同名卡 */
   anyNumber?: boolean;
   /** 此咒語不能被反擊 */
@@ -864,6 +894,8 @@ export interface GameState {
   attackedThisTurn: boolean;
   /** 本回合有生物死去 */
   creatureDiedThisTurn?: boolean;
+  /** 本回合死去的生物數量 */
+  creaturesDiedCount?: number;
   /** 本回合的延遲觸發 */
   delayed?: DelayedTrigger[];
   /** 場上有「失去所有異能」的光環（用來避免不必要的檢查） */
@@ -906,9 +938,9 @@ export type Decision =
       source?: number;
       options: string[];
       count: number;
-      purpose: 'trigger' | 'creatureType';
+      purpose: 'trigger' | 'creatureType' | 'count';
       /** 觸發的模式：每個選項的效果與目標（AI 判斷用） */
-      meta?: { effects: Effect[][]; specs: TargetSpec[][] };
+      meta?: { effects: Effect[][]; specs: TargetSpec[][]; preferHigh?: boolean };
     };
 
 export type ChoosePurpose =

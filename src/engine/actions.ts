@@ -285,6 +285,28 @@ export function wardLifeTax(g: GameState, pid: PID, targets: (TargetRef | null)[
   return n;
 }
 
+/** 守護—棄掉一張牌：以對手的永久物為目標時，自動棄掉手牌中最不重要的一張；回傳需要棄的張數 */
+export function wardDiscardCount(g: GameState, pid: PID, targets: (TargetRef | null)[]): number {
+  let n = 0;
+  for (const t of targets) {
+    if (!t || !('c' in t)) continue;
+    const tc = g.cards[t.c];
+    if (tc && tc.zone === 'battlefield' && tc.controller !== pid && tc.def.wardDiscard && !abilitiesSuppressed(g, tc)) n++;
+  }
+  return n;
+}
+
+function payWardDiscard(g: GameState, pid: PID, n: number, exclude?: number): void {
+  for (let i = 0; i < n; i++) {
+    const hand = g.players[pid].hand.filter((id) => id !== exclude).map((id) => g.cards[id]);
+    if (!hand.length) return;
+    // 優先棄掉地以外法術力值最低的牌；全是地就棄地
+    hand.sort((a, b) => Number(isLand(b)) - Number(isLand(a)) || manaValue(a.def) - manaValue(b.def));
+    log(g, `守護：棄掉 ${cardName(hand[0])}`, pid);
+    discard(g, hand[0]);
+  }
+}
+
 export function wardTax(g: GameState, pid: PID, targets: (TargetRef | null)[]): number {
   let n = 0;
   for (const t of targets) {
@@ -511,6 +533,7 @@ function castOptionsAs(g: GameState, pid: PID, c: Card, alt: CastAlt | undefined
   }
   if (alt === 'plotted' && !sorceryTiming(g, pid)) return out;
   if (!instantSpeed(def) && !sorceryTiming(g, pid)) return out;
+  if (c.def.castCond && !checkCond(g, c.def.castCond, pid, c.id, [])) return out;
   if (def.addCost?.life && g.players[pid].life < def.addCost.life) return out;
   if (def.addCost?.sac && sacCandidates(g, pid, def.addCost.sac).length === 0) return out;
   if (def.addCost?.discard && g.players[pid].hand.filter((id) => id !== c.id).length < def.addCost.discard) return out;
@@ -699,6 +722,7 @@ function doCast(g: GameState, pid: PID, a: Extract<PriorityAction, { type: 'cast
   if (!c || isLand(c) || !inCastableZone(g, pid, c, alt)) return '無法施放這張牌';
   const def = castDef(c.def, alt);
   if ((alt === 'plotted' || !instantSpeed(def)) && !sorceryTiming(g, pid)) return '只能在你的主要階段且堆疊為空時施放';
+  if (c.def.castCond && !checkCond(g, c.def.castCond, pid, c.id, [])) return '不滿足施放此咒語的條件';
   const mode = def.spell?.modes ? Math.max(0, Math.min(def.spell.modes.length - 1, a.mode ?? 0)) : undefined;
   const specs = castTargetSpecs(def, mode);
   const targets = specs.map((_, i) => a.targets?.[i] ?? null);
@@ -733,6 +757,7 @@ function doCast(g: GameState, pid: PID, a: Extract<PriorityAction, { type: 'cast
     log(g, `守護：支付${wl}點生命`, pid, 'life');
     loseLife(g, pid, wl);
   }
+  payWardDiscard(g, pid, wardDiscardCount(g, pid, targets), c.id);
   if (def.addCost?.life) {
     p.life -= def.addCost.life;
     p.lifeLostThisTurn += def.addCost.life;
@@ -814,6 +839,7 @@ function doActivate(g: GameState, pid: PID, a: Extract<PriorityAction, { type: '
     log(g, `守護：支付${wl}點生命`, pid, 'life');
     loseLife(g, pid, wl);
   }
+  payWardDiscard(g, pid, wardDiscardCount(g, pid, targets));
   if (ab.cost.tap) c.tapped = true;
   if (ab.cost.life) {
     g.players[pid].life -= ab.cost.life;
@@ -848,7 +874,7 @@ function doActivate(g: GameState, pid: PID, a: Extract<PriorityAction, { type: '
   log(g, `起動 ${cardName(c)}：${ab.label}${describeTargets(g, targets)}`, pid, 'cast');
   if (sacCard) sacrifice(g, sacCard);
   if (ab.cost.sacSelf) sacrifice(g, c);
-  if (ab.fromGraveyard && c.zone === 'graveyard') moveCard(g, c, 'exile');
+  if (ab.fromGraveyard && !ab.keepSelf && c.zone === 'graveyard') moveCard(g, c, 'exile');
   if (ab.fromHand && c.zone === 'hand') {
     if (ab.cost.discardSelf) discard(g, c);
     else if (ab.cost.exileSelf) moveCard(g, c, 'exile');

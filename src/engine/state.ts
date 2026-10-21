@@ -231,6 +231,7 @@ export interface Stats {
   ignoreDefender?: boolean;
   damageByToughness?: boolean;
   noUntap?: boolean;
+  damageAbs?: boolean;
 }
 
 /** 這張永久物是否因為光環而失去所有異能 */
@@ -282,6 +283,7 @@ export function stats(g: GameState, c: Card, ignoreEot = false): Stats {
     if (gr.ignoreDefender) st.ignoreDefender = true;
     if (gr.damageByToughness) st.damageByToughness = true;
     if (gr.noUntap) st.noUntap = true;
+    if (gr.damageAbs) st.damageAbs = true;
   };
   for (const sid of g.battlefield) {
     const s = g.cards[sid];
@@ -291,6 +293,12 @@ export function stats(g: GameState, c: Card, ignoreEot = false): Stats {
         if (ab.kind !== 'static') continue;
         if (ab.anthem && matches(g, ab.anthem.filter, c, s.controller, s.id)) apply(ab.anthem.grant);
         if (ab.self && s.id === c.id && (!ab.self.cond || checkCond(g, ab.self.cond, s.controller, s.id, []))) apply(ab.self.grant);
+        if (ab.selfPumpPerGy && s.id === c.id) {
+          let n = 0;
+          for (const id of g.players[s.controller].graveyard) if (matches(g, ab.selfPumpPerGy.filter, g.cards[id], s.controller, s.id)) n++;
+          st.p += n * (ab.selfPumpPerGy.p ?? 0);
+          st.t += n * (ab.selfPumpPerGy.t ?? 0);
+        }
       }
     }
     if (s.attachedTo === c.id) {
@@ -442,6 +450,8 @@ export function checkCond(
       return !!g.voidThisTurn;
     case 'scried':
       return !!me.scriedThisTurn;
+    case 'creaturesDiedGte':
+      return (g.creaturesDiedCount ?? 0) >= cond.n;
     case 'noncreatureCastEq':
       return (me.noncreatureThisTurn ?? 0) === cond.n;
     case 'noncreatureCastGte':

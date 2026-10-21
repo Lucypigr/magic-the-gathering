@@ -464,6 +464,7 @@ function* turn(g: GameState): SubFlow {
   }
   g.attackedThisTurn = false;
   g.creatureDiedThisTurn = false;
+  g.creaturesDiedCount = 0;
   g.voidThisTurn = false;
   g.delayed = [];
   for (const id of g.battlefield) g.cards[id].usedThisTurn = [];

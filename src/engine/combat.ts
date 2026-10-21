@@ -158,6 +158,7 @@ export function assignAttackerDamage(
 /** 戰鬥傷害使用的力量（防禦力大於力量且被授予時，以防禦力代替） */
 function combatPower(g: GameState, c: Card): number {
   const st = stats(g, c);
+  if (st.damageAbs && st.p < 0) return -st.p;
   return st.damageByToughness && st.t > st.p ? st.t : st.p;
 }
 

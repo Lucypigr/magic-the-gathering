@@ -1,6 +1,6 @@
 // 實相裂隙（FRA）手寫的卡：效果與原版卡面一致（鵬洛客以外的部分）。
 // 規則敘述為本遊戲引擎實際執行的中文敘述。
-import type { Ability, ActivatedAbility, CardDef, CardType, Effect, Filter, SpellSpec, TargetSpec } from '../../engine/types';
+import type { Ability, ActivatedAbility, Amt, CardDef, CardType, Effect, Filter, Keyword, SpellSpec, TargetSpec } from '../../engine/types';
 import { ANY, CR, MY_CR, OPP, OPP_CR, OPP_NONLAND, act, add, arti, cr, ench, etb, inst, land, sorc, trig } from '../dsl';
 
 const S = 'FRA';
@@ -20,7 +20,7 @@ const THOPTER = '1/1無色，具有飛行異能的機械鳥神器衍生生物';
 const TYPE_ZH: Record<string, string> = { Instant: '瞬間', Sorcery: '法術' };
 
 const cadet = (n: number | { lifeGained: true } | { count: Filter } = 1): Effect => ({ e: 'token', token: 'tok-cadet', ...(n === 1 ? {} : { n }) });
-const empower = (n: number | { count: Filter }): Effect => ({ e: 'empowerJace', n });
+const empower = (n: Amt): Effect => ({ e: 'empowerJace', n });
 const MY_PW: Filter = { type: 'Planeswalker', ctrl: 'you' };
 const MY_CREATURES: Filter = { type: 'Creature', ctrl: 'you' };
 
@@ -443,6 +443,192 @@ lcr('U', 'Yuriko, Hope from the Shadows', '{U}', 'Human Ninja', 1, 1, '閃現\n�
         { text: '刺探2', effects: [{ e: 'surveil', n: 2 }] },
       ],
     }),
+  ],
+});
+
+// ============================================================
+// 黑
+// ============================================================
+const GY_CR_PW: Filter = { type: ['Creature', 'Planeswalker'] };
+const loyaltyTarget = (kw: Keyword): Effect[] => [
+  { e: 'pump', what: 'T0', p: 0, t: 0, kw: [kw] },
+  { e: 'if', cond: { c: 'targetIs', t: 0, filter: { type: 'Creature' } }, then: [{ e: 'counters', what: 'T0', n: 1 }] },
+  { e: 'if', cond: { c: 'targetIs', t: 0, filter: { type: 'Planeswalker' } }, then: [{ e: 'loyalty', what: 'T0', n: 1 }] },
+];
+
+prepared('M', 'Bloodline Recollector', '{1}{B}', 'Vampire Warlock', 2, 2, ['在每個結束步驟開始時，若本回合有三個或更多生物死去，此生物成為已準備。', ''], 'Ancestral Craving', '{B}', ['Instant'], '目標玩家抓三張牌並失去3點生命。', {
+  targets: [{ kind: 'player', prompt: '選擇一位玩家' }],
+  effects: [{ e: 'draw', n: 3, who: 'T0' }, { e: 'lose', n: 3, who: 'T0' }],
+}, { abilities: [trig('eachEndStep', [{ e: 'prepare' }], { cond: { c: 'creaturesDiedGte', n: 3 } })] }, false);
+
+inst(S, 'U', 'Break Under Pressure', '{2}{B}', '目標對手犧牲由其操控的生物與鵬洛客中，法術力值最大的一個。你獲得2點生命。', {
+  targets: [OPP],
+  effects: [{ e: 'edictMax', who: 'T0' }, { e: 'gain', n: 2 }],
+});
+
+sorc(S, 'C', 'Cast Away Doubt', '{2}{B}', '抓兩張牌。此咒語對每位玩家各造成2點傷害。', {
+  effects: [{ e: 'draw', n: 2 }, { e: 'damage', n: 2, to: 'players' }],
+});
+
+cr(S, 'M', 'Darklight Phoenix', '{3}{B}', 'Phoenix', 3, 2, '飛行，敏捷\n在你回合的戰鬥開始時，若本回合有兩個或更多生物死去，將此牌從你的墳墓場移回戰場。', {
+  keywords: ['flying', 'haste'],
+  abilities: [trig('combatStart', [{ e: 'reanimate', what: 'selfAny' }], { fromGraveyard: true, cond: { c: 'creaturesDiedGte', n: 2 } })],
+});
+
+inst(S, 'C', 'Extended Absence', '{3}{B}', '放逐目標生物或鵬洛客。此咒語對每位對手各造成1點傷害，且你獲得1點生命。', {
+  targets: [{ kind: 'permanent', filter: { type: ['Creature', 'Planeswalker'] }, prompt: '選擇生物或鵬洛客' }],
+  effects: [{ e: 'exile', what: 'T0' }, { e: 'damage', n: 1, to: 'opp' }, { e: 'gain', n: 1 }],
+});
+
+sorc(S, 'R', 'Extrapolate the Impossible', '{1}{B}', '你可以展示兩張你擁有、名稱不同、在遊戲外的牌。由一位對手選擇其中一張。你將那張牌加入你的手牌。\n（本遊戲沒有備牌，因此沒有遊戲外的牌可以展示，此咒語沒有效果。）', { effects: [] });
+
+inst(S, 'U', 'Multiply by Zero', '{1}{B}', '目標生物的基礎力量與防禦力為0/0，直到回合結束。', {
+  targets: [CR],
+  effects: [{ e: 'setBase', what: 'T0', p: 0, t: 0 }],
+});
+
+sorc(S, 'M', 'Overwrite the Multiverse', '{4}{B}{B}', `放逐所有生物。強化傑斯X，X為以此法放逐的生物數量。${EMP_X}`, {
+  effects: [{ e: 'exile', what: { all: { type: 'Creature' } } }, empower({ last: true })],
+});
+
+sorc(S, 'U', 'Rewrite Regrets', '{3}{B}', `將目標法術力值為6或更少的生物或鵬洛客牌從你的墳墓場移回戰場。\n${EMP(2)}`, {
+  targets: [gyTarget({ type: ['Creature', 'Planeswalker'], mvMax: 6 }, '選擇你墳墓場中法術力值6或更少的生物或鵬洛客牌')],
+  effects: [{ e: 'reanimate', what: 'T0' }, empower(2)],
+});
+
+inst(S, 'R', 'Rise of the Deathbringer', '{4}{B}', '選擇一項：\n• 抓牌，張數等同於由你操控的生物中最大的力量。你失去等同於以此法抓牌張數的生命。\n• 所有生物得-3/-3直到回合結束。', {
+  modes: [
+    { text: '抓牌並失去等量生命', effects: [{ e: 'draw', n: { maxPower: MY_CREATURES } }, { e: 'lose', n: { last: true }, who: 'you' }] },
+    { text: '所有生物得-3/-3', effects: [{ e: 'pump', what: { all: { type: 'Creature' } }, p: -3, t: -3 }] },
+  ],
+});
+
+cr(S, 'R', 'Sanctum Lurker', '{2}{B}', 'Horror', 3, 2, `當此生物進戰場時，${EMP(1)}\n由你操控的鵬洛客不會因為忠誠為0而置入其擁有者的墳墓場。\n由你操控的鵬洛客具有「[+2]：此鵬洛客對每位對手各造成1點傷害，且你獲得1點生命。」`, {
+  abilities: [
+    etb([empower(1)]),
+    { kind: 'static', noZeroLoyaltyDeath: true },
+    grantPw([loyalty(2, [{ e: 'damage', n: 1, to: 'opp' }, { e: 'gain', n: 1 }], '+2：對每位對手造成1點傷害並獲得1點生命')]),
+  ],
+});
+
+cr(S, 'C', 'Screeching Soulbreaker', '{2}{B}', 'Siren Bard', 1, 4, '飛行\n每當此生物攻擊時，它對每位對手各造成1點傷害，且你獲得1點生命。', {
+  keywords: ['flying'],
+  abilities: [trig('attacks', [{ e: 'damage', n: 1, to: 'opp' }, { e: 'gain', n: 1 }])],
+});
+
+sorc(S, 'C', 'Silence the Echo', '{1}{B}', '作為施放此咒語的額外費用，犧牲一個生物或鵬洛客，或支付{3}。\n消滅目標生物或鵬洛客。', {
+  modes: [
+    { text: '犧牲一個生物或鵬洛客', sac: GY_CR_PW, targets: [{ kind: 'permanent', filter: GY_CR_PW, prompt: '選擇生物或鵬洛客' }], effects: [{ e: 'destroy', what: 'T0' }] },
+    { text: '支付{3}', cost: '{4}{B}', targets: [{ kind: 'permanent', filter: GY_CR_PW, prompt: '選擇生物或鵬洛客' }], effects: [{ e: 'destroy', what: 'T0' }] },
+  ],
+});
+
+sorc(S, 'C', 'Solve for Disappointment', '{1}{B}', `目標對手展示其手牌。你從中選擇一張非地的永久物牌。該玩家棄掉那張牌。\n${EMP(1)}`, {
+  targets: [OPP],
+  effects: [{ e: 'discardChosen', who: 'T0', filter: { nonType: ['Land', 'Instant', 'Sorcery'] } }, empower(1)],
+});
+
+inst(S, 'U', 'Terminal Criticism', '{1}{B}', '消滅目標藍色或紅色的生物或鵬洛客。你獲得1點生命。', {
+  targets: [{ kind: 'permanent', filter: { type: ['Creature', 'Planeswalker'], color: ['U', 'R'] }, prompt: '選擇藍色或紅色的生物或鵬洛客' }],
+  effects: [{ e: 'destroy', what: 'T0' }, { e: 'gain', n: 1 }],
+});
+
+cr(S, 'C', 'Theoretical Necromancer', '{2}{B}', 'Vampire Warlock', 4, 1, '{3}{B}，從你的墳墓場放逐此牌：將另一張目標生物牌從你的墳墓場移回你手上。', {
+  abilities: [act({ mana: '{3}{B}' }, [{ e: 'toHand', what: 'T0' }], '另一張生物牌回手', { fromGraveyard: true, targets: [{ ...gyTarget({ type: 'Creature' }, '選擇你墳墓場中的另一張生物牌'), notSelf: true }] })],
+});
+
+prepared('C', 'Void Extrapolator', '{1}{B}', 'Aetherborn Warlock', 2, 2, ['', '門檻—只要你的墳墓場中有七張或更多牌，此生物便得+1/+1。'], 'Omit Variables', '{U/B}', ['Sorcery'], '碾磨三張牌。（將你牌庫頂的三張牌置入你的墳墓場。）', {
+  effects: [{ e: 'mill', n: 3 }],
+}, { abilities: [{ kind: 'static', self: { cond: { c: 'gyCount', filter: {}, n: 7 }, grant: { p: 1, t: 1 } } }] });
+
+lcr('U', 'Danitha, Spear of Agony', '{2}{B}', 'Human Knight', 2, 2, '先攻\n每當你施放以對手或由對手操控的生物為目標的咒語時，在此生物上放置一個+1/+1指示物。', {
+  keywords: ['first_strike'],
+  abilities: [trig('castAny', [{ e: 'counters', what: 'self', n: 1 }], { targetsOpp: true })],
+});
+
+lcr('U', 'Gallia, Tragic Host', '{1}{B}', 'Zombie Satyr', 2, 1, '威懾\n{4}{B}，從你的墳墓場放逐另一張生物牌：將此牌從你的墳墓場橫置放回戰場，並帶有一個+1/+1指示物。', {
+  keywords: ['menace'],
+  abilities: [
+    act({ mana: '{4}{B}' }, [{ e: 'costThen', prompt: '選擇要放逐的另一張生物牌', cost: { exileGy: { type: 'Creature' } }, then: [{ e: 'reanimate', what: 'selfAny', tapped: true, counters: 1 }] }], '放逐另一張生物牌：回到戰場', {
+      fromGraveyard: true,
+      keepSelf: true,
+      cond: { c: 'gyCount', filter: { type: 'Creature' }, n: 2 },
+    }),
+  ],
+});
+
+lcr('R', 'Gideon the Oathless', '{2}{B}', 'Human Mercenary', 3, 3, '守護—棄掉一張牌\n每當由對手操控的生物進戰場時，此生物對該玩家造成1點傷害。\n每當對手起動忠誠異能時，此生物對該玩家造成1點傷害。', {
+  wardDiscard: true,
+  abilities: [
+    trig('anyEtb', [{ e: 'damage', n: 1, to: 'opp' }], { filter: { ctrl: 'opp' } }),
+    trig('oppLoyaltyActivated', [{ e: 'damage', n: 1, to: 'opp' }]),
+  ],
+});
+
+lcr('R', 'Liliana the Repentant', '{1}{B}', 'Human Warlock', 2, 2, '每當另一個由你操控的生物或鵬洛客進戰場時，碾磨兩張牌。\n竭力—{5}{B}：將目標生物或鵬洛客牌從你的墳墓場移回戰場。在此生物上放置一個+1/+1指示物。只能於法術時機起動。（每個竭力異能只能起動一次。）', {
+  abilities: [
+    trig('allyPermEtb', [{ e: 'mill', n: 2 }], { filter: GY_CR_PW }),
+    act({ mana: '{5}{B}' }, [{ e: 'reanimate', what: 'T0' }, { e: 'counters', what: 'self', n: 1 }], '竭力：生物或鵬洛客牌回到戰場', {
+      oncePerGame: true,
+      sorcery: true,
+      targets: [gyTarget(GY_CR_PW, '選擇你墳墓場中的生物或鵬洛客牌')],
+    }),
+  ],
+});
+
+lcr('U', 'Loot, the Anomaly', '{2}{B}', 'Beast Horror', -2, 4, '若此生物的力量為負，它以力量為正來分配戰鬥傷害。\n門檻—犧牲另一個生物或鵬洛客：此生物得-2/-0直到回合結束。只能在你的墳墓場中有七張或更多牌時起動。', {
+  abilities: [
+    { kind: 'static', self: { grant: { damageAbs: true } } },
+    act({ sacOther: { type: ['Creature', 'Planeswalker'], other: true } }, [{ e: 'pump', what: 'self', p: -2, t: 0 }], '犧牲另一個生物：得-2/-0', { cond: { c: 'gyCount', filter: {}, n: 7 } }),
+  ],
+});
+
+lcr('U', 'Mabel, Bitter Recluse', '{B}', 'Mouse Warlock', 1, 1, '死觸\n當此生物進戰場時，從另一個目標生物或鵬洛客上移除至多三個指示物。', {
+  keywords: ['deathtouch'],
+  abilities: [etb([{ e: 'removeCounters', what: 'T0', n: 3, upTo: true }], { targets: [{ kind: 'permanent', filter: GY_CR_PW, notSelf: true, prompt: '選擇另一個生物或鵬洛客' }] })],
+});
+
+lcr('U', 'Massacre Girl, Most Wanted', '{4}{B}', 'Human Assassin', 4, 4, '每當另一個由你操控的生物或鵬洛客死去時，此生物對目標對手造成1點傷害，且你獲得1點生命。\n每當對手被造成非戰鬥傷害時，在此生物上放置一個+1/+1指示物。', {
+  abilities: [
+    trig('allyDies', [{ e: 'damage', n: 1, to: 'T0' }, { e: 'gain', n: 1 }], { includePw: true, targets: [OPP] }),
+    trig('noncombatOpp', [{ e: 'counters', what: 'self', n: 1 }]),
+  ],
+});
+
+lcr('U', 'Proft, Sinister Mastermind', '{2}{B}', 'Human Rogue', 5, 5, '門檻—除非你的墳墓場中有七張或更多牌，否則你不能施放此咒語。\n威懾\n{B}，棄掉此牌：目標生物得-3/-1直到回合結束。', {
+  keywords: ['menace'],
+  castCond: { c: 'gyCount', filter: {}, n: 7 },
+  abilities: [act({ mana: '{B}', discardSelf: true }, [{ e: 'pump', what: 'T0', p: -3, t: -1 }], '棄掉：目標生物得-3/-1', { fromHand: true, targets: [CR] })],
+});
+
+lcr('U', 'Teyo, Diamondblade Mage', '{3}{B}', 'Human Warlock', 3, 1, '閃現\n當此生物進戰場時，目標由你操控的永久物獲得死觸異能直到回合結束。若它是生物，在它上面放置一個+1/+1指示物。若它是鵬洛客，在它上面放置一個忠誠指示物。', {
+  keywords: ['flash'],
+  abilities: [etb(loyaltyTarget('deathtouch'), { targets: [{ kind: 'permanent', filter: { ctrl: 'you' }, prompt: '選擇由你操控的永久物' }] })],
+});
+
+lcr('U', 'Tinybones, Pocket Nuisance', '{2}{B}', 'Skeleton Rogue', 2, 1, '當此生物進戰場時，每位對手棄一張牌。\n每當一位玩家棄掉一張或更多牌時，此生物對每位對手各造成1點傷害。', {
+  abilities: [etb([{ e: 'discard', n: 1, who: 'opp' }]), trig('anyDiscard', [{ e: 'damage', n: 1, to: 'opp' }])],
+});
+
+add({
+  set: S, rarity: 'U', name: 'Way of the Deathbringer', cost: '{2}{B}', types: ['Enchantment'], supertypes: ['Legendary'],
+  text: `${WAY_HEAD(5)}\n由你操控的鵬洛客具有「[−2]：你可以犧牲一個生物。若你如此作，派出一個4/4綠色，具有踐踏異能的野獸衍生生物。」`,
+  abilities: [
+    etb([empower(5)]),
+    grantPw([loyalty(-2, [{ e: 'costThen', prompt: '要犧牲一個生物，派出一個4/4的野獸嗎？', cost: { sac: { type: 'Creature' } }, then: [{ e: 'token', token: 'tok-beast-trample' }] }], '−2：犧牲生物派出4/4野獸')]),
+  ],
+});
+
+add({
+  set: S, rarity: 'U', name: 'Way of the Necromancer', cost: '{1}{B}', types: ['Enchantment'], supertypes: ['Legendary'],
+  text: `${WAY_HEAD(2)}\n每當一個由你操控的生物死去時，在每個由你操控的鵬洛客上各放置一個忠誠指示物。`,
+  abilities: [etb([empower(2)]), trig('allyDies', [{ e: 'loyalty', what: { all: MY_PW }, n: 1 }], { includeSelf: true })],
+});
+
+lcr('U', 'Winter, Tormented Loner', '{2}{B}', 'Human Warlock', 0, 3, '當此生物進戰場時，你可以犧牲一個生物或鵬洛客。當你如此作時，每位對手犧牲一個由其選擇的生物。\n此生物每有一張在你的墳墓場中的生物牌與鵬洛客牌，便得+1/+0。', {
+  abilities: [
+    etb([{ e: 'costThen', prompt: '要犧牲一個生物或鵬洛客，讓每位對手犧牲一個生物嗎？', cost: { sac: GY_CR_PW }, then: [{ e: 'edict', who: 'opp', filter: { type: 'Creature' } }] }]),
+    { kind: 'static', selfPumpPerGy: { filter: GY_CR_PW, p: 1 } },
   ],
 });
 
