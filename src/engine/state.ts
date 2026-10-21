@@ -227,6 +227,8 @@ export interface Stats {
   kw: Set<Keyword>;
   cantAttack: boolean;
   cantBlock: boolean;
+  ignoreDefender?: boolean;
+  damageByToughness?: boolean;
 }
 
 export function stats(g: GameState, c: Card, ignoreEot = false): Stats {
@@ -251,6 +253,8 @@ export function stats(g: GameState, c: Card, ignoreEot = false): Stats {
     if (gr.kw) for (const k of gr.kw) st.kw.add(k);
     if (gr.cantAttack) st.cantAttack = true;
     if (gr.cantBlock) st.cantBlock = true;
+    if (gr.ignoreDefender) st.ignoreDefender = true;
+    if (gr.damageByToughness) st.damageByToughness = true;
   };
   for (const sid of g.battlefield) {
     const s = g.cards[sid];
@@ -312,6 +316,7 @@ export function matches(g: GameState, f: Filter | undefined, c: Card, pov: PID, 
   if (f.other && c.id === sourceId) return false;
   if (f.token !== undefined && c.token !== f.token) return false;
   if (f.stunned && c.stun <= 0) return false;
+  if (f.plusCounters !== undefined && c.counters > 0 !== f.plusCounters) return false;
   if (f.hasCounters !== undefined && (c.counters !== 0) !== f.hasCounters) return false;
   if (f.or && !f.or.some((x) => matches(g, x, c, pov, sourceId))) return false;
   if (f.vanilla !== undefined && (d.text.trim() === '' && !d.keywords?.length) !== f.vanilla) return false;
@@ -406,6 +411,12 @@ export function checkCond(
       return me.spellsThisTurn === 2;
     case 'void':
       return !!g.voidThisTurn;
+    case 'scried':
+      return !!me.scriedThisTurn;
+    case 'oppNoncombatThisTurn':
+      return !!opp.noncombatThisTurn;
+    case 'oppNoncombatLastTurn':
+      return !!opp.noncombatLastTurn;
     case 'notPrepared':
       return sourceId != null && !g.cards[sourceId]?.prepared;
     case 'saddled':
@@ -429,6 +440,16 @@ export function checkCond(
       return n >= cond.n;
     }
   }
+}
+
+/** 玩家操控的永久物中，有任何一個具有這個靜態標記 */
+export function hasStaticFlag(g: GameState, pid: PID, key: 'noZeroLoyaltyDeath' | 'pwOneAttacker'): boolean {
+  for (const id of g.battlefield) {
+    const c = g.cards[id];
+    if (c.controller !== pid) continue;
+    for (const ab of c.def.abilities ?? []) if (ab.kind === 'static' && ab[key]) return true;
+  }
+  return false;
 }
 
 export function lifegainBonus(g: GameState, pid: PID): number {

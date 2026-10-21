@@ -1,5 +1,5 @@
 // 由 scripts/gen_cards.py 從 Scryfall 資料自動產生（FIN）：請勿手動修改
-import { add } from '../../dsl';
+import { addGen as add } from '../../dsl';
 
 add({"set": "FIN", "rarity": "U", "name": "Ashe, Princess of Dalmasca", "cost": "{2}{W}", "types": ["Creature"], "supertypes": ["Legendary"], "subtypes": ["Human", "Rebel", "Noble"], "power": 3, "toughness": 2, "abilities": [{"kind": "trigger", "on": "attacks", "effects": [{"e": "dig", "n": 5, "take": 1, "rest": "bottom", "filter": {"type": "Artifact"}}]}], "text": "每當此生物攻擊時，檢視你牌庫頂的五張牌。你可以展示其中一張神器牌並置於你手上，將其餘的牌以隨機順序置於你的牌庫底。"});
 add({"set": "FIN", "rarity": "U", "name": "Auron's Inspiration", "cost": "{2}{W}", "types": ["Instant"], "flashback": "{2}{W}{W}", "spell": {"effects": [{"e": "pump", "what": {"all": {"type": "Creature", "attacking": true}}, "p": 2, "t": 0}]}, "text": "返照{2}{W}{W}（你可以支付返照費用，從你的墳墓場施放此牌。之後此牌會被放逐。）\n進行攻擊的生物得+2/+0直到回合結束。"});

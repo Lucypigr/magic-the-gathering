@@ -1,5 +1,5 @@
 // 由 scripts/gen_cards.py 從 Scryfall 資料自動產生（FRA）：請勿手動修改
-import { add } from '../../dsl';
+import { addGen as add } from '../../dsl';
 
 add({"set": "FRA", "rarity": "C", "name": "Academic Ascent", "cost": "{1}{W}", "types": ["Instant"], "spell": {"effects": [{"e": "pump", "what": "T0", "p": 2, "t": 2, "kw": ["flying"]}, {"e": "empowerJace", "n": 2}], "targets": [{"kind": "creature"}]}, "text": "目標生物得+2/+2並獲得飛行異能直到回合結束。強化傑斯2（在你的傑斯衍生物上放置2個忠誠指示物；沒有的話先派出一個具有「−1：刺探1」「−3：抓一張牌」的藍色傑斯鵬洛客衍生物）。"});
 add({"set": "FRA", "rarity": "C", "name": "Blossom-Blessed Angel", "cost": "{3}{W}", "types": ["Creature"], "subtypes": ["Angel", "Cleric"], "power": 2, "toughness": 4, "etbPrepared": true, "keywords": ["flying", "vigilance"], "text": "飛行，警戒\n此生物以已準備的狀態進戰場。\n準備—《Seed Suture》{G/W}（法術）：在目標生物上放置一個+1/+1指示物。你獲得1點生命。\n（已準備時，你可以施放它附帶咒語的複製。施放後它就不再是已準備。）", "prepare": {"name": "Seed Suture", "cost": "{G/W}", "types": ["Sorcery"], "text": "在目標生物上放置一個+1/+1指示物。你獲得1點生命。", "spell": {"effects": [{"e": "counters", "what": "T0", "n": 1}, {"e": "gain", "n": 1}], "targets": [{"kind": "creature"}]}}, "imageName": "Blossom-Blessed Angel // Seed Suture"});

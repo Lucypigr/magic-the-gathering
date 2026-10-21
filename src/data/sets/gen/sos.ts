@@ -1,5 +1,5 @@
 // 由 scripts/gen_cards.py 從 Scryfall 資料自動產生（SOS）：請勿手動修改
-import { add } from '../../dsl';
+import { addGen as add } from '../../dsl';
 
 add({"set": "SOS", "rarity": "C", "name": "Dig Site Inventory", "cost": "{W}", "types": ["Sorcery"], "flashback": "{W}", "spell": {"effects": [{"e": "counters", "what": "T0", "n": 1}, {"e": "pump", "what": "T0", "p": 0, "t": 0, "kw": ["vigilance"]}], "targets": [{"kind": "creature", "filter": {"ctrl": "you"}}]}, "text": "返照{W}（你可以支付返照費用，從你的墳墓場施放此牌。之後此牌會被放逐。）\n在目標由你操控的生物上放置一個+1/+1指示物。該由你操控的生物獲得警戒異能直到回合結束。"});
 add({"set": "SOS", "rarity": "C", "name": "Honorbound Page", "cost": "{3}{W}", "types": ["Creature"], "subtypes": ["Cat", "Cleric"], "power": 3, "toughness": 3, "etbPrepared": true, "keywords": ["first_strike"], "text": "先攻\n此生物以已準備的狀態進戰場。\n準備—《Forum's Favor》{W}（法術）：目標生物得+1/+0並獲得飛行異能直到回合結束。\n（已準備時，你可以施放它附帶咒語的複製。施放後它就不再是已準備。）", "prepare": {"name": "Forum's Favor", "cost": "{W}", "types": ["Sorcery"], "text": "目標生物得+1/+0並獲得飛行異能直到回合結束。", "spell": {"effects": [{"e": "pump", "what": "T0", "p": 1, "t": 0, "kw": ["flying"]}], "targets": [{"kind": "creature"}]}}, "imageName": "Honorbound Page // Forum's Favor"});

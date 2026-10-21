@@ -20,4 +20,5 @@ import './gen';
 import './dfc';
 import './staples';
 import './planeswalkers';
+import './fra-cards';
 import './sagas';

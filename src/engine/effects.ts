@@ -25,6 +25,7 @@ import {
   gainLife,
   loseLife,
   moveCard,
+  putCounters,
   sacrifice,
   enterBattlefieldBack,
   transformCard,
@@ -92,7 +93,7 @@ export function resolveRef(g: GameState, ctx: Ctx, ref: Ref): Resolved {
       break;
     case 'trig': {
       const ev = ctx.ev;
-      const id = ev && 'card' in ev ? ev.card : ev && ev.type === 'combatDamage' ? ev.source : undefined;
+      const id = ev && 'card' in ev ? ev.card : ev && ev.type === 'combatDamage' ? ev.source : ev && ev.type === 'youAttack' ? ev.attackers[0] : undefined;
       if (id != null && g.cards[id]?.zone === 'battlefield') out.cards.push(g.cards[id]);
       break;
     }
@@ -143,6 +144,9 @@ export function amount(g: GameState, ctx: Ctx, a: Amt): number {
     if (ev && 'amount' in ev) return ev.amount;
     return 0;
   }
+  if ('lifeGained' in a) return g.players[ctx.controller].lifeGainedThisTurn;
+  if ('libToGy' in a) return resolveRef(g, ctx, a.libToGy).players.reduce<number>((s, p) => s + (g.players[p].libToGyThisTurn ?? 0), 0);
+  if ('lkiCounters' in a) return Math.max(0, g.cards[ctx.source]?.lastCounters ?? 0);
   if ('hand' in a) return g.players[ctx.controller].hand.length;
   if ('x' in a) return ctx.x ?? 0;
   if ('spellsCast' in a) return g.players[ctx.controller].spellsThisTurn;
@@ -355,17 +359,17 @@ function* runEffect(g: GameState, ctx: Ctx, ef: Effect): SubFlow {
       const n = amount(g, ctx, ef.n);
       for (const c of resolveRef(g, ctx, ef.what).cards) {
         if (c.zone !== 'battlefield' || !isCreature(c)) continue;
-        c.counters += n;
-        if (n > 0) emit(g, { type: 'counterPlaced', card: c.id, controller: c.controller, amount: n });
-        log(g, n >= 0 ? `${cardName(c)} 得到 ${n} 個 +1/+1 指示物` : `${cardName(c)} 得到 ${-n} 個 -1/-1 指示物`, c.controller);
+        let k = n;
+        if (n > 0) k = putCounters(g, c, n);
+        else c.counters += n;
+        log(g, k >= 0 ? `${cardName(c)} 得到 ${k} 個 +1/+1 指示物` : `${cardName(c)} 得到 ${-k} 個 -1/-1 指示物`, c.controller);
       }
       break;
     }
     case 'amass': {
       let army = g.battlefield.map((id) => g.cards[id]).find((c) => c.controller === me && c.def.subtypes?.includes('Army'));
       if (!army) army = createToken(g, 'tok-goblin-army', me);
-      army.counters += ef.n;
-      emit(g, { type: 'counterPlaced', card: army.id, controller: me, amount: ef.n });
+      putCounters(g, army, ef.n);
       log(g, `集結鬼怪 ${ef.n}`, me);
       break;
     }
@@ -418,10 +422,17 @@ function* runEffect(g: GameState, ctx: Ctx, ef: Effect): SubFlow {
       const opts = lib.filter((id) => matches(g, ef.filter, g.cards[id], me));
       const picked = yield* choose(g, me, '從牌庫中搜尋一張牌', opts, 0, 1, 'tutor', true);
       for (const id of picked) {
-        moveCard(g, g.cards[id], 'hand');
-        log(g, `搜尋 ${cardName(g.cards[id])} 放到手上`, me);
+        if (ef.to === 'top') {
+          // 展示後洗牌，再放到牌庫頂
+          shuffleArr(g, lib);
+          moveCard(g, g.cards[id], 'library');
+          log(g, `搜尋 ${cardName(g.cards[id])} 放到牌庫頂`, me);
+        } else {
+          moveCard(g, g.cards[id], 'hand');
+          log(g, `搜尋 ${cardName(g.cards[id])} 放到手上`, me);
+        }
       }
-      shuffleArr(g, lib);
+      if (ef.to !== 'top' || !picked.length) shuffleArr(g, lib);
       break;
     }
     case 'removeCounters':
@@ -482,7 +493,7 @@ function* runEffect(g: GameState, ctx: Ctx, ef: Effect): SubFlow {
     case 'endure': {
       const n = amount(g, ctx, ef.n);
       if (src && src.zone === 'battlefield') {
-        src.counters += n;
+        putCounters(g, src, n);
         log(g, `${cardName(src)} 堅忍 ${n}`, me);
       } else {
         const t = createToken(g, 'tok-spirit-endure', me);
@@ -526,6 +537,8 @@ function* runEffect(g: GameState, ctx: Ctx, ef: Effect): SubFlow {
       const bottom = yield* choose(g, me, `占卜 ${ef.n}：選擇要放到牌庫底的牌`, top, 0, top.length, 'scryBottom', true);
       for (const id of bottom) moveCard(g, g.cards[id], 'library', true);
       log(g, `占卜 ${ef.n}`, me);
+      g.players[me].scriedThisTurn = true;
+      emit(g, { type: 'scry', player: me });
       break;
     }
     case 'surveil': {
@@ -533,6 +546,8 @@ function* runEffect(g: GameState, ctx: Ctx, ef: Effect): SubFlow {
       const gy = yield* choose(g, me, `刺探 ${ef.n}：選擇要置入墳墓場的牌`, top, 0, top.length, 'surveilGy', true);
       for (const id of gy) moveCard(g, g.cards[id], 'graveyard');
       log(g, `刺探 ${ef.n}`, me);
+      g.players[me].scriedThisTurn = true;
+      emit(g, { type: 'scry', player: me });
       break;
     }
     case 'dig': {
@@ -638,8 +653,38 @@ function* runEffect(g: GameState, ctx: Ctx, ef: Effect): SubFlow {
         if (c.zone !== 'graveyard') continue;
         log(g, `${cardName(c)} 從墳墓場回到戰場`, me);
         enterBattlefield(g, c, me);
+        if (ef.counters) putCounters(g, c, ef.counters);
+        if (ef.finality) c.finality = true;
       }
       break;
+    case 'reanimateAll': {
+      const ids = g.players[me].graveyard.filter((id) => matches(g, ef.filter, g.cards[id], me));
+      for (const id of ids) {
+        const c = g.cards[id];
+        if (c.zone !== 'graveyard') continue;
+        enterBattlefield(g, c, me);
+      }
+      if (ids.length) log(g, `${ids.length} 張牌從墳墓場回到戰場`, me);
+      break;
+    }
+    case 'kindredJudgment': {
+      const types = new Set<string>();
+      for (const id of g.battlefield) {
+        const c = g.cards[id];
+        if (!isCreature(c) || c.def.changeling) continue;
+        for (const s of c.def.subtypes ?? []) types.add(s);
+      }
+      // 最後多一個「沒有任何生物的類別」：等於消滅所有生物
+      const options = [...types].sort();
+      const NONE = '（任何戰場上沒有生物的類別）';
+      const r: Response = yield { type: 'mode', player: me, prompt: '選擇一個生物類別：消滅所有不是該類別的生物', source: ctx.source, options: [...options, NONE], count: 1, purpose: 'creatureType' };
+      const pick = r.type === 'modes' ? r.picks[0] : options.length;
+      const chosen = options[pick] ?? NONE;
+      log(g, `選擇的生物類別：${chosen}`, me);
+      const dying = g.battlefield.map((id) => g.cards[id]).filter((c) => isCreature(c) && !(c.def.changeling || c.def.subtypes?.includes(chosen)));
+      destroyCards(g, dying);
+      break;
+    }
     case 'edict':
       for (const p of resolveRef(g, ctx, ef.who).players) {
         const opts = g.battlefield.filter((id) => {
@@ -774,7 +819,7 @@ function* runEffect(g: GameState, ctx: Ctx, ef: Effect): SubFlow {
           moveCard(g, top, 'hand');
           continue;
         }
-        if (isCreature(c)) c.counters += 1;
+        if (isCreature(c)) putCounters(g, c, 1);
         const gy = yield* choose(g, c.controller, `探險：要把 ${cardName(top)} 置入墳墓場嗎？（不選則留在牌庫頂）`, [top.id], 0, 1, 'surveilGy', true);
         if (gy.length) moveCard(g, top, 'graveyard');
       }
@@ -787,7 +832,7 @@ function* runEffect(g: GameState, ctx: Ctx, ef: Effect): SubFlow {
         log(g, `${cardName(c)} 被放逐後回到戰場`, c.owner);
         moveCard(g, c, 'exile');
         enterBattlefield(g, c, c.owner);
-        if (ef.counters) c.counters += ef.counters;
+        if (ef.counters) putCounters(g, c, ef.counters);
       }
       break;
     }
@@ -797,6 +842,7 @@ function* runEffect(g: GameState, ctx: Ctx, ef: Effect): SubFlow {
         if (c.zone !== 'battlefield' || !c.def.types.includes('Planeswalker')) continue;
         c.loyalty = (c.loyalty ?? 0) + n;
         log(g, `${cardName(c)} 的忠誠${n >= 0 ? '+' : ''}${n}（${c.loyalty}）`, c.controller);
+        if (n > 0) emit(g, { type: 'loyaltyPlaced', card: c.id, controller: c.controller, amount: n });
       }
       g.version++;
       break;

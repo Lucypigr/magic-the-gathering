@@ -42,8 +42,16 @@ function triggerMatches(g: GameState, c: Card, ab: TriggeredAbility, ev: GameEve
       const t = g.cards[ev.card].def.types;
       return t.includes('Instant') || t.includes('Sorcery');
     }
-    case 'castAny':
-      return ev.type === 'cast' && (ev.player === pov || !!ab.anyPlayer) && matches(g, ab.filter, g.cards[ev.card], pov, c.id);
+    case 'castAny': {
+      if (ev.type !== 'cast' || !(ev.player === pov || ab.anyPlayer)) return false;
+      if (matches(g, ab.filter, g.cards[ev.card], pov, c.id)) return true;
+      // 或是該咒語的目標中有符合條件的永久物
+      if (ab.orTargets) {
+        const item = g.stack.find((s) => s.kind === 'spell' && s.cardId === ev.card);
+        return !!item?.targets.some((t) => t && 'c' in t && g.cards[t.c] && matches(g, ab.orTargets, g.cards[t.c], pov, c.id));
+      }
+      return false;
+    }
     case 'allyEtb': {
       if (ev.type !== 'etb' || ev.card === c.id || ev.controller !== pov) return false;
       const e = g.cards[ev.card];
@@ -59,7 +67,7 @@ function triggerMatches(g: GameState, c: Card, ab: TriggeredAbility, ev: GameEve
       return matches(g, ab.filter, g.cards[ev.card], pov, c.id);
     }
     case 'landfall':
-      return ev.type === 'etb' && ev.controller === pov && isLand(g.cards[ev.card]);
+      return ev.type === 'etb' && ev.controller === pov && isLand(g.cards[ev.card]) && matches(g, ab.filter, g.cards[ev.card], pov, c.id);
     case 'lifegain':
       return ev.type === 'lifegain' && ev.player === pov;
     case 'combatDamagePlayer':
@@ -74,6 +82,7 @@ function triggerMatches(g: GameState, c: Card, ab: TriggeredAbility, ev: GameEve
       return (
         ev.type === 'youAttack' &&
         ev.player === pov &&
+        (!ab.alone || (ev.attackers.length === 1 && g.cards[ev.attackers[0]]?.attackTarget == null)) &&
         (!ab.filter || ev.attackers.some((a) => matches(g, ab.filter, g.cards[a], pov, c.id)))
       );
     case 'oppLifeLoss':
@@ -95,6 +104,18 @@ function triggerMatches(g: GameState, c: Card, ab: TriggeredAbility, ev: GameEve
       return ev.type === 'drawSecond' && ev.player === pov;
     case 'turnedFaceUp':
       return ev.type === 'turnedFaceUp' && ev.card === c.id;
+    case 'scry':
+      return ev.type === 'scry' && ev.player === pov;
+    case 'loyaltyPlaced':
+      return ev.type === 'loyaltyPlaced' && ev.controller === pov;
+    case 'loyaltyActivated':
+      return ev.type === 'loyaltyActivated' && ev.controller === pov && (!ab.filter || matches(g, ab.filter, g.cards[ev.card], pov, c.id));
+    case 'noncombatOpp':
+      return ev.type === 'noncombat' && ev.player !== pov;
+    case 'anyDiscard':
+      return ev.type === 'discard';
+    case 'discardSelf':
+      return ev.type === 'discard' && ev.card === c.id && ev.player === pov;
   }
 }
 
@@ -102,6 +123,17 @@ function triggerMatches(g: GameState, c: Card, ab: TriggeredAbility, ev: GameEve
 const PROWESS: TriggeredAbility = { kind: 'trigger', on: 'castNoncreature', effects: [{ e: 'pump', what: 'self', p: 1, t: 1 }] };
 
 export function emit(g: GameState, ev: GameEvent): void {
+  if (ev.type === 'discard') {
+    // 「當你棄掉這張牌時」：來源已在墳墓場
+    const dc = g.cards[ev.card];
+    const dabs = dc?.def.abilities ?? [];
+    for (let i = 0; i < dabs.length; i++) {
+      const ab = dabs[i];
+      if (ab.kind === 'trigger' && ab.on === 'discardSelf' && triggerMatches(g, dc, ab, ev)) {
+        g.pending.push({ source: dc.id, controller: dc.owner, ability: ab, abilityIndex: i, ev });
+      }
+    }
+  }
   for (const id of g.battlefield) {
     const c = g.cards[id];
     if (ev.type === 'cast' && hasKw(g, c, 'prowess') && triggerMatches(g, c, PROWESS, ev)) {
@@ -174,7 +206,16 @@ function resetPermanentState(c: Card): void {
 
 export function moveCard(g: GameState, c: Card, to: Zone, bottom = false): void {
   const wasOnBf = c.zone === 'battlefield';
+  const from = c.zone;
+  if (wasOnBf) c.lastCounters = c.counters;
+  // 帶著終結指示物的永久物死去時改為放逐
+  if (wasOnBf && to === 'graveyard' && c.finality) {
+    log(g, `${cardName(c)} 有終結指示物，改為放逐`, c.owner);
+    to = 'exile';
+  }
+  c.finality = undefined;
   if (wasOnBf && !c.def.types.includes('Land')) g.voidThisTurn = true;
+  if (from === 'library' && to === 'graveyard') g.players[c.owner].libToGyThisTurn = (g.players[c.owner].libToGyThisTurn ?? 0) + 1;
   c.warpExiled = undefined;
   if (wasOnBf) {
     c.lastPower = stats(g, c).p;
@@ -250,6 +291,14 @@ export function enterBattlefield(g: GameState, c: Card, controller: PID, tapped 
   c.sick = true;
   c.enteredTurn = g.turn;
   c.counters = c.def.etbCounters ?? 0;
+  if (c.counters > 0 && isCreature(c)) {
+    // 帶著指示物進場：同樣套用「多放 n 個」
+    for (const id of g.battlefield) {
+      const s = g.cards[id];
+      if (s.controller !== controller) continue;
+      for (const ab of s.def.abilities ?? []) if (ab.kind === 'static' && ab.counterPlus) c.counters += ab.counterPlus;
+    }
+  }
   if (c.def.etbPrepared) c.prepared = true;
   if (c.def.types.includes('Planeswalker')) c.loyalty = c.def.loyalty ?? 0;
   c.playableTurn = undefined;
@@ -315,6 +364,21 @@ export function transformCard(g: GameState, c: Card): boolean {
   return true;
 }
 
+/** 在生物上放置 +1/+1 指示物（套用「多放 n 個」的取代效果）；回傳實際放置的數量 */
+export function putCounters(g: GameState, c: Card, n: number): number {
+  if (n <= 0 || c.zone !== 'battlefield') return 0;
+  if (isCreature(c)) {
+    for (const id of g.battlefield) {
+      const s = g.cards[id];
+      if (s.controller !== c.controller) continue;
+      for (const ab of s.def.abilities ?? []) if (ab.kind === 'static' && ab.counterPlus) n += ab.counterPlus;
+    }
+  }
+  c.counters += n;
+  emit(g, { type: 'counterPlaced', card: c.id, controller: c.controller, amount: n });
+  return n;
+}
+
 /** 同時將多張永久物置入墳墓場（生物會觸發「死去」） */
 export function putIntoGraveyard(g: GameState, cards: Card[]): void {
   const list = cards.filter((c) => c.zone === 'battlefield');
@@ -361,6 +425,7 @@ export function discard(g: GameState, c: Card): void {
   log(g, `棄掉 ${cardName(c)}`, c.owner);
   moveCard(g, c, 'graveyard');
   c.discardedTurn = g.turn;
+  emit(g, { type: 'discard', player: c.owner, card: c.id });
 }
 
 export function gainLife(g: GameState, pid: PID, n: number): void {
@@ -400,6 +465,17 @@ export function dealDamage(
   opts: { combat?: boolean; noLifeGain?: boolean } = {},
 ): number {
   if (n <= 0) return 0;
+  // 非戰鬥傷害加成（例如「多造成 1 點傷害」）：只對對手或其永久物
+  if (!opts.combat) {
+    const victimCtl = 'p' in target ? target.p : g.cards[target.c]?.controller;
+    if (victimCtl != null && victimCtl !== srcController) {
+      for (const id of g.battlefield) {
+        const s = g.cards[id];
+        if (s.controller !== srcController) continue;
+        for (const ab of s.def.abilities ?? []) if (ab.kind === 'static' && ab.noncombatPlus) n += ab.noncombatPlus;
+      }
+    }
+  }
   const kws = src ? (src.zone === 'battlefield' ? stats(g, src).kw : new Set(src.def.keywords ?? [])) : new Set();
   const srcName = src ? cardName(src) : '';
   if ('p' in target) {
@@ -408,6 +484,10 @@ export function dealDamage(
     if (opts.noLifeGain) p.cantGainLife = true;
     log(g, `${srcName} 對 ${p.name} 造成 ${n} 點傷害（${p.life}）`, srcController, 'damage');
     if (opts.combat && src) emit(g, { type: 'combatDamage', source: src.id, player: target.p, amount: n });
+    if (!opts.combat) {
+      p.noncombatThisTurn = true;
+      emit(g, { type: 'noncombat', player: target.p, amount: n, sourceController: srcController });
+    }
   } else {
     const c = g.cards[target.c];
     if (!c || c.zone !== 'battlefield') return 0;

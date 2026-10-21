@@ -3,6 +3,7 @@ import type { ReactNode } from 'react';
 import type { Decision, GameState, TargetRef } from '../../engine/types';
 import { CardDetail, CardFace } from '../CardView';
 import { Modal } from '../common';
+import { SUB_ZH } from '../i18n';
 
 /**
  * 卡牌格子 + 放大檢視：滑鼠移過或點一下卡牌，旁邊會顯示完整的卡圖與效果。
@@ -106,6 +107,38 @@ export function ChooseModal({ g, d, onSubmit }: { g: GameState; d: Extract<Decis
     >
       {hint && <p className="muted">{hint}</p>}
       <InspectGrid g={g} ids={d.options} cardClass={(id) => `pickable ${sel.includes(id) ? 'picked' : ''}`} onCard={toggle} />
+    </Modal>
+  );
+}
+
+export function ModeModal({ g, d, onSubmit }: { g: GameState; d: Extract<Decision, { type: 'mode' }>; onSubmit: (picks: number[]) => void }) {
+  const [sel, setSel] = useState<number[]>([]);
+  const src = d.source != null ? g.cards[d.source] : null;
+  const toggle = (i: number) => setSel((s) => (s.includes(i) ? s.filter((x) => x !== i) : d.count === 1 ? [i] : s.length >= d.count ? s : [...s, i]));
+  return (
+    <Modal
+      title={d.prompt}
+      footer={
+        <>
+          <span className="muted">
+            已選 {sel.length}／{d.count}
+          </span>
+          <button className="btn btn-primary" disabled={sel.length !== d.count} onClick={() => onSubmit(sel)}>
+            確定
+          </button>
+        </>
+      }
+    >
+      <div className="yesno">
+        {src && <CardFace def={src.def} size="md" />}
+        <div className="mode-list">
+          {d.options.map((o, i) => (
+            <button key={i} className={`btn mode-opt ${sel.includes(i) ? 'btn-primary' : ''}`} onClick={() => toggle(i)}>
+              {d.purpose === 'creatureType' ? SUB_ZH[o] ?? o : o}
+            </button>
+          ))}
+        </div>
+      </div>
     </Modal>
   );
 }

@@ -1,5 +1,5 @@
 // 由 scripts/gen_cards.py 從 Scryfall 資料自動產生（ECL）：請勿手動修改
-import { add } from '../../dsl';
+import { addGen as add } from '../../dsl';
 
 add({"set": "ECL", "rarity": "C", "name": "Changeling Wayfinder", "cost": "{3}", "types": ["Creature"], "subtypes": ["Shapeshifter"], "power": 1, "toughness": 2, "changeling": true, "abilities": [{"kind": "trigger", "on": "etb", "effects": [{"e": "searchLand", "to": "hand"}], "may": "從你的牌庫中搜尋一張基本地牌，展示該牌並置於你手上，然後將你的牌庫洗牌？"}], "text": "變形者（此牌具有所有生物類別。）\n當此生物進戰場時，你可以從你的牌庫中搜尋一張基本地牌，展示該牌並置於你手上，然後將你的牌庫洗牌。"});
 add({"set": "ECL", "rarity": "C", "name": "Goldmeadow Nomad", "cost": "{W}", "types": ["Creature"], "subtypes": ["Kithkin", "Scout"], "power": 1, "toughness": 2, "abilities": [{"kind": "activated", "cost": {"mana": "{W}"}, "effects": [{"e": "token", "token": "tok-kithkin"}], "label": "派出一個1/1綠色與白色的奇斯金衍生", "fromGraveyard": true, "sorcery": true}], "text": "{W}，從你的墳墓場放逐此牌：派出一個1/1綠色與白色的奇斯金衍生生物。只能於法術時機起動。"});

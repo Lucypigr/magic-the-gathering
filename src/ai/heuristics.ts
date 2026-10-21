@@ -211,6 +211,41 @@ export function handCardValue(g: GameState, pid: PID, c: Card): number {
   return v;
 }
 
+/** 選擇模式／選項：回傳選中的選項索引 */
+export function heuristicMode(g: GameState, d: Extract<Decision, { type: 'mode' }>): number[] {
+  const n = d.options.length;
+  const scores: number[] = [];
+  if (d.purpose === 'creatureType') {
+    // 「消滅所有不是所選類別的生物」：選讓對手損失最大、自己損失最小的類別
+    const val = (c: Card) => creatureValue(g, c);
+    for (let i = 0; i < n; i++) {
+      let s = 0;
+      for (const id of g.battlefield) {
+        const c = g.cards[id];
+        if (!isCreature(c)) continue;
+        const of = c.def.changeling || !!c.def.subtypes?.includes(d.options[i]);
+        if (of) continue;
+        s += (c.controller === d.player ? -1 : 1) * val(c);
+      }
+      scores.push(s);
+    }
+  } else {
+    for (let i = 0; i < n; i++) {
+      const effects = d.meta?.effects[i] ?? [];
+      const specs = d.meta?.specs[i] ?? [];
+      let s = 1;
+      if (specs.some((_, k) => polarity(effects, k) === 'harm')) s = 3;
+      else if (effects.some((e) => ['draw', 'token', 'counters', 'gain', 'pump', 'scry', 'surveil', 'empowerJace', 'tutor', 'toHand', 'reanimate'].includes(e.e))) s = 2;
+      scores.push(s - i * 0.001);
+    }
+  }
+  return scores
+    .map((s, i) => [s, i] as const)
+    .sort((a, b) => b[0] - a[0])
+    .slice(0, d.count)
+    .map((x) => x[1]);
+}
+
 export function heuristicChoose(g: GameState, d: Extract<Decision, { type: 'choose' }>): number[] {
   const pid = d.player;
   const opts = d.options.slice();

@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useReducer, useRef, useState, type CSS
 import type { Level } from '../../ai/combatAI';
 import { expandDeck, type DeckList } from '../../data';
 import {
-  activatedAbilities,
+  abilitiesFor,
   castOptionsFor,
   playOptions,
   sacChoices,
@@ -25,7 +25,7 @@ import { LEVEL_ZH } from '../i18n';
 import { ManaCost } from '../Mana';
 import { Avatar, CreatureZone, LandZone, OppHand, OtherZone, PhaseTrack, Piles, StackView, type Marks } from './Board';
 import { ArrowLayer, Spotlight } from './Fx';
-import { ChooseModal, GameOverModal, MulliganModal, PileModal, YesNoModal } from './Modals';
+import { ChooseModal, GameOverModal, ModeModal, MulliganModal, PileModal, YesNoModal } from './Modals';
 
 export interface BattleResult {
   won: boolean;
@@ -831,8 +831,8 @@ export function Battle(props: Props) {
                   <button key={i} className="btn btn-primary btn-block" onClick={() => startOption(o)}>
                     {o.kind === 'play' ? '打出' : o.kind === 'activate' ? (/^[+−0]/.test(o.label ?? '') ? o.label : `起動：${o.label}`) : o.alt || inspected.def.spell?.modes ? o.label : inspected.def.adventure ? `施放本體` : '施放'}
                     {o.kind === 'cast' && <ManaCost cost={costToString(spellCost(g, inspected, 0, o.mode, undefined, o.alt))} size={15} />}
-                    {o.kind === 'activate' && activatedAbilities(inspected.def)[o.ability!].cost.mana && (
-                      <ManaCost cost={activatedAbilities(inspected.def)[o.ability!].cost.mana} size={15} />
+                    {o.kind === 'activate' && abilitiesFor(g, inspected)[o.ability!].cost.mana && (
+                      <ManaCost cost={abilitiesFor(g, inspected)[o.ability!].cost.mana} size={15} />
                     )}
                   </button>
                 ))}
@@ -863,6 +863,7 @@ export function Battle(props: Props) {
         <MulliganModal g={g} mulligans={d.mulligans} onKeep={() => ctl.submit({ type: 'keep', keep: true })} onMull={() => ctl.submit({ type: 'keep', keep: false })} />
       )}
       {d?.type === 'choose' && d.player === 0 && <ChooseModal key={seq} g={g} d={d} onSubmit={(ids) => ctl.submit({ type: 'choose', ids })} />}
+      {d?.type === 'mode' && d.player === 0 && <ModeModal key={seq} g={g} d={d} onSubmit={(picks) => ctl.submit({ type: 'modes', picks })} />}
       {d?.type === 'yesno' && d.player === 0 && <YesNoModal g={g} d={d} onAnswer={(yes) => ctl.submit({ type: 'yesno', yes })} />}
       {gySpec && draft && (
         <PileModal

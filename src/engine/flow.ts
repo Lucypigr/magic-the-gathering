@@ -13,6 +13,7 @@ import {
   cardName,
   checkCond,
   GameOver,
+  hasStaticFlag,
   isCreature,
   isPermanentDef,
   log,
@@ -23,9 +24,9 @@ import {
   shuffleArr,
   stats,
 } from './state';
-import { isLegalTarget, legalTargets, validateTargets } from './targets';
-import type { Card, Flow, GameState, PID, Response, SubFlow, TargetRef } from './types';
-import { addLore, discard, drawCards, emit, enterBattlefield, enterBattlefieldBack, moveCard, putIntoGraveyard, sacrifice } from './zones';
+import { hasTargetsAvailable, isLegalTarget, legalTargets, validateTargets } from './targets';
+import type { Card, Effect, Flow, GameState, PID, Response, SubFlow, TargetRef, TargetSpec } from './types';
+import { addLore, discard, drawCards, emit, enterBattlefield, enterBattlefieldBack, moveCard, putCounters, putIntoGraveyard, sacrifice } from './zones';
 
 // ------------------------------------------------------------
 // 狀態動作
@@ -45,7 +46,7 @@ export function checkSBA(g: GameState): void {
     for (const id of g.battlefield) {
       const c = g.cards[id];
       // 鵬洛客：忠誠為0時置入墳墓場
-      if (c.def.types.includes('Planeswalker') && !isCreature(c) && (c.loyalty ?? 0) <= 0) {
+      if (c.def.types.includes('Planeswalker') && !isCreature(c) && (c.loyalty ?? 0) <= 0 && !hasStaticFlag(g, c.controller, 'noZeroLoyaltyDeath')) {
         dying.push(c);
         continue;
       }
@@ -110,14 +111,66 @@ export function checkSBA(g: GameState): void {
 // ------------------------------------------------------------
 // 觸發式能力上堆疊
 // ------------------------------------------------------------
+/** 把效果中的目標參照（T0、T1…）整體平移，用來合併多個模式 */
+export function shiftRefs<T>(v: T, offset: number): T {
+  if (offset === 0) return v;
+  if (Array.isArray(v)) return v.map((x) => shiftRefs(x, offset)) as unknown as T;
+  if (v && typeof v === 'object') {
+    const o = v as Record<string, unknown>;
+    const out: Record<string, unknown> = {};
+    for (const k of Object.keys(o)) {
+      const x = o[k];
+      if (typeof x === 'string' && /^T\d+$/.test(x) && k !== 'text') out[k] = 'T' + (Number(x.slice(1)) + offset);
+      else if (k === 't' && o.c === 'targetIs' && typeof x === 'number') out[k] = x + offset;
+      else out[k] = shiftRefs(x, offset);
+    }
+    return out as T;
+  }
+  return v;
+}
+
 function* flushTriggers(g: GameState): SubFlow {
   const list = g.pending.splice(0);
   const ordered = [...list.filter((t) => t.controller === g.active), ...list.filter((t) => t.controller !== g.active)];
   for (const t of ordered) {
-    const ab = t.ability;
+    let ab = t.ability;
+    const src = g.cards[t.source];
+    if (ab.modes) {
+      // 模式式觸發：先選模式，再選目標
+      const legal = ab.modes.map((_, i) => i).filter((i) => hasTargetsAvailable(g, ab.modes![i].targets ?? [], t.controller, t.source));
+      const count = Math.min(ab.chooseN ?? 1, legal.length);
+      if (count === 0) {
+        log(g, `${cardName(src)} 的觸發式能力沒有可選的模式`, t.controller);
+        continue;
+      }
+      let picks = legal;
+      if (legal.length > count) {
+        const r: Response = yield {
+          type: 'mode',
+          player: t.controller,
+          prompt: `${cardName(src)}：選擇${count === 1 ? '一項' : `${count}項`}`,
+          source: t.source,
+          options: legal.map((i) => ab.modes![i].text),
+          count,
+          purpose: 'trigger',
+          meta: { effects: legal.map((i) => ab.modes![i].effects), specs: legal.map((i) => ab.modes![i].targets ?? []) },
+        };
+        const chosen = r.type === 'modes' ? [...new Set(r.picks)].filter((k) => k >= 0 && k < legal.length).slice(0, count) : [];
+        while (chosen.length < count) for (let k = 0; k < legal.length && chosen.length < count; k++) if (!chosen.includes(k)) chosen.push(k);
+        picks = chosen.sort((a, b) => a - b).map((k) => legal[k]);
+      }
+      const eff: Effect[] = [];
+      const sp: TargetSpec[] = [];
+      for (const i of picks) {
+        const m = ab.modes[i];
+        eff.push(...shiftRefs(m.effects, sp.length));
+        sp.push(...(m.targets ?? []));
+      }
+      ab = { ...ab, modes: undefined, effects: eff, targets: sp.length ? sp : undefined };
+      log(g, `${cardName(src)}：選擇了「${picks.map((i) => t.ability.modes![i].text).join('」「')}」`, t.controller);
+    }
     const specs = ab.targets ?? [];
     let targets: (TargetRef | null)[] = [];
-    const src = g.cards[t.source];
     if (specs.length) {
       const options = specs.map((s) => legalTargets(g, s, t.controller, t.source));
       if (specs.some((s, i) => !s.optional && options[i].length === 0)) {
@@ -229,7 +282,7 @@ export function* resolveTop(g: GameState): SubFlow {
         log(g, `${cardName(src)} 進入戰場`, item.controller);
       } else {
         enterBattlefield(g, src, item.controller);
-        if (def.etbCountersX && item.x) src.counters += item.x;
+        if (def.etbCountersX && item.x) putCounters(g, src, item.x);
         log(g, `${cardName(src)} 進入戰場`, item.controller);
         if (item.alt === 'warp') src.exileAtEnd = true;
         if (item.alt === 'offspring') {
@@ -401,6 +454,10 @@ function* turn(g: GameState): SubFlow {
     p.drawsThisTurn = 0;
     p.nonlandEtbThisTurn = 0;
     p.permToGyThisTurn = false;
+    p.scriedThisTurn = false;
+    p.libToGyThisTurn = 0;
+    p.noncombatLastTurn = !!p.noncombatThisTurn;
+    p.noncombatThisTurn = false;
     p.lifeLostThisTurn = 0;
   }
   g.attackedThisTurn = false;

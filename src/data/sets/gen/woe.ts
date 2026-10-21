@@ -1,5 +1,5 @@
 // 由 scripts/gen_cards.py 從 Scryfall 資料自動產生（WOE）：請勿手動修改
-import { add } from '../../dsl';
+import { addGen as add } from '../../dsl';
 
 add({"set": "WOE", "rarity": "C", "name": "Armory Mice", "cost": "{1}{W}", "types": ["Creature"], "subtypes": ["Mouse"], "power": 3, "toughness": 1, "abilities": [{"kind": "static", "self": {"cond": {"c": "celebration"}, "grant": {"p": 0, "t": 2}}}], "text": "慶典—只要本回合有兩個或更多非地永久物在你的操控下進戰場，此生物便得+0/+2。"});
 add({"set": "WOE", "rarity": "C", "name": "Kellan's Lightblades", "cost": "{1}{W}", "types": ["Instant"], "spell": {"modes": [{"text": "不交易", "effects": [{"e": "damage", "n": 3, "to": "T0"}], "targets": [{"kind": "creature", "filter": {"inCombat": true}}]}, {"text": "交易", "sac": {"or": [{"type": "Artifact"}, {"type": "Enchantment"}, {"token": true}]}, "effects": [{"e": "destroy", "what": "T0"}], "targets": [{"kind": "creature", "filter": {"inCombat": true}}]}]}, "text": "交易（你施放此咒語時可以犧牲一個神器、結界或衍生物。）\n對目標進行攻擊或阻擋的生物造成3點傷害。若已交易，改為消滅該進行攻擊或阻擋的生物。"});

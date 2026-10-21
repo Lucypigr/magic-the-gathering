@@ -1,5 +1,5 @@
 // 由 scripts/gen_cards.py 從 Scryfall 資料自動產生（TLA）：請勿手動修改
-import { add } from '../../dsl';
+import { addGen as add } from '../../dsl';
 
 add({"set": "TLA", "rarity": "C", "name": "Sandbenders' Storm", "cost": "{3}{W}", "types": ["Instant"], "spell": {"modes": [{"text": "消滅目標力量為4或更多的生物", "effects": [{"e": "destroy", "what": "T0"}], "targets": [{"kind": "creature", "filter": {"powMin": 4}}]}, {"text": "大地彎折3（簡化：派出一個0/0具敏捷的", "effects": [{"e": "earthbend", "n": 3}]}]}, "text": "選擇一項：\n• 消滅目標力量為4或更多的生物。\n• 大地彎折3（簡化：派出一個0/0具敏捷的大地元素，並放上3個+1/+1指示物）。"});
 add({"set": "TLA", "rarity": "C", "name": "Forecasting Fortune Teller", "cost": "{1}{U}", "types": ["Creature"], "subtypes": ["Human", "Advisor", "Ally"], "power": 1, "toughness": 3, "abilities": [{"kind": "trigger", "on": "etb", "effects": [{"e": "token", "token": "tok-clue"}]}], "text": "當此生物進戰場時，派出一個線索衍生物。"});

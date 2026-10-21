@@ -1,5 +1,5 @@
 // 由 scripts/gen_cards.py 從 Scryfall 資料自動產生（FDN）：請勿手動修改
-import { add } from '../../dsl';
+import { addGen as add } from '../../dsl';
 
 add({"set": "FDN", "rarity": "M", "name": "Sire of Seven Deaths", "cost": "{7}", "types": ["Creature"], "subtypes": ["Eldrazi"], "power": 7, "toughness": 7, "wardLife": 7, "keywords": ["reach", "first_strike", "vigilance", "menace", "trample", "lifelink"], "text": "延勢，先攻\n警戒，威懾\n踐踏，繫命\n守護—支付7點生命"});
 add({"set": "FDN", "rarity": "U", "name": "Dauntless Veteran", "cost": "{1}{W}{W}", "types": ["Creature"], "subtypes": ["Human", "Soldier"], "power": 2, "toughness": 2, "abilities": [{"kind": "trigger", "on": "attacks", "effects": [{"e": "pump", "what": {"all": {"type": "Creature", "ctrl": "you"}}, "p": 1, "t": 1}]}], "text": "每當此生物攻擊時，由你操控的生物得+1/+1直到回合結束。"});

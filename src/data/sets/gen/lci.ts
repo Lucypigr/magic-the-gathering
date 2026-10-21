@@ -1,5 +1,5 @@
 // 由 scripts/gen_cards.py 從 Scryfall 資料自動產生（LCI）：請勿手動修改
-import { add } from '../../dsl';
+import { addGen as add } from '../../dsl';
 
 add({"set": "LCI", "rarity": "U", "name": "Kinjalli's Dawnrunner", "cost": "{2}{W}", "types": ["Creature"], "subtypes": ["Human", "Scout"], "power": 1, "toughness": 1, "keywords": ["double_strike"], "abilities": [{"kind": "trigger", "on": "etb", "effects": [{"e": "explore", "what": "self"}]}], "text": "連擊\n當此生物進戰場時，此生物探險（展示你牌庫頂的牌；是地就放到手上，否則在它上面放一個+1/+1指示物，並可以把那張牌置入墳墓場）。"});
 add({"set": "LCI", "rarity": "C", "name": "Miner's Guidewing", "cost": "{W}", "types": ["Creature"], "subtypes": ["Bird"], "power": 1, "toughness": 1, "keywords": ["flying", "vigilance"], "abilities": [{"kind": "trigger", "on": "dies", "effects": [{"e": "explore", "what": "T0"}], "targets": [{"kind": "creature", "filter": {"ctrl": "you"}}]}], "text": "飛行，警戒\n當此生物死去時，目標由你操控的生物探險（展示你牌庫頂的牌；是地就放到手上，否則在該生物上放一個+1/+1指示物，並可以把那張牌置入墳墓場）。"});

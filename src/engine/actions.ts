@@ -33,7 +33,7 @@ import { faceDownDef, turnFaceUp } from './facedown';
 // ------------------------------------------------------------
 // 法術力
 // ------------------------------------------------------------
-export function manaSources(g: GameState, pid: PID, exclude?: number, convoke = false): ManaSource[] {
+export function manaSources(g: GameState, pid: PID, exclude?: number, convoke = false, forDef?: CardDef): ManaSource[] {
   const out: ManaSource[] = [];
   if (convoke) {
     // 召集：未橫置的生物可以支付 {1} 或一點與它同色的法術力（排在最後才用）
@@ -47,6 +47,8 @@ export function manaSources(g: GameState, pid: PID, exclude?: number, convoke = 
   for (const id of g.battlefield) {
     const c = g.cards[id];
     if (c.controller !== pid || c.tapped || !c.def.produces || id === exclude) continue;
+    // 限定用途的法術力（例如只能用來施放鵬洛客咒語）
+    if (c.def.manaOnly === 'planeswalker' && !forDef?.types.includes('Planeswalker')) continue;
     const cr = isCreature(c);
     if (cr && c.sick && !hasKw(g, c, 'haste')) continue;
     out.push({ id, produces: c.def.produces, isCreature: cr, sac: c.def.sacOnMana, filter: c.def.filterMana, pain: c.def.painMana });
@@ -65,12 +67,12 @@ export function extraLandDrops(g: GameState, pid: PID): number {
   return n;
 }
 
-export function canPayCost(g: GameState, pid: PID, cost: ManaCost, exclude?: number, convoke = false): boolean {
-  return findPayment(cost, manaSources(g, pid, exclude, convoke)) !== null;
+export function canPayCost(g: GameState, pid: PID, cost: ManaCost, exclude?: number, convoke = false, forDef?: CardDef): boolean {
+  return findPayment(cost, manaSources(g, pid, exclude, convoke, forDef)) !== null;
 }
 
-export function payCost(g: GameState, pid: PID, cost: ManaCost, exclude?: number, convoke = false): boolean {
-  const pay = findPayment(cost, manaSources(g, pid, exclude, convoke));
+export function payCost(g: GameState, pid: PID, cost: ManaCost, exclude?: number, convoke = false, forDef?: CardDef): boolean {
+  const pay = findPayment(cost, manaSources(g, pid, exclude, convoke, forDef));
   if (!pay) return false;
   for (const p of pay) g.cards[p.id].tapped = true;
   for (const p of pay) if (g.cards[p.id].def.painMana && p.mana !== 'C') loseLife(g, pid, 1);
@@ -218,6 +220,16 @@ export function spellCost(g: GameState, c: Card, pid: PID, mode?: number, target
       }
       cost = reduceCost(cost, { ...parseCost(''), generic: n });
     }
+    if (cr.perMaxStat) {
+      let n = 0;
+      for (const id of g.battlefield) {
+        const s = g.cards[id];
+        if (s.controller !== pid || !matches(g, cr.perMaxStat.filter, s, pid)) continue;
+        const st = stats(g, s);
+        n = Math.max(n, cr.perMaxStat.stat === 'power' ? st.p : st.t);
+      }
+      cost = reduceCost(cost, { ...parseCost(''), generic: n });
+    }
     if (cr.perCount) cost = reduceCost(cost, { ...parseCost(''), generic: countMatching(g, { ...cr.perCount, ctrl: 'you' }, pid) });
     if (cr.cond && cr.mana && checkCond(g, cr.cond, pid, c.id, [])) cost = reduceCost(cost, parseCost(cr.mana));
   }
@@ -228,6 +240,15 @@ export function spellCost(g: GameState, c: Card, pid: PID, mode?: number, target
       if (ab.kind === 'static' && ab.spellCostLess && matches(g, ab.spellCostLess.filter, c, pid)) {
         cost = reduceCost(cost, { ...parseCost(''), generic: ab.spellCostLess.n });
       }
+    }
+  }
+  // 稅：永久物讓咒語多花費用（例如「對手施放的非生物咒語費用多{1}」）
+  for (const id of g.battlefield) {
+    const s = g.cards[id];
+    for (const ab of s.def.abilities ?? []) {
+      if (ab.kind !== 'static' || !ab.spellCostMore) continue;
+      const m = ab.spellCostMore;
+      if ((m.who === 'all' || s.controller !== pid) && matches(g, m.filter, c, pid)) cost.generic += m.n;
     }
   }
   if (alt === 'harmonize') {
@@ -298,6 +319,27 @@ export function activatedAbilities(def: CardDef): ActivatedAbility[] {
   return list;
 }
 
+/** 其他永久物授予這張牌的起動式異能（例如「由你操控的鵬洛客具有……」） */
+export function grantedAbilities(g: GameState, c: Card): ActivatedAbility[] {
+  const out: ActivatedAbility[] = [];
+  if (c.zone !== 'battlefield') return out;
+  for (const id of g.battlefield) {
+    const s = g.cards[id];
+    if (s.controller !== c.controller) continue;
+    for (const ab of s.def.abilities ?? []) {
+      if (ab.kind === 'static' && ab.grantAbilities && matches(g, ab.grantAbilities.filter, c, c.controller, s.id)) out.push(...ab.grantAbilities.abilities);
+    }
+  }
+  return out;
+}
+
+/** 這張牌目前所有的起動式異能（含授予的；索引依序接在本身的異能後面） */
+export function abilitiesFor(g: GameState, c: Card): ActivatedAbility[] {
+  const base = activatedAbilities(c.def);
+  const extra = grantedAbilities(g, c);
+  return extra.length ? [...base, ...extra] : base;
+}
+
 /** 工藝的素材：優先用墳墓場的牌，其次是戰場上價值最低的永久物 */
 export function craftMaterials(g: GameState, pid: PID, f: Filter, selfId: number, n = 1): number[] | null {
   const gy = g.players[pid].graveyard.map((id) => g.cards[id]).filter((c) => matches(g, f, c, pid, selfId));
@@ -352,9 +394,9 @@ export function crewChoice(g: GameState, pid: PID, vehicle: Card, n: number): nu
 const LOYALTY_USED = 2000;
 
 export function canActivate(g: GameState, pid: PID, c: Card, idx: number): boolean {
-  const ab = activatedAbilities(c.def)[idx];
+  const ab = abilitiesFor(g, c)[idx];
   if (!ab) return false;
-  if (ab.fromGraveyard ? c.zone !== 'graveyard' || c.owner !== pid : c.zone !== 'battlefield' || c.controller !== pid) return false;
+  if (ab.fromGraveyard ? c.zone !== 'graveyard' || c.owner !== pid : ab.fromHand ? c.zone !== 'hand' || c.owner !== pid : c.zone !== 'battlefield' || c.controller !== pid) return false;
   if (ab.sorcery && !sorceryTiming(g, pid)) return false;
   if (ab.oncePerTurn && c.usedThisTurn.includes(1000 + idx)) return false;
   if (ab.oncePerGame && c.exhausted?.includes(idx)) return false;
@@ -413,7 +455,7 @@ export function maxXFor(g: GameState, pid: PID, c: Card, mode?: number, alt?: Ca
   const def = castDef(c.def, alt);
   if (!parseCost(def.spell?.modes?.[mode ?? 0]?.cost ?? def.cost).x) return undefined;
   let x = 0;
-  while (x < 20 && canPayCost(g, pid, spellCost(g, c, pid, mode, undefined, alt, x + 1), undefined, !!def.convoke)) x++;
+  while (x < 20 && canPayCost(g, pid, spellCost(g, c, pid, mode, undefined, alt, x + 1), undefined, !!def.convoke, def)) x++;
   return x;
 }
 
@@ -477,7 +519,7 @@ function castOptionsAs(g: GameState, pid: PID, c: Card, alt: CastAlt | undefined
     if (msac && sacCandidates(g, pid, msac).length === 0) continue;
     const cost = spellCost(g, c, pid, mode, undefined, alt);
     const tapper = alt === 'harmonize' ? harmonizeTapper(g, pid)?.id : undefined;
-    if (!canPayCost(g, pid, cost, tapper, !!def.convoke)) continue;
+    if (!canPayCost(g, pid, cost, tapper, !!def.convoke, def)) continue;
     const name = alt === 'adventure' ? (def.zh ?? def.name) : displayName(def);
     out.push({
       kind: 'cast',
@@ -517,15 +559,23 @@ function castOptionsAs(g: GameState, pid: PID, c: Card, alt: CastAlt | undefined
   return out;
 }
 
+/** 戰鬥中不能施放咒語或起動異能（例如「戰鬥中，所有玩家都不能施放咒語」） */
+export function combatLocked(g: GameState): boolean {
+  if (!g.phase.startsWith('combat')) return false;
+  return g.battlefield.some((id) => g.cards[id].def.abilities?.some((a) => a.kind === 'static' && a.noCombatActions));
+}
+
 export function playOptions(g: GameState, pid: PID): PlayOption[] {
   const out: PlayOption[] = [];
+  if (combatLocked(g)) return out;
   for (const c of castableCards(g, pid)) out.push(...castOptionsFor(g, pid, c));
   const gyAbility = g.players[pid].graveyard.filter((id) => activatedAbilities(g.cards[id].def).some((a) => a.fromGraveyard));
-  for (const id of [...g.battlefield, ...gyAbility]) {
+  const handAbility = g.players[pid].hand.filter((id) => activatedAbilities(g.cards[id].def).some((a) => a.fromHand));
+  for (const id of [...g.battlefield, ...gyAbility, ...handAbility]) {
     const c = g.cards[id];
     if (c.zone === 'battlefield' ? c.controller !== pid : c.owner !== pid) continue;
     if (c.prepared && c.zone === 'battlefield') out.push(...castOptionsAs(g, pid, c, 'prepared'));
-    const abs = activatedAbilities(c.def);
+    const abs = abilitiesFor(g, c);
     for (let i = 0; i < abs.length; i++) {
       if (!canActivate(g, pid, c, i)) continue;
       out.push({
@@ -549,6 +599,7 @@ export function sacChoices(g: GameState, pid: PID, f: Filter, sourceId?: number)
 // 執行動作（回傳錯誤訊息或 null）
 // ------------------------------------------------------------
 export function performAction(g: GameState, pid: PID, a: PriorityAction): string | null {
+  if ((a.type === 'cast' || a.type === 'activate') && combatLocked(g)) return '戰鬥中不能施放咒語或起動異能';
   if (a.type === 'play') return doPlay(g, pid, a.card);
   if (a.type === 'cast') return doCast(g, pid, a);
   if (a.type === 'activate') return doActivate(g, pid, a);
@@ -651,7 +702,7 @@ function doCast(g: GameState, pid: PID, a: Extract<PriorityAction, { type: 'cast
   const x = parseCost(def.spell?.modes?.[mode ?? 0]?.cost ?? def.cost).x ? Math.max(0, Math.floor(a.x ?? 0)) : undefined;
   const cost = spellCost(g, c, pid, mode, targets, alt, x ?? 0);
   const tapper = alt === 'harmonize' ? harmonizeTapper(g, pid) : null;
-  if (!payCost(g, pid, cost, tapper?.id, !!def.convoke)) return `法術力不足（需要 ${costToString(cost)}）`;
+  if (!payCost(g, pid, cost, tapper?.id, !!def.convoke, def)) return `法術力不足（需要 ${costToString(cost)}）`;
   if (tapper) {
     g.cards[tapper.id].tapped = true;
     log(g, `和聲：橫置 ${cardName(g.cards[tapper.id])}，費用減少 {${tapper.p}}`, pid);
@@ -706,7 +757,7 @@ function doCast(g: GameState, pid: PID, a: Extract<PriorityAction, { type: 'cast
 function doActivate(g: GameState, pid: PID, a: Extract<PriorityAction, { type: 'activate' }>): string | null {
   const c = g.cards[a.card];
   if (!c) return '找不到永久物';
-  const ab = activatedAbilities(c.def)[a.ability];
+  const ab = abilitiesFor(g, c)[a.ability];
   if (!ab || !canActivate(g, pid, c, a.ability)) return '現在不能起動這個異能';
   const specs = ab.targets ?? [];
   const targets = specs.map((_, i) => a.targets?.[i] ?? null);
@@ -748,6 +799,8 @@ function doActivate(g: GameState, pid: PID, a: Extract<PriorityAction, { type: '
   if (ab.cost.loyalty !== undefined) {
     c.loyalty = (c.loyalty ?? 0) + ab.cost.loyalty;
     c.usedThisTurn.push(LOYALTY_USED);
+    if (ab.cost.loyalty > 0) emit(g, { type: 'loyaltyPlaced', card: c.id, controller: pid, amount: ab.cost.loyalty });
+    emit(g, { type: 'loyaltyActivated', card: c.id, controller: pid, removed: Math.max(0, -ab.cost.loyalty) });
   }
   if (ab.cost.crew !== undefined) {
     const crew = crewChoice(g, pid, c, ab.cost.crew) ?? [];
@@ -771,6 +824,10 @@ function doActivate(g: GameState, pid: PID, a: Extract<PriorityAction, { type: '
   if (sacCard) sacrifice(g, sacCard);
   if (ab.cost.sacSelf) sacrifice(g, c);
   if (ab.fromGraveyard && c.zone === 'graveyard') moveCard(g, c, 'exile');
+  if (ab.fromHand && c.zone === 'hand') {
+    if (ab.cost.discardSelf) discard(g, c);
+    else if (ab.cost.exileSelf) moveCard(g, c, 'exile');
+  }
   if (ab.cost.craft) {
     for (const m of craftMaterials(g, pid, ab.cost.craft, c.id, ab.cost.craftCount) ?? []) {
       log(g, `工藝：放逐 ${cardName(g.cards[m])}`, pid);

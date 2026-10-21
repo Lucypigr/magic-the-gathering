@@ -1,4 +1,4 @@
-import { cardName, creaturesOf, isCreature, log, other, show, stats } from './state';
+import { cardName, creaturesOf, hasStaticFlag, isCreature, log, other, show, stats } from './state';
 import type { Card, GameState, PID } from './types';
 import { dealDamage, emit } from './zones';
 
@@ -6,7 +6,7 @@ export function canAttack(g: GameState, c: Card): boolean {
   if (!isCreature(c) || c.zone !== 'battlefield' || c.tapped) return false;
   if (c.controller !== g.active) return false;
   const st = stats(g, c);
-  if (st.cantAttack || st.kw.has('defender')) return false;
+  if (st.cantAttack || (st.kw.has('defender') && !st.ignoreDefender)) return false;
   if (c.sick && !st.kw.has('haste')) return false;
   return true;
 }
@@ -47,10 +47,17 @@ export function declareAttackers(g: GameState, pid: PID, ids: number[], targets?
   const uniq = [...new Set(ids)];
   const list = uniq.map((id) => g.cards[id]).filter((c) => c && c.controller === pid && canAttack(g, c));
   const pws = new Set(attackablePlaneswalkers(g, pid).map((c) => c.id));
+  const attackedPw = new Set<number>();
   for (const c of list) {
     c.attacking = true;
     const t = targets?.[c.id];
     c.attackTarget = t != null && pws.has(t) ? t : null;
+    // 「每個戰鬥只能有一個生物攻擊此鵬洛客」：多出來的攻擊玩家
+    if (c.attackTarget != null) {
+      const pw = g.cards[c.attackTarget];
+      if (hasStaticFlag(g, pw.controller, 'pwOneAttacker') && attackedPw.has(pw.id)) c.attackTarget = null;
+      else attackedPw.add(pw.id);
+    }
     if (!stats(g, c).kw.has('vigilance')) c.tapped = true;
   }
   if (list.length) {
@@ -148,11 +155,17 @@ export function assignAttackerDamage(
   return out;
 }
 
+/** 戰鬥傷害使用的力量（防禦力大於力量且被授予時，以防禦力代替） */
+function combatPower(g: GameState, c: Card): number {
+  const st = stats(g, c);
+  return st.damageByToughness && st.t > st.p ? st.t : st.p;
+}
+
 export function combatDamage(g: GameState, step: DamageStep): void {
   const hits: { src: Card; card?: Card; player?: PID; n: number }[] = [];
   for (const a of attackers(g)) {
     if (!dealsIn(g, a, step)) continue;
-    const p = stats(g, a).p;
+    const p = combatPower(g, a);
     if (p <= 0) continue;
     // 攻擊鵬洛客：傷害給該鵬洛客；它已經離開戰場的話不造成傷害
     const pw = a.attackTarget != null ? g.cards[a.attackTarget] : null;
@@ -178,7 +191,7 @@ export function combatDamage(g: GameState, step: DamageStep): void {
     if (b.blocking == null || !dealsIn(g, b, step)) continue;
     const a = g.cards[b.blocking];
     if (!a || a.zone !== 'battlefield' || !a.attacking) continue;
-    const p = stats(g, b).p;
+    const p = combatPower(g, b);
     if (p > 0) hits.push({ src: b, card: a, n: p });
   }
   for (const h of hits) {

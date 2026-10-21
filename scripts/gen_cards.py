@@ -2005,7 +2005,7 @@ def main():
     for s, lst in per_set.items():
         with open(os.path.join(OUT, s.lower() + '.ts'), 'w', encoding='utf-8') as f:
             f.write(f'// 由 scripts/gen_cards.py 從 Scryfall 資料自動產生（{s}）：請勿手動修改\n')
-            f.write("import { add } from '../../dsl';\n\n")
+            f.write("import { addGen as add } from '../../dsl';\n\n")
             for d in lst:
                 dd = {k: v for k, v in d.items() if k != 'id'}
                 f.write('add(' + json.dumps(dd, ensure_ascii=False) + ');\n')

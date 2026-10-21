@@ -28,11 +28,26 @@ export const slug = (n: string) =>
     .replace(/[^a-z0-9]+/g, '-')
     .replace(/^-|-$/g, '');
 
+/** 由 scripts/gen_cards.py 自動產生的卡；手寫的同名卡會取代它 */
+const genIds = new Set<string>();
+
 export function add(d: Omit<CardDef, 'id'>) {
   const id = slug(d.name);
-  if (seen.has(id)) throw new Error(`重複的卡牌：${d.name}`);
+  if (seen.has(id)) {
+    if (!genIds.has(id)) throw new Error(`重複的卡牌：${d.name}`);
+    // 手寫的卡取代自動產生的
+    genIds.delete(id);
+    defs[defs.findIndex((x) => x.id === id)] = { id, ...d };
+    return;
+  }
   seen.add(id);
   defs.push({ id, ...d });
+}
+
+export function addGen(d: Omit<CardDef, 'id'>) {
+  const id = slug(d.name);
+  add(d);
+  genIds.add(id);
 }
 
 export function cr(set: SetCode, r: Rarity, name: string, cost: string, subs: string, p: number, t: number, text: string, x: X = {}) {

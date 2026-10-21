@@ -3,7 +3,7 @@ import { resolveTop, settle } from '../engine/flow';
 import { GameOver, other } from '../engine/state';
 import type { Decision, GameState, Response, SubFlow } from '../engine/types';
 import { chooseBlocks } from './combatAI';
-import { heuristicChoose, quickTargets } from './heuristics';
+import { heuristicChoose, heuristicMode, quickTargets } from './heuristics';
 
 export type Decider = (g: GameState, d: Decision) => Response;
 
@@ -24,6 +24,8 @@ export const quickDecide: Decider = (g, d) => {
       return { type: 'choose', ids: heuristicChoose(g, d) };
     case 'yesno':
       return { type: 'yesno', yes: true };
+    case 'mode':
+      return { type: 'modes', picks: heuristicMode(g, d) };
   }
 };
 

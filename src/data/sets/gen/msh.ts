@@ -1,5 +1,5 @@
 // 由 scripts/gen_cards.py 從 Scryfall 資料自動產生（MSH）：請勿手動修改
-import { add } from '../../dsl';
+import { addGen as add } from '../../dsl';
 
 add({"set": "MSH", "rarity": "C", "name": "Super Suit", "cost": "{1}{U}", "types": ["Artifact"], "subtypes": ["Equipment"], "equip": {"cost": "{2}", "grant": {"p": 1, "t": 2}}, "keywords": ["flash"], "abilities": [{"kind": "trigger", "on": "etb", "effects": [{"e": "attach", "what": "T0"}, {"e": "untap", "what": "T0"}], "targets": [{"kind": "creature", "filter": {"ctrl": "you"}}]}], "text": "閃現\n當此武具進戰場時，將此武具貼附在目標由你操控的生物上。重置該由你操控的生物。\n佩帶此武具的生物得+1/+2。\n裝備{2}"});
 add({"set": "MSH", "rarity": "C", "name": "Roxxon Brutes", "cost": "{4}{B}", "types": ["Creature"], "subtypes": ["Human", "Berserker", "Villain"], "power": 4, "toughness": 4, "cycling": {"cost": "{2}", "search": {"type": "Land", "basic": true}}, "keywords": ["menace"], "abilities": [{"kind": "trigger", "on": "drawSecond", "effects": [{"e": "counters", "what": "T0", "n": 1}], "targets": [{"kind": "creature"}]}], "text": "威懾\n每當你於一回合中抓第二張牌時，在目標生物上放置一個+1/+1指示物。\n基本地循環{2}（{2}，從手上棄掉此牌：從你的牌庫中搜尋一張基本地牌，展示並置於你手上，然後洗牌。）"});

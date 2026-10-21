@@ -1,5 +1,5 @@
 // 由 scripts/gen_cards.py 從 Scryfall 資料自動產生（DFT）：請勿手動修改
-import { add } from '../../dsl';
+import { addGen as add } from '../../dsl';
 
 add({"set": "DFT", "rarity": "U", "name": "Air Response Unit", "cost": "{2}{W}", "types": ["Artifact"], "subtypes": ["Vehicle"], "power": 3, "toughness": 3, "keywords": ["flying", "vigilance"], "abilities": [{"kind": "activated", "cost": {"crew": 1}, "effects": [{"e": "animate", "what": "self", "p": 3, "t": 3}], "label": "駕駛1"}], "text": "飛行，警戒\n駕駛1（橫置任意數量總力量為1或更多的未橫置生物：此載具成為神器生物直到回合結束。）"});
 add({"set": "DFT", "rarity": "C", "name": "Brightfield Glider", "cost": "{W}", "types": ["Creature"], "subtypes": ["Possum", "Mount"], "power": 1, "toughness": 1, "keywords": ["vigilance"], "abilities": [{"kind": "trigger", "on": "attacks", "effects": [{"e": "pump", "what": "self", "p": 1, "t": 2, "kw": ["flying"]}], "cond": {"c": "saddled"}}, {"kind": "activated", "cost": {"crew": 3}, "effects": [{"e": "saddle"}], "sorcery": true, "label": "騎乘3"}], "text": "警戒\n每當此生物在已騎乘時攻擊，此生物得+1/+2並獲得飛行異能直到回合結束。\n騎乘3（橫置任意數量總力量為3或更多的其他未橫置生物：此坐騎本回合成為已騎乘。只能於法術時機騎乘。）"});

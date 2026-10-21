@@ -1,5 +1,5 @@
 // 由 scripts/gen_cards.py 從 Scryfall 資料自動產生（MKM）：請勿手動修改
-import { add } from '../../dsl';
+import { addGen as add } from '../../dsl';
 
 add({"set": "MKM", "rarity": "C", "name": "Auspicious Arrival", "cost": "{1}{W}", "types": ["Instant"], "spell": {"effects": [{"e": "pump", "what": "T0", "p": 2, "t": 2}, {"e": "token", "token": "tok-clue"}], "targets": [{"kind": "creature"}]}, "text": "目標生物得+2/+2直到回合結束。調查（派出一個線索衍生物）。"});
 add({"set": "MKM", "rarity": "C", "name": "Defenestrated Phantom", "cost": "{4}{W}{W}", "types": ["Creature"], "subtypes": ["Spirit"], "power": 4, "toughness": 3, "disguise": "{4}{W}", "keywords": ["flying"], "text": "飛行\n偽裝{4}{W}（你可以支付{3}將此牌面朝下施放，成為具有守護{2}的2/2生物。之後可以隨時支付偽裝費用將它翻成正面。）"});

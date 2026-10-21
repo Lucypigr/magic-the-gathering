@@ -1,5 +1,5 @@
 // 由 scripts/gen_cards.py 從 Scryfall 資料自動產生（OTJ）：請勿手動修改
-import { add } from '../../dsl';
+import { addGen as add } from '../../dsl';
 
 add({"set": "OTJ", "rarity": "C", "name": "Bridled Bighorn", "cost": "{3}{W}", "types": ["Creature"], "subtypes": ["Sheep", "Mount"], "power": 3, "toughness": 4, "keywords": ["vigilance"], "abilities": [{"kind": "trigger", "on": "attacks", "effects": [{"e": "token", "token": "tok-g-sheep-11-w"}], "cond": {"c": "saddled"}}, {"kind": "activated", "cost": {"crew": 2}, "effects": [{"e": "saddle"}], "sorcery": true, "label": "騎乘2"}], "text": "警戒\n每當此生物在已騎乘時攻擊，派出一個1/1白色的Sheep衍生生物。\n騎乘2（橫置任意數量總力量為2或更多的其他未橫置生物：此坐騎本回合成為已騎乘。只能於法術時機騎乘。）"});
 add({"set": "OTJ", "rarity": "C", "name": "Stagecoach Security", "cost": "{4}{W}", "types": ["Creature"], "subtypes": ["Human", "Soldier"], "power": 4, "toughness": 5, "plot": "{3}{W}", "abilities": [{"kind": "trigger", "on": "etb", "effects": [{"e": "pump", "what": {"all": {"type": "Creature", "ctrl": "you"}}, "p": 1, "t": 1, "kw": ["vigilance"]}]}], "text": "當此生物進戰場時，由你操控的生物得+1/+1並獲得警戒異能直到回合結束。\n預謀{3}{W}（你可以支付{3}{W}並從手上放逐此牌。在之後的回合中，你可以於法術時機施放它且不需支付其法術力費用。只能於法術時機預謀。）"});

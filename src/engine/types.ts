@@ -85,6 +85,8 @@ export interface Filter {
   damaged?: boolean;
   /** 沒有任何異能（白板生物） */
   vanilla?: boolean;
+  /** 身上有 +1/+1 指示物 */
+  plusCounters?: boolean;
 }
 
 export type TargetKind = 'creature' | 'player' | 'opponent' | 'any' | 'permanent' | 'spell' | 'gyCard';
@@ -131,7 +133,13 @@ export type Amt =
   /** 你本回合施放過的咒語數量 */
   | { spellsCast: true }
   /** 施放時決定的 X */
-  | { x: true };
+  | { x: true }
+  /** 你本回合獲得的生命總量 */
+  | { lifeGained: true }
+  /** 本回合從牌庫置入該玩家墳墓場的牌數 */
+  | { libToGy: Ref }
+  /** 來源離開戰場前的 +1/+1 指示物數量（最後已知資訊） */
+  | { lkiCounters: true };
 
 export interface Grant {
   p?: number;
@@ -139,6 +147,10 @@ export interface Grant {
   kw?: Keyword[];
   cantAttack?: boolean;
   cantBlock?: boolean;
+  /** 可以攻擊，如同沒有防衛異能 */
+  ignoreDefender?: boolean;
+  /** 防禦力大於力量時，以防禦力代替力量造成戰鬥傷害 */
+  damageByToughness?: boolean;
 }
 
 export type Cond =
@@ -185,6 +197,12 @@ export type Cond =
   | { c: 'saddled' }
   /** 虛空 */
   | { c: 'void' }
+  /** 你本回合占卜或刺探過 */
+  | { c: 'scried' }
+  /** 本回合有對手被造成非戰鬥傷害 */
+  | { c: 'oppNoncombatThisTurn' }
+  /** 上一個回合有對手被造成非戰鬥傷害 */
+  | { c: 'oppNoncombatLastTurn' }
   /** 此生物不是已準備 */
   | { c: 'notPrepared' }
   /** 你的速度已達最高（4） */
@@ -234,7 +252,7 @@ export type Effect =
   /** 招募：抓一張牌，然後棄一張牌；若棄掉的不是地，派出 1/1 人類士兵 */
   | { e: 'recruit' }
   /** 從牌庫中搜尋一張符合條件的牌放到手上 */
-  | { e: 'tutor'; filter: Filter }
+  | { e: 'tutor'; filter: Filter; to?: 'hand' | 'top' }
   /** 移除至多 n 個指示物 */
   | { e: 'removeCounters'; what: Ref; n: number }
   /** 大地彎折（簡化）：派出一個 0/0 具敏捷的大地元素，並放上 n 個 +1/+1 指示物 */
@@ -247,6 +265,8 @@ export type Effect =
   | { e: 'cloak' }
   /** 騎乘：此坐騎本回合成為已騎乘 */
   | { e: 'saddle' }
+  /** 選擇一個生物類別，消滅所有不是該類別的生物 */
+  | { e: 'kindredJudgment' }
   /** 此生物成為已準備 */
   | { e: 'prepare' }
   /** 懷疑：該生物具有威懾且不能阻擋 */
@@ -261,7 +281,10 @@ export type Effect =
   | { e: 'fight'; a: Ref; b: Ref }
   | { e: 'bite'; a: Ref; b: Ref }
   | { e: 'toHand'; what: Ref }
-  | { e: 'reanimate'; what: Ref }
+  /** counters：額外的 +1/+1 指示物；finality：帶著終結指示物（死去時改為放逐） */
+  | { e: 'reanimate'; what: Ref; counters?: number; finality?: boolean }
+  /** 將符合條件的牌從你的墳墓場全部放進戰場 */
+  | { e: 'reanimateAll'; filter: Filter }
   | { e: 'edict'; who: Ref; filter?: Filter }
   | { e: 'sac'; what: Ref }
   | { e: 'impulse'; n: number }
@@ -321,11 +344,37 @@ export type TriggerOn =
   /** 每當由你操控的生物成為對手的咒語或異能的目標時 */
   | 'allyTargeted'
   /** 當此生物翻成正面時 */
-  | 'turnedFaceUp';
+  | 'turnedFaceUp'
+  /** 每當你占卜或刺探時 */
+  | 'scry'
+  /** 每當你在鵬洛客上放置忠誠指示物時 */
+  | 'loyaltyPlaced'
+  /** 每當你起動忠誠異能時 */
+  | 'loyaltyActivated'
+  /** 每當有對手被造成非戰鬥傷害時 */
+  | 'noncombatOpp'
+  /** 每當有玩家棄牌時 */
+  | 'anyDiscard'
+  /** 當你棄掉這張牌時（來源在墳墓場） */
+  | 'discardSelf';
+
+export interface TriggerMode {
+  text: string;
+  targets?: TargetSpec[];
+  effects: Effect[];
+}
 
 export interface TriggeredAbility {
   kind: 'trigger';
   on: TriggerOn;
+  /** 模式式觸發：先選擇模式再選目標（此時 effects 為空） */
+  modes?: TriggerMode[];
+  /** 要選擇幾個模式（預設 1） */
+  chooseN?: number;
+  /** 施放類觸發：或是該咒語的目標中有符合此條件的永久物 */
+  orTargets?: Filter;
+  /** 攻擊類觸發：只有在單獨一個生物攻擊玩家時 */
+  alone?: boolean;
   /** 觸發物件需要符合的條件（例如 allyEtb 的進場生物、castAny 的咒語） */
   filter?: Filter;
   /** 施放類觸發：任何玩家施放都會觸發 */
@@ -347,7 +396,7 @@ export interface ActivatedAbility {
   kind: 'activated';
   /** loyalty：忠誠異能（+N 放置、-N 移除忠誠指示物；每個鵬洛客每回合只能起動一次，只能於法術時機） */
   /** crew：駕駛 N（橫置總力量 N 或更多的其他未橫置生物） */
-  cost: { mana?: string; tap?: boolean; sacSelf?: boolean; sacOther?: Filter; life?: number; craft?: Filter; craftCount?: number; loyalty?: number; crew?: number };
+  cost: { mana?: string; tap?: boolean; discardSelf?: boolean; exileSelf?: boolean; sacSelf?: boolean; sacOther?: Filter; life?: number; craft?: Filter; craftCount?: number; loyalty?: number; crew?: number };
   targets?: TargetSpec[];
   effects: Effect[];
   sorcery?: boolean;
@@ -360,6 +409,8 @@ export interface ActivatedAbility {
   special?: boolean;
   /** 從墳墓場起動，代價包含放逐此牌 */
   fromGraveyard?: boolean;
+  /** 從手上起動，代價包含棄掉或放逐此牌 */
+  fromHand?: boolean;
   cond?: Cond;
   /** 按鈕上顯示的簡短描述 */
   label: string;
@@ -377,6 +428,20 @@ export interface StaticAbility {
   lifegainPlus?: number;
   /** 你每回合可以多使用 n 張地 */
   extraLand?: number;
+  /** 符合條件的永久物（你操控的）擁有這些起動式異能 */
+  grantAbilities?: { filter: Filter; abilities: ActivatedAbility[] };
+  /** 由你操控的鵬洛客忠誠為 0 時不會置入墳墓場 */
+  noZeroLoyaltyDeath?: boolean;
+  /** 由你操控的鵬洛客每個戰鬥只能被一個生物攻擊 */
+  pwOneAttacker?: boolean;
+  /** 戰鬥中，所有玩家都不能施放咒語或起動異能（法術力異能除外） */
+  noCombatActions?: boolean;
+  /** 符合條件的咒語，對應玩家施放時費用多 {n}（who: opp＝你的對手） */
+  spellCostMore?: { filter: Filter; n: number; who: 'opp' | 'all' };
+  /** 你的來源對對手或其永久物造成非戰鬥傷害時，多造成 n 點 */
+  noncombatPlus?: number;
+  /** 在你操控的生物上放置 +1/+1 指示物時，多放 n 個 */
+  counterPlus?: number;
 }
 
 export type Ability = TriggeredAbility | ActivatedAbility | StaticAbility;
@@ -419,6 +484,8 @@ export interface CardDef {
   filterMana?: boolean;
   /** 產生有色法術力時要支付1點生命（{C} 不用） */
   painMana?: boolean;
+  /** 產生的法術力只能用來施放某類咒語 */
+  manaOnly?: 'planeswalker';
   /** 冒險：同一張牌上的另一個瞬間或法術；施放後此牌放逐，之後可以從放逐區施放本體 */
   adventure?: { name: string; zh?: string; cost: string; types: CardType[]; text: string; spell: SpellSpec };
   /** 準備：此生物附帶的咒語；已準備時可以施放它的複製（之後取消準備） */
@@ -473,7 +540,7 @@ export interface CardDef {
   /** 額外費用（例如：犧牲一個生物、支付生命） */
   addCost?: ExtraCost;
   /** 此咒語的費用減免 */
-  costReduce?: { perGy?: Filter; perCount?: Filter; perMaxMv?: Filter; cond?: Cond; mana?: string };
+  costReduce?: { perGy?: Filter; perCount?: Filter; perMaxMv?: Filter; perMaxStat?: { stat: 'power' | 'toughness'; filter: Filter }; cond?: Cond; mana?: string };
   /** 以此生物為目標的裝備異能減少 {n} */
   equipDiscount?: number;
   /** 震地：生命多於10點時支付2點生命、未橫置進場；否則橫置進場 */
@@ -544,6 +611,10 @@ export interface Card {
   discardedTurn?: number;
   /** 被懷疑：具有威懾且不能阻擋 */
   suspected?: boolean;
+  /** 帶著終結指示物：死去時改為放逐 */
+  finality?: boolean;
+  /** 離開戰場前的 +1/+1 指示物數量 */
+  lastCounters?: number;
   /** 已準備（可以施放附帶咒語的複製） */
   prepared?: boolean;
   /** 面朝下時，真正的牌 */
@@ -577,6 +648,14 @@ export interface Player {
   nonlandEtbThisTurn?: number;
   /** 本回合有永久物牌置入你的墳墓場 */
   permToGyThisTurn?: boolean;
+  /** 本回合占卜或刺探過 */
+  scriedThisTurn?: boolean;
+  /** 本回合從牌庫置入墳墓場的牌數 */
+  libToGyThisTurn?: number;
+  /** 本回合被造成非戰鬥傷害 */
+  noncombatThisTurn?: boolean;
+  /** 上一個回合被造成非戰鬥傷害 */
+  noncombatLastTurn?: boolean;
   /** 速度（發動引擎！），0～4 */
   speed?: number;
   /** 上一次提升速度的回合 */
@@ -657,6 +736,11 @@ export type GameEvent =
   | { type: 'sacrifice'; card: number; player: PID }
   | { type: 'drawSecond'; player: PID }
   | { type: 'turnedFaceUp'; card: number }
+  | { type: 'scry'; player: PID }
+  | { type: 'loyaltyPlaced'; card: number; controller: PID; amount: number }
+  | { type: 'loyaltyActivated'; card: number; controller: PID; removed: number }
+  | { type: 'noncombat'; player: PID; amount: number; sourceController: PID }
+  | { type: 'discard'; player: PID; card: number }
   | { type: 'counterPlaced'; card: number; controller: PID; amount: number };
 
 export interface PendingTrigger {
@@ -740,7 +824,19 @@ export type Decision =
       /** 由 options 以外的區域展示（例如牌庫頂的牌） */
       reveal?: boolean;
     }
-  | { type: 'yesno'; player: PID; prompt: string; source?: number; purpose?: 'may' | 'pay' | 'leyline' };
+  | { type: 'yesno'; player: PID; prompt: string; source?: number; purpose?: 'may' | 'pay' | 'leyline' }
+  /** 選擇模式（或選擇一個選項，例如生物類別） */
+  | {
+      type: 'mode';
+      player: PID;
+      prompt: string;
+      source?: number;
+      options: string[];
+      count: number;
+      purpose: 'trigger' | 'creatureType';
+      /** 觸發的模式：每個選項的效果與目標（AI 判斷用） */
+      meta?: { effects: Effect[][]; specs: TargetSpec[][] };
+    };
 
 export type ChoosePurpose =
   | 'bottom'
@@ -769,7 +865,8 @@ export type Response =
   | { type: 'blockers'; blocks: [number, number][] }
   | { type: 'targets'; targets: (TargetRef | null)[] }
   | { type: 'choose'; ids: number[] }
-  | { type: 'yesno'; yes: boolean };
+  | { type: 'yesno'; yes: boolean }
+  | { type: 'modes'; picks: number[] };
 
 export type Flow = Generator<Decision, void, Response>;
 export type SubFlow<T = void> = Generator<Decision, T, Response>;
