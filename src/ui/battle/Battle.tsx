@@ -566,7 +566,7 @@ export function Battle(props: Props) {
   let actions: PlayOption[] = [];
   if (inspected && myPriority && !draft && focus === inspectId) {
     if (inspected.zone === 'hand' || inspected.zone === 'exile' || inspected.zone === 'graveyard') actions = castOptionsFor(g, 0, inspected);
-    else if (inspected.zone === 'battlefield') actions = options.filter((o) => o.card === inspected.id && o.kind === 'activate');
+    else if (inspected.zone === 'battlefield') actions = options.filter((o) => o.card === inspected.id && (o.kind === 'activate' || o.alt === 'prepared'));
   }
   const liveStats = inspected && inspected.zone === 'battlefield' && isCreature(inspected) ? stats(g, inspected) : null;
 
