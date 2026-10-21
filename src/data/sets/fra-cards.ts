@@ -1,6 +1,6 @@
 // 實相裂隙（FRA）手寫的卡：效果與原版卡面一致（鵬洛客以外的部分）。
 // 規則敘述為本遊戲引擎實際執行的中文敘述。
-import type { Ability, ActivatedAbility, Amt, CardDef, CardType, Effect, Filter, Keyword, SpellSpec, TargetSpec } from '../../engine/types';
+import type { Ability, ActivatedAbility, Amt, CardDef, Cond, CardType, Effect, Filter, Keyword, SpellSpec, TargetSpec } from '../../engine/types';
 import { ANY, CR, MY_CR, OPP, OPP_CR, OPP_NONLAND, act, add, arti, cr, ench, etb, inst, land, sorc, trig } from '../dsl';
 
 const S = 'FRA';
@@ -1360,6 +1360,176 @@ land(S, 'R', 'Roiling Canopy', ['G'], '此地以橫置狀態進戰場。\n每當
   etbTapped: true,
   abilities: [trig('landfall', [{ e: 'pump', what: 'T0', p: 3, t: 3 }], { filter: { sub: 'Forest' }, cond: { c: 'controls', filter: { type: 'Land', sub: 'Forest', ctrl: 'you' }, n: 6 }, targets: [MY_CR] })],
 });
+
+// ============================================================
+// 較早完成、但原本簡化的卡牌：補上原版的完整機制
+// ============================================================
+const JACE_BEHOLD: Cond = { c: 'or', conds: [{ c: 'controls', filter: { sub: 'Jace' } }, { c: 'handHas', filter: { sub: 'Jace' } }] };
+const OPP_ART_CR: TargetSpec = { kind: 'permanent', filter: { type: ['Artifact', 'Creature'], ctrl: 'opp' }, optional: true, prompt: '選擇對手的神器或生物（可以不選）' };
+
+/** 鵬洛客（忠誠異能每回合只能起動一次，只能於法術時機） */
+function pwCard(rarity: 'R' | 'M', name: string, cost: string, sub: string, loy: number, text: string, abilities: Ability[]) {
+  add({ set: S, rarity, name, cost, types: ['Planeswalker'], supertypes: ['Legendary'], subtypes: [sub], loyalty: loy, abilities, text });
+}
+const L = (n: number, label: string, effects: Effect[], x: Partial<ActivatedAbility> = {}): Ability => {
+  const sign = n > 0 ? `+${n}` : n < 0 ? `−${-n}` : '0';
+  return { kind: 'activated', cost: { loyalty: n }, effects, label: `${sign}：${label}`, ...x };
+};
+const BEAST: Effect = { e: 'token', token: 'tok-beast-trample' };
+
+cr(S, 'M', 'Enlightened Confidant', '{1}{W}', 'Kor Cleric', 2, 1, '繫命\n在你的結束步驟開始時，若你本回合獲得過生命，刺探1。若你以此法將法術力值小於或等於你本回合獲得的生命總量的牌置入你的墳墓場，將該牌放到你手上。', {
+  keywords: ['lifelink'],
+  abilities: [trig('endStep', [{ e: 'surveil', n: 1, retrieve: { mvLeLife: true } }], { cond: { c: 'gainedLifeGte', n: 1 } })],
+});
+
+cr(S, 'R', 'Guiding Hydra', '{X}{W}', 'Hydra Horror', 1, 0, '此生物進戰場時帶有X個+1/+1指示物。\n在你的戰鬥開始時，你可以移除此生物上的一個+1/+1指示物。若你如此作，在每個其他由你操控的生物上各放置一個+1/+1指示物。', {
+  etbCountersX: true,
+  abilities: [
+    trig(
+      'combatStart',
+      [{ e: 'may', prompt: '要移除一個+1/+1指示物，並在每個其他由你操控的生物上各放置一個+1/+1指示物嗎？', effects: [{ e: 'removeCounters', what: 'self', n: 1 }, { e: 'counters', what: { all: { ...MY_CREATURES, other: true } }, n: 1 }] }],
+      { cond: { c: 'selfCounters', n: 1 } },
+    ),
+  ],
+});
+
+inst(S, 'U', 'Countersculpt', '{U}{U}', `額外費用：注視一個傑斯或支付{1}。（要注視傑斯，選擇一個你操控的傑斯，或展示你手上的一張傑斯牌。）\n反擊目標咒語。${EMP(1)}`, {
+  targets: [{ kind: 'spell' }],
+  effects: [{ e: 'counter', what: 'T0' }, empower(1)],
+}, { costMoreUnless: { cond: JACE_BEHOLD, mana: '{1}' } });
+
+inst(S, 'R', "Jace's Machinations", '{2}{U}', `直到回合結束，你可以在任何玩家的回合、任何你能施放瞬間的時機，起動由你操控的傑斯鵬洛客的忠誠異能。\n${EMP(8)}`, {
+  effects: [{ e: 'jaceInstant' }, empower(8)],
+});
+
+cr(S, 'M', 'Seasoned Cryomancer', '{1}{U}{U}', 'Human Wizard', 2, 2, '當此生物進戰場時，抓兩張牌，然後棄兩張牌。當你以此法棄掉一張或更多非地牌時，橫置至多等量的目標生物，並在每個被橫置的生物上放置一個暈眩指示物。\n{3}{U}{U}，從你的墳墓場放逐此牌：抓兩張牌。', {
+  abilities: [etb([{ e: 'cryomancer' }]), act({ mana: '{3}{U}{U}', exileSelf: true }, [{ e: 'draw', n: 2 }], '放逐此牌：抓兩張牌', { fromGraveyard: true })],
+});
+
+cr(S, 'R', 'Dark Matter Manipulator', '{B}', 'Human Warlock', 1, 2, '當此生物進戰場時，碾磨三張牌。\n你的墳墓場中每有七張牌，此生物便得+2/+0。', {
+  abilities: [etb([{ e: 'mill', n: 3 }]), { kind: 'static', selfPumpPerGy: { filter: {}, p: 2, per: 7 } }],
+});
+
+arti(S, 'R', "Lich's Relic", '{B}', '當此武具進戰場時，你可以支付{2}。當你如此作時，對每位對手，消滅至多一個由該玩家操控的目標生物或鵬洛客。\n裝備的生物得+2/+1。\n裝備{2}', {
+  subtypes: ['Equipment'],
+  equip: { cost: '{2}', grant: { p: 2, t: 1 } },
+  abilities: [
+    etb([
+      {
+        e: 'costThen',
+        prompt: '支付{2}，消滅對手的生物或鵬洛客？',
+        cost: { mana: '{2}' },
+        then: [{ e: 'reflexive', targets: [{ kind: 'permanent', filter: { type: ['Creature', 'Planeswalker'], ctrl: 'opp' }, optional: true, prompt: '選擇對手操控的生物或鵬洛客' }], effects: [{ e: 'destroy', what: 'T0' }] }],
+      },
+    ]),
+  ],
+});
+
+inst(S, 'U', 'Fatehold Charm', '{W}{U}', `選擇一項：\n• 抓一張牌。${EMP(2)}\n• 將目標咒語或生物移回其擁有者手上。\n• 由你操控的生物得+1/+2直到回合結束。`, {
+  modes: [
+    { text: '抓一張牌，強化傑斯2', effects: [{ e: 'draw', n: 1 }, empower(2)] },
+    { text: '咒語或生物回手', targets: [{ kind: 'spellOrCreature', prompt: '選擇咒語或生物' }], effects: [{ e: 'bounce', what: 'T0' }] },
+    { text: '你的生物+1/+2', effects: [{ e: 'pump', what: { all: MY_CREATURES }, p: 1, t: 2 }] },
+  ],
+});
+
+land(S, 'R', "Theorist's Sanctum", ['U'], `（{T}：加{U}。）\n當此地進戰場時，你可以注視一個傑斯。若你沒有，此地以橫置狀態進戰場。（要注視傑斯，選擇一個你操控的傑斯，或展示你手上的一張傑斯牌。）\n{2}{U}，{T}：${EMP(2)}`, {
+  subtypes: ['Island'],
+  etbTappedUnless: JACE_BEHOLD,
+  abilities: [act({ mana: '{2}{U}', tap: true }, [empower(2)], '強化傑斯2')],
+});
+
+land(S, 'C', 'Room of Refuge', ['W', 'U', 'B', 'R', 'G'], '此地以橫置狀態進戰場。當它進戰場時，選擇一種顏色。\n{T}：加一點所選顏色的法術力。\n{5}，{T}，犧牲此地：在目標生物上放置兩個+1/+1指示物。只能於法術時機起動。', {
+  etbTapped: true,
+  chosenColorMana: true,
+  abilities: [etb([{ e: 'chooseColor' }]), act({ mana: '{5}', tap: true, sacSelf: true }, [{ e: 'counters', what: 'T0', n: 2 }], '在目標生物上放置兩個+1/+1指示物', { sorcery: true, targets: [CR] })],
+});
+
+lcr('R', 'Liliana the Faultless', '{W}', 'Human Cleric', 1, 1, '每當另一個生物或鵬洛客在你的操控下進戰場時，你獲得1點生命。\n{1}，{T}，棄掉一張牌：另一個目標由你操控的生物或鵬洛客獲得辟邪異能直到回合結束。', {
+  abilities: [
+    trig('allyPermEtb', [{ e: 'gain', n: 1 }], { filter: { type: ['Creature', 'Planeswalker'] } }),
+    act({ mana: '{1}', tap: true }, [{ e: 'costThen', prompt: '要棄掉一張牌嗎？', cost: { discard: 1 }, then: [{ e: 'pump', what: 'T0', p: 0, t: 0, kw: ['hexproof'] }] }], '棄一張牌：另一個生物或鵬洛客獲得辟邪', {
+      cond: { c: 'handGte', n: 1 },
+      targets: [{ kind: 'permanent', filter: { type: ['Creature', 'Planeswalker'], ctrl: 'you' }, notSelf: true, prompt: '選擇另一個由你操控的生物或鵬洛客' }],
+    }),
+  ],
+});
+
+add({
+  set: S, rarity: 'M', name: 'Avatar of Burgeoning Echoes', cost: '{G}{U}', types: ['Creature'], subtypes: ['Avatar'], power: 2, toughness: 3,
+  text: `地落～每當一個地在你的操控下進戰場時，${EMP(2)}。\n由你操控的鵬洛客具有「[−10]：在目標生物上，你每操控一個地就放置一個+1/+1指示物。」`,
+  abilities: [
+    trig('landfall', [empower(2)]),
+    grantPw([loyalty(-10, [{ e: 'counters', what: 'T0', n: { count: { type: 'Land', ctrl: 'you' } } }], '−10：依地的數量放置指示物', [CR])]),
+  ],
+});
+
+add({
+  set: S, rarity: 'U', name: 'Way of the Pyromancer', cost: '{1}{R}', types: ['Enchantment'], supertypes: ['Legendary'],
+  text: `當此結界進戰場時，${EMP(2)}\n由你操控的鵬洛客具有「[+1]：加{R}。」`,
+  abilities: [etb([empower(2)]), grantPw([loyalty(1, [{ e: 'addMana', mana: ['R'] }], '+1：加{R}')])],
+});
+
+// ---------------- 鵬洛客 ----------------
+pwCard('M', 'The Theorist, Jace Beleren', '{2}{U}{U}', 'Jace', 3, '在每位對手的抓牌步驟開始時，你抓一張牌。\n+1：派出一個1/1藍色幻象衍生生物。\n−2：對每位對手，將至多一個由該玩家操控的目標神器或生物移回其擁有者手上。\n−6：抓三張牌。然後在每個由你操控的生物上放置X個+1/+1指示物，X為你的手牌數量。', [
+  trig('oppDrawStep', [{ e: 'draw', n: 1 }]),
+  L(1, '派出幻象', [{ e: 'token', token: 'tok-illusion' }]),
+  L(-2, '神器或生物回手', [{ e: 'bounce', what: 'T0' }], { targets: [OPP_ART_CR] }),
+  L(-6, '抓三張並放指示物', [{ e: 'draw', n: 3 }, { e: 'counters', what: { all: MY_CREATURES }, n: { hand: true } }]),
+]);
+
+pwCard('M', 'Ajani Resolute', '{1}{W}', 'Ajani', 2, '每當你獲得生命時，在阿耶尼上放置一個忠誠指示物。\n0：你獲得1點生命。\n−4：派出一個2/2白色，名為阿耶尼的榮耀同伴的貓士兵衍生生物，它具有「每當你獲得生命時，在此衍生物上放置一個+1/+1指示物。」\n−10：你獲得一個徽記，其具有「由你操控的生物得+2/+2。」', [
+  trig('lifegain', [{ e: 'loyalty', what: 'self', n: 1 }]),
+  L(0, '獲得1點生命', [{ e: 'gain', n: 1 }]),
+  L(-4, '派出榮耀同伴', [{ e: 'token', token: 'tok-pridemate' }]),
+  L(-10, '獲得徽記：生物+2/+2', [{ e: 'token', token: 'tok-emblem-ajani' }]),
+]);
+
+pwCard('M', 'Chandra, Torch of Defiance', '{2}{R}{R}', 'Chandra', 4, '+1：放逐你牌庫頂的牌。你可以施放該牌。若你沒有，茜卓納拉對每位對手各造成2點傷害。\n+1：加{R}{R}。\n−3：茜卓納拉對目標生物造成4點傷害。\n−7：你獲得一個徽記，其具有「每當你施放咒語時，此徽記對任意一個目標造成5點傷害。」', [
+  L(1, '放逐牌庫頂，施放或造成2點傷害', [{ e: 'impulseCastOrDamage', n: 2 }]),
+  L(1, '加{R}{R}', [{ e: 'addMana', mana: ['R', 'R'] }]),
+  L(-3, '對生物造成4點傷害', [{ e: 'damage', n: 4, to: 'T0', from: 'self' }], { targets: [CR] }),
+  L(-7, '獲得徽記：施放咒語造成5點傷害', [{ e: 'token', token: 'tok-emblem-chandra-burn' }]),
+]);
+
+pwCard('M', 'Chandra, Chill of Compliance', '{1}{U}{U}', 'Chandra', 3, '+1：刺探1。若你以此法將非生物、非地牌置入你的墳墓場，將該牌放到你手上。\n+1：加{U}。只能用來施放非生物咒語。\n−X：橫置目標神器或生物，並在其上放置X個暈眩指示物。\n−6：你獲得一個徽記，其具有「每當你施放咒語時，抓一張牌。」', [
+  L(1, '刺探1', [{ e: 'surveil', n: 1, retrieve: { filter: { nonType: ['Creature', 'Land'] } } }]),
+  L(1, '加{U}（只能用於非生物咒語）', [{ e: 'addMana', mana: ['U'], only: 'noncreature' }]),
+  { kind: 'activated', cost: { loyalty: 0 }, xLoyalty: true, label: '−X：橫置並放置X個暈眩指示物', effects: [{ e: 'tap', what: 'T0' }, { e: 'stun', what: 'T0', n: { x: true } }], targets: [{ kind: 'permanent', filter: { type: ['Artifact', 'Creature'] }, prompt: '選擇神器或生物' }] },
+  L(-6, '獲得徽記：施放咒語時抓牌', [{ e: 'token', token: 'tok-emblem-chandra-draw' }]),
+]);
+
+pwCard('M', 'Ajani Unrelenting', '{4}{R}{R}', 'Ajani', 5, `每當你起動忠誠異能時，派出一個${CADET}。\n+1：由你操控的生物得+1/+0並獲得敏捷異能直到回合結束。\n−2：棄掉你的手牌，然後你每操控一個生物，便抓一張牌。\n−3：阿耶尼對由你操控的衍生物以外的每個生物各造成4點傷害。`, [
+  trig('loyaltyActivated', [cadet()]),
+  L(1, '全軍 +1/+0 敏捷', [{ e: 'pump', what: { all: MY_CREATURES }, p: 1, t: 0, kw: ['haste'] }]),
+  L(-2, '棄手牌、依生物數抓牌', [{ e: 'discard', n: { hand: true }, who: 'you' }, { e: 'draw', n: { count: MY_CREATURES } }]),
+  L(-3, '對生物各造成4點傷害', [{ e: 'damage', n: 4, to: { all: { type: 'Creature', or: [{ ctrl: 'opp' }, { token: false }] } }, from: 'self' }]),
+]);
+
+pwCard('M', 'Garruk, Veiled Butcher', '{3}{B}{B}', 'Garruk', 5, '如果一個由對手操控的生物將要死去，改為放逐它。\n+2：至多一個目標生物得-4/-1，直到你的下一個回合。\n−2：每位玩家各犧牲一個由其選擇的生物。若你以此法犧牲了生物，派出一個4/4綠色，具有踐踏異能的野獸衍生生物。\n−3：每位對手棄兩張牌。對每位沒有以此法棄掉兩張非地牌的對手，你抓一張牌。', [
+  { kind: 'static', exileOppDying: true },
+  L(2, '生物 -4/-1 直到你的下一個回合', [{ e: 'pump', what: 'T0', p: -4, t: -1, untilNext: true }], { targets: [{ ...CR, optional: true }] }),
+  L(-2, '每位玩家犧牲生物，派出野獸', [{ e: 'edictEach', then: [BEAST] }]),
+  L(-3, '對手棄兩張牌', [{ e: 'discardNonlandOrDraw', n: 2 }]),
+]);
+
+pwCard('M', 'Garruk, Curse Breaker', '{3}{G}{G}', 'Garruk', 5, '每當一個力量4或更大的生物在你的操控下進戰場時，抓一張牌。\n+2：重置至多兩個目標地。\n−3：派出一個4/4綠色，具有踐踏異能的野獸衍生生物。\n−4：直到你的下一個回合，每當一個或更多生物攻擊你的對手時，那些生物得+2/+2並獲得踐踏異能，直到回合結束。', [
+  trig('allyEtb', [{ e: 'draw', n: 1 }], { filter: { powMin: 4 } }),
+  L(2, '重置兩個地', [{ e: 'untap', what: 'T0' }, { e: 'untap', what: 'T1' }], {
+    targets: [
+      { kind: 'permanent', filter: { type: 'Land' }, optional: true, prompt: '選擇要重置的地' },
+      { kind: 'permanent', filter: { type: 'Land' }, optional: true, prompt: '選擇要重置的地' },
+    ],
+  }),
+  L(-3, '派出 4/4 野獸', [BEAST]),
+  L(-4, '攻擊的生物+2/+2並獲得踐踏', [{ e: 'delayed', on: 'youAttack', once: false, untilNext: true, effects: [{ e: 'pump', what: 'evAttackers', p: 2, t: 2, kw: ['trample'] }] }]),
+]);
+
+pwCard('R', 'Jace, Reality Sculptor', '{3}{U}{U}', 'Jace', 5, `+1：${EMP('X')}，X為你操控的海島數量。\n−3：直到你的下一個回合，每當一個生物攻擊你或由你操控的鵬洛客時，它得-5/-0直到回合結束。\n0：放逐每位對手牌庫中除了最底下一張以外的所有牌。只有在由你操控的傑斯鵬洛客上共有二十五個或更多忠誠指示物時才能起動。`, [
+  L(1, '強化傑斯（海島數）', [empower({ count: { sub: 'Island', ctrl: 'you' } })]),
+  L(-3, '攻擊你的生物得-5/-0', [{ e: 'delayed', on: 'attackedYou', once: false, untilNext: true, effects: [{ e: 'pump', what: 'evCard', p: -5, t: 0 }] }]),
+  L(0, '放逐對手牌庫（只留最底下一張）', [{ e: 'exileLibraryButBottom', who: 'opp' }], { cond: { c: 'jaceLoyaltyGte', n: 25 } }),
+]);
 
 // 後續顏色的卡在下方追加
 export { ANY, OPP, OPP_CR, arti, land };

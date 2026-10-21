@@ -3,7 +3,7 @@
 // 忠誠異能每回合只能起動一次，只能於法術時機；+N 放置、−N 移除忠誠指示物。
 // 終極異能中「獲得徽記」的部分本遊戲沒有實作，會在卡面註明。
 // ============================================================
-import type { Ability, ActivatedAbility, Effect, SetCode, TargetSpec } from '../../engine/types';
+import type { Ability, ActivatedAbility, Effect, SetCode } from '../../engine/types';
 import { CR, MY_CR, MY_GY_CR, OPP, OPP_CR, add, dmg, trig } from '../dsl';
 
 /** 忠誠異能 */
@@ -16,53 +16,9 @@ function pw(set: SetCode, rarity: 'R' | 'M', name: string, cost: string, sub: st
   add({ set, rarity, name, cost, types: ['Planeswalker'], supertypes: ['Legendary'], subtypes: [sub], loyalty, abilities, text });
 }
 
-const OPP_ART_CR: TargetSpec = { kind: 'permanent', filter: { type: ['Artifact', 'Creature'], ctrl: 'opp' }, optional: true, prompt: '選擇對手的神器或生物（可以不選）' };
 const NO_ULT = '（簡化：沒有終極異能的徽記）';
 
 // ---------------- 實相裂隙（FRA） ----------------
-pw('FRA', 'M', 'The Theorist, Jace Beleren', '{2}{U}{U}', 'Jace', 3, '在每位對手的維持開始時，你抓一張牌。\n+1：派出一個1/1藍色幻象衍生生物。\n−2：將至多一個目標由對手操控的神器或生物移回其擁有者手上。\n−6：抓三張牌。然後在每個由你操控的生物上放置X個+1/+1指示物，X為你的手牌數量。\n（簡化：抓牌改在對手的維持步驟）', [
-  trig('oppUpkeep', [{ e: 'draw', n: 1 }]),
-  L(1, '派出幻象', [{ e: 'token', token: 'tok-illusion' }]),
-  L(-2, '神器或生物回手', [{ e: 'bounce', what: 'T0' }], { targets: [OPP_ART_CR] }),
-  L(-6, '抓三張並放指示物', [{ e: 'draw', n: 3 }, { e: 'counters', what: { all: { type: 'Creature', ctrl: 'you' } }, n: { hand: true } }]),
-]);
-pw('FRA', 'M', 'Ajani Resolute', '{1}{W}', 'Ajani', 2, `每當你獲得生命時，在阿耶尼上放置一個忠誠指示物。\n0：你獲得1點生命。\n−4：派出一個2/2白色，名為阿耶尼的榮耀同伴的貓士兵衍生生物，它具有「每當你獲得生命時，在此衍生物上放置一個+1/+1指示物。」\n${NO_ULT}`, [
-  trig('lifegain', [{ e: 'loyalty', what: 'self', n: 1 }]),
-  L(0, '獲得1點生命', [{ e: 'gain', n: 1 }]),
-  L(-4, '派出榮耀同伴', [{ e: 'token', token: 'tok-pridemate' }]),
-]);
-pw('FRA', 'M', 'Chandra, Torch of Defiance', '{2}{R}{R}', 'Chandra', 4, `+1：放逐你牌庫頂的牌。本回合你可以使用它。\n−3：茜卓納拉對目標生物造成4點傷害。\n（簡化：沒有加{R}{R}的異能；不施放時不會造成傷害）${NO_ULT}`, [
-  L(1, '放逐牌庫頂，本回合可用', [{ e: 'impulse', n: 1 }]),
-  L(-3, '對生物造成4點傷害', [dmg(4)], { targets: [CR] }),
-]);
-pw('FRA', 'M', 'Chandra, Chill of Compliance', '{1}{U}{U}', 'Chandra', 3, `+1：刺探1。\n−2：橫置目標神器或生物，並在其上放置兩個暈眩指示物。\n（簡化：刺探的牌不會回手；沒有加法術力的異能；−X 固定為 −2）${NO_ULT}`, [
-  L(1, '刺探1', [{ e: 'surveil', n: 1 }]),
-  L(-2, '暈眩兩回合', [{ e: 'stun', what: 'T0', n: 2 }], { targets: [{ kind: 'permanent', filter: { type: ['Artifact', 'Creature'] }, prompt: '選擇神器或生物' }] }),
-]);
-const CADET: Effect = { e: 'token', token: 'tok-cadet' };
-pw('FRA', 'M', 'Ajani Unrelenting', '{4}{R}{R}', 'Ajani', 5, '起動阿耶尼的忠誠異能時，派出一個2/2無色，名為學員的巫師士兵衍生生物。\n+1：由你操控的生物得+1/+0並獲得敏捷異能直到回合結束。\n−2：棄掉你的手牌，然後你每操控一個生物，便抓一張牌。\n−3：阿耶尼對由你操控的衍生物以外的每個生物各造成4點傷害。\n（簡化：只有阿耶尼自己的忠誠異能會派出學員）', [
-  L(1, '全軍 +1/+0 敏捷', [CADET, { e: 'pump', what: { all: { type: 'Creature', ctrl: 'you' } }, p: 1, t: 0, kw: ['haste'] }]),
-  L(-2, '棄手牌、依生物數抓牌', [{ e: 'discard', n: { hand: true }, who: 'you' }, CADET, { e: 'draw', n: { count: { type: 'Creature', ctrl: 'you' } } }]),
-  L(-3, '對生物各造成4點傷害', [{ e: 'damage', n: 4, to: { all: { type: 'Creature', or: [{ ctrl: 'opp' }, { token: false }] } } }, CADET]),
-]);
-pw('FRA', 'M', 'Garruk, Veiled Butcher', '{3}{B}{B}', 'Garruk', 5, '+2：至多一個目標生物得-4/-1直到回合結束。\n−2：目標對手犧牲一個生物。然後派出一個4/4綠色，具有踐踏異能的野獸衍生生物。\n−3：目標對手棄兩張牌。\n（簡化：沒有放逐取代效果；−2 只有對手犧牲；+2 效果只持續到回合結束）', [
-  L(2, '生物 -4/-1', [{ e: 'pump', what: 'T0', p: -4, t: -1 }], { targets: [{ ...CR, optional: true }] }),
-  L(-2, '對手犧牲生物，派出野獸', [{ e: 'edict', who: 'T0' }, { e: 'token', token: 'tok-beast-trample' }], { targets: [OPP] }),
-  L(-3, '對手棄兩張牌', [{ e: 'discard', n: 2, who: 'T0' }], { targets: [OPP] }),
-]);
-pw('FRA', 'M', 'Garruk, Curse Breaker', '{3}{G}{G}', 'Garruk', 5, '每當一個力量4或更大的生物在你的操控下進戰場時，抓一張牌。\n+2：重置至多兩個目標由你操控的地。\n−3：派出一個4/4綠色，具有踐踏異能的野獸衍生生物。\n（簡化：沒有 −4 異能）', [
-  trig('allyEtb', [{ e: 'draw', n: 1 }], { filter: { powMin: 4 } }),
-  L(2, '重置兩個地', [{ e: 'untap', what: 'T0' }, { e: 'untap', what: 'T1' }], {
-    targets: [
-      { kind: 'permanent', filter: { type: 'Land', ctrl: 'you' }, optional: true, prompt: '選擇要重置的地' },
-      { kind: 'permanent', filter: { type: 'Land', ctrl: 'you' }, optional: true, prompt: '選擇要重置的地' },
-    ],
-  }),
-  L(-3, '派出 4/4 野獸', [{ e: 'token', token: 'tok-beast-trample' }]),
-]);
-pw('FRA', 'R', 'Jace, Reality Sculptor', '{3}{U}{U}', 'Jace', 5, '+1：強化傑斯X，X為你操控的海島數量。（在你的傑斯衍生物上放置X個忠誠指示物；沒有的話先派出一個。）\n（簡化：沒有 −3 與 0 的異能）', [
-  L(1, '強化傑斯（海島數）', [{ e: 'empowerJace', n: { count: { sub: 'Island', ctrl: 'you' } } }]),
-]);
 
 // ---------------- 其他系列 ----------------
 pw('SOS', 'M', 'Ral Zarek, Guest Lecturer', '{1}{B}{B}', 'Ral', 3, `+1：刺探2。\n−1：目標對手棄一張牌。\n−2：將目標法術力值3或更少的生物牌從你的墳墓場移回戰場。\n${NO_ULT.replace('徽記', '擲硬幣')}`, [

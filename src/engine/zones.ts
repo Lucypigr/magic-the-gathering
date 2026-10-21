@@ -5,12 +5,14 @@ import {
   checkCond,
   etbTriggersSuppressed,
   hasKw,
+  hasStaticFlag,
   isCreature,
   isLand,
   lifegainBonus,
   log,
   matches,
   newCard,
+  other,
   stats,
 } from './state';
 import type { Card, GameEvent, GameState, PID, TargetRef, TriggeredAbility, Zone } from './types';
@@ -126,6 +128,14 @@ function triggerMatches(g: GameState, c: Card, ab: TriggeredAbility, ev: GameEve
       return ev.type === 'discard';
     case 'discardSelf':
       return ev.type === 'discard' && ev.card === c.id && ev.player === pov;
+    case 'oppDrawStep':
+      return ev.type === 'step' && ev.step === 'draw' && ev.player !== pov;
+    case 'attackedYou': {
+      if (ev.type !== 'attacks') return false;
+      const a = g.cards[ev.card];
+      if (!a || a.controller === pov) return false;
+      return a.attackTarget == null || g.cards[a.attackTarget]?.controller === pov;
+    }
     case 'allyAttacks':
       return ev.type === 'attacks' && g.cards[ev.card]?.controller === pov;
     case 'attachedDies':
@@ -302,6 +312,10 @@ export function moveCard(g: GameState, c: Card, to: Zone, bottom = false): void 
     log(g, `${cardName(c)} 有終結指示物，改為放逐`, c.owner);
     to = 'exile';
   }
+  if (wasOnBf && to === 'graveyard' && isCreature(c) && hasStaticFlag(g, other(c.controller), 'exileOppDying')) {
+    log(g, `${cardName(c)} 改為放逐`, c.owner);
+    to = 'exile';
+  }
   c.finality = undefined;
   if (wasOnBf && !c.def.types.includes('Land')) g.voidThisTurn = true;
   if (from === 'library' && to === 'graveyard') g.players[c.owner].libToGyThisTurn = (g.players[c.owner].libToGyThisTurn ?? 0) + 1;
@@ -469,11 +483,19 @@ export function putCounters(g: GameState, c: Card, n: number): number {
   return n;
 }
 
+/** 生物將要死去時是否改為放逐 */
+function deathReplacedByExile(g: GameState, c: Card): boolean {
+  if (c.exileOnDeathTurn === g.turn || c.finality) return true;
+  return isCreature(c) && hasStaticFlag(g, other(c.controller), 'exileOppDying');
+}
+
 /** 同時將多張永久物置入墳墓場（生物會觸發「死去」） */
 export function putIntoGraveyard(g: GameState, cards: Card[]): void {
   const list = cards.filter((c) => c.zone === 'battlefield');
   for (const c of list) {
     if (isCreature(c)) {
+      // 將要死去時改為放逐的取代效果：它並沒有死去
+      if (deathReplacedByExile(g, c)) continue;
       g.creatureDiedThisTurn = true;
       g.creaturesDiedCount = (g.creaturesDiedCount ?? 0) + 1;
       emit(g, { type: 'dies', card: c.id, controller: c.controller, power: stats(g, c).p });

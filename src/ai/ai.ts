@@ -297,7 +297,7 @@ export class AIPlayer {
     for (const targets of combos) {
       if (validateTargets(g, specs, targets, me, c.id)) continue;
       if (o.kind === 'cast') out.push({ type: 'cast', card: c.id, targets, mode: o.mode, sac, alt: o.alt, x: o.maxX });
-      else out.push({ type: 'activate', card: c.id, ability: o.ability!, targets, sac });
+      else out.push({ type: 'activate', card: c.id, ability: o.ability!, targets, sac, x: o.maxX === undefined ? undefined : Math.max(1, Math.floor(o.maxX / 2)) });
     }
     return out;
   }
@@ -355,7 +355,7 @@ export class AIPlayer {
     const action: PriorityAction =
       o.kind === 'cast'
         ? { type: 'cast', card: c.id, targets, mode: o.mode, sac, alt: o.alt, x: o.maxX }
-        : { type: 'activate', card: c.id, ability: o.ability!, targets, sac };
+        : { type: 'activate', card: c.id, ability: o.ability!, targets, sac, x: o.maxX === undefined ? undefined : Math.max(1, Math.floor(o.maxX / 2)) };
     const g2 = cloneGame(g);
     return performAction(g2, me, action) ? PASS : action;
   }

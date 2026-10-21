@@ -52,10 +52,6 @@ land('LCI', 'R', 'Restless Anchorage', ['W', 'U'], '此地橫置進戰場。\n{T
 cr('FDN', 'C', 'Hinterland Sanctifier', '{W}', 'Rabbit Cleric', 1, 2, '每當另一個生物在你的操控下進戰場時，你獲得1點生命。', {
   abilities: [trig('allyEtb', [{ e: 'gain', n: 1 }])],
 });
-cr('FRA', 'R', 'Liliana the Faultless', '{W}', 'Human Cleric', 1, 1, '每當另一個生物在你的操控下進戰場時，你獲得1點生命。\n（簡化：沒有棄牌給予辟邪的異能）', {
-  supertypes: ['Legendary'],
-  abilities: [trig('allyEtb', [{ e: 'gain', n: 1 }])],
-});
 cr('EOE', 'R', 'Haliya, Guided by Light', '{2}{W}', 'Human Soldier', 3, 3, '每當海莉亞或另一個生物或神器在你的操控下進戰場時，你獲得1點生命。\n在你的結束步驟開始時，若你本回合獲得了3點或更多生命，抓一張牌。\n（簡化：沒有曲速）', {
   supertypes: ['Legendary'],
   abilities: [
@@ -63,10 +59,6 @@ cr('EOE', 'R', 'Haliya, Guided by Light', '{2}{W}', 'Human Soldier', 3, 3, '每�
     trig('allyPermEtb', [{ e: 'gain', n: 1 }], { filter: { type: ['Creature', 'Artifact'] } }),
     trig('endStep', [{ e: 'draw', n: 1 }], { cond: { c: 'gainedLifeGte', n: 3 } }),
   ],
-});
-cr('FRA', 'M', 'Enlightened Confidant', '{1}{W}', 'Kor Cleric', 2, 1, '繫命\n在你的結束步驟開始時，若你本回合獲得過生命，刺探1。\n（簡化：不會把刺探的牌放回手上）', {
-  keywords: ['lifelink'],
-  abilities: [trig('endStep', [{ e: 'surveil', n: 1 }], { cond: { c: 'gainedLifeGte', n: 1 } })],
 });
 cr('TDM', 'R', 'Sage of the Skies', '{2}{W}', 'Human Monk', 2, 3, '飛行，繫命\n（簡化：施放時不會複製）', { keywords: ['flying', 'lifelink'] });
 cr('EOE', 'U', 'Starfield Shepherd', '{3}{W}{W}', 'Angel', 3, 2, '飛行\n當此生物進戰場時，從你的牌庫中搜尋一張基本平原牌或法術力值1或更少的生物牌，展示並置於你手上。\n（簡化：沒有曲速）', {
@@ -104,25 +96,6 @@ inst('ECL', 'U', 'Spell Snare', '{U}', '反擊目標法術力值為2的咒語。
   targets: [{ kind: 'spell', filter: { mvMin: 2, mvMax: 2 }, prompt: '選擇法術力值為2的咒語' }],
   effects: [{ e: 'counter', what: 'T0' }],
 });
-inst('FRA', 'U', 'Countersculpt', '{1}{U}{U}', '若你操控傑斯，此咒語減少{1}來施放。\n反擊目標咒語。強化傑斯1。（在你的傑斯衍生物上放置忠誠指示物；沒有的話先派出一個具有「−1：刺探1」「−3：抓一張牌」的藍色傑斯鵬洛客衍生物）\n（簡化：注視傑斯只看戰場上的傑斯）', {
-  targets: [{ kind: 'spell' }],
-  effects: [{ e: 'counter', what: 'T0' }, { e: 'empowerJace', n: 1 }],
-}, { costReduce: { cond: { c: 'controls', filter: { sub: 'Jace' } }, mana: '{1}' } });
-inst('FRA', 'R', "Jace's Machinations", '{2}{U}', '強化傑斯8。（在你的傑斯衍生物上放置忠誠指示物；沒有的話先派出一個具有「−1：刺探1」「−3：抓一張牌」的藍色傑斯鵬洛客衍生物）\n（簡化：沒有在瞬間時機起動忠誠異能的效果）', {
-  effects: [{ e: 'empowerJace', n: 8 }],
-});
-cr('FRA', 'M', 'Avatar of Burgeoning Echoes', '{G}{U}', 'Avatar', 2, 3, '地落～每當一個地在你的操控下進戰場時，強化傑斯2。（在你的傑斯衍生物上放置忠誠指示物；沒有的話先派出一個具有「−1：刺探1」「−3：抓一張牌」的藍色傑斯鵬洛客衍生物）\n（簡化：沒有給予鵬洛客 −10 異能）', {
-  abilities: [trig('landfall', [{ e: 'empowerJace', n: 2 }])],
-});
-ench('FRA', 'U', 'Way of the Pyromancer', '{1}{R}', '當此結界進戰場時，強化傑斯2。（在你的傑斯衍生物上放置忠誠指示物；沒有的話先派出一個具有「−1：刺探1」「−3：抓一張牌」的藍色傑斯鵬洛客衍生物）\n（簡化：沒有給予鵬洛客加{R}的異能）', {
-  supertypes: ['Legendary'],
-  abilities: [etb([{ e: 'empowerJace', n: 2 }])],
-});
-land('FRA', 'R', "Theorist's Sanctum", ['U'], '（{T}：加{U}。）\n除非你操控傑斯，否則此地橫置進戰場。\n{2}{U}，{T}：強化傑斯2。\n（簡化：注視傑斯只看戰場上的傑斯）', {
-  subtypes: ['Island'],
-  etbTappedUnless: { c: 'controls', filter: { sub: 'Jace' } },
-  abilities: [act({ mana: '{2}{U}', tap: true }, [{ e: 'empowerJace', n: 2 }], '強化傑斯2')],
-});
 inst('OTJ', 'R', 'Three Steps Ahead', '{U}', '選擇一項：\n• {1}{U}{U}：反擊目標咒語。\n• {2}{U}：抓兩張牌，然後棄一張牌。\n• {3}{U}{U}：反擊目標咒語，抓兩張牌，然後棄一張牌。\n（簡化：沒有複製永久物的選項）', {
   modes: [
     { text: '反擊咒語', cost: '{1}{U}{U}', targets: [{ kind: 'spell' }], effects: [{ e: 'counter', what: 'T0' }] },
@@ -150,13 +123,6 @@ sorc('SOS', 'U', 'Flow State', '{1}{U}', '檢視你牌庫頂的三張牌。將�
 });
 sorc('TDM', 'R', 'Winternight Stories', '{2}{U}', '抓三張牌，然後棄兩張牌。\n（簡化：沒有「棄一張生物牌代替」與協奏）', {
   effects: [{ e: 'draw', n: 3 }, { e: 'discard', n: 2, who: 'you' }],
-});
-cr('FRA', 'M', 'Seasoned Cryomancer', '{1}{U}{U}', 'Human Wizard', 2, 2, '當此生物進戰場時，抓兩張牌，然後棄兩張牌。然後你可以橫置目標由對手操控的生物，並在其上放置一個暈眩指示物。\n（簡化：橫置不再取決於棄掉的牌，沒有墳墓場的異能）', {
-  abilities: [
-    etb([{ e: 'draw', n: 2 }, { e: 'discard', n: 2, who: 'you' }, { e: 'stun', what: 'T0' }], {
-      targets: [{ kind: 'creature', filter: { ctrl: 'opp' }, optional: true, prompt: '選擇要暈眩的對手生物（可以不選）' }],
-    }),
-  ],
 });
 cr('FRA', 'U', 'Geist of Saint Thalia', '{1}{U}', 'Spirit Cleric', 1, 2, '飛行\n你施放的非生物咒語減少{1}來施放。', {
   supertypes: ['Legendary'],
@@ -204,13 +170,6 @@ cr('SOS', 'R', "Moseo, Vein's New Dean", '{2}{B}', 'Bird Skeleton Warlock', 2, 1
     }),
   ],
 });
-cr('FRA', 'R', 'Dark Matter Manipulator', '{B}', 'Human Warlock', 1, 2, '當此生物進戰場時，碾磨三張牌。\n你的墳墓場中每有七張牌，此生物便得+2/+0（最多計算到十四張）。', {
-  abilities: [
-    etb([{ e: 'mill', n: 3 }]),
-    { kind: 'static', self: { cond: { c: 'gyCount', filter: {}, n: 7 }, grant: { p: 2 } } },
-    { kind: 'static', self: { cond: { c: 'gyCount', filter: {}, n: 14 }, grant: { p: 2 } } },
-  ],
-});
 cr('BLB', 'U', 'Starscape Cleric', '{1}{B}', 'Bat Cleric', 2, 1, '飛行\n此生物不能阻擋。\n每當你獲得生命時，每位對手各失去1點生命。\n（簡化：沒有子嗣）', {
   keywords: ['flying'],
   abilities: [{ kind: 'static', self: { grant: { cantBlock: true } } }, trig('lifegain', [{ e: 'lose', n: 1, who: 'opp' }])],
@@ -241,15 +200,6 @@ ench('TLA', 'R', 'Obsessive Pursuit', '{1}{B}', '當此結界進戰場時以及�
 cr('OTJ', 'M', 'Harvester of Misery', '{3}{B}{B}', 'Spirit', 5, 4, '威懾\n當此生物進戰場時，其他生物得-2/-2直到回合結束。\n（簡化：沒有從手上棄掉的異能）', {
   keywords: ['menace'],
   abilities: [etb([{ e: 'pump', what: { all: { type: 'Creature', other: true } }, p: -2, t: -2 }])],
-});
-arti('FRA', 'R', "Lich's Relic", '{B}', '當此武具進戰場時，你可以支付{2}。若你如此作，消滅至多一個目標由對手操控的生物。\n佩帶此武具的生物得+2/+1。\n裝備{2}', {
-  subtypes: ['Equipment'],
-  equip: { cost: '{2}', grant: { p: 2, t: 1 } },
-  abilities: [
-    etb([{ e: 'costThen', prompt: '支付{2}消滅對手的生物？', cost: { mana: '{2}' }, then: [{ e: 'destroy', what: 'T0' }] }], {
-      targets: [{ ...OPP_CR, optional: true }],
-    }),
-  ],
 });
 
 // ---------------- 紅 ----------------
@@ -347,13 +297,6 @@ ench('BLB', 'R', 'Lunar Convocation', '{W}{B}', '在你的結束步驟開始時�
     trig('endStep', [{ e: 'lose', n: 1, who: 'opp' }], { cond: { c: 'gainedLifeGte', n: 1 } }),
     trig('endStep', [{ e: 'if', cond: { c: 'lostLifeGte', n: 1 }, then: [{ e: 'token', token: 'tok-bat' }] }], { cond: { c: 'gainedLifeGte', n: 1 } }),
     act({ mana: '{1}{B}', life: 2 }, [{ e: 'draw', n: 1 }], '支付2點生命：抓一張牌'),
-  ],
-});
-inst('FRA', 'U', 'Fatehold Charm', '{W}{U}', '選擇一項：\n• 抓一張牌。強化傑斯2。\n• 將目標生物移回其擁有者手上。\n• 由你操控的生物得+1/+2直到回合結束。\n（簡化：不能以咒語為目標）', {
-  modes: [
-    { text: '抓一張牌，強化傑斯2', effects: [{ e: 'draw', n: 1 }, { e: 'empowerJace', n: 2 }] },
-    { text: '生物回手', targets: [CR], effects: [{ e: 'bounce', what: 'T0' }] },
-    { text: '你的生物+1/+2', effects: [{ e: 'pump', what: { all: { type: 'Creature', ctrl: 'you' } }, p: 1, t: 2 }] },
   ],
 });
 inst('FRA', 'U', 'Stingerquill Charm', '{B}{R}', '選擇一項：\n• 對任意一個目標造成3點傷害。\n• 目標生物獲得先攻與死觸異能直到回合結束。\n• 派出一個2/2無色，名為學員的巫師士兵衍生生物。它獲得敏捷異能直到回合結束。', {
@@ -465,7 +408,6 @@ sorc('TLA', 'R', 'Day of Black Sun', '{X}{B}{B}', '消滅每個法術力值等�
 sorc('WOE', 'R', 'Song of Totentanz', '{X}{R}', '派出X個1/1黑色，具有「此衍生物不能阻擋。」的老鼠衍生生物。由你操控的生物獲得敏捷異能直到回合結束。', {
   effects: [{ e: 'token', token: 'tok-rat', n: X }, { e: 'pump', what: { all: { type: 'Creature', ctrl: 'you' } }, p: 0, t: 0, kw: ['haste'] }],
 });
-cr('FRA', 'R', 'Guiding Hydra', '{X}{W}', 'Hydra Horror', 1, 0, '此生物進戰場時帶有X個+1/+1指示物。\n（簡化：沒有戰鬥開始時移動指示物的異能）', { etbCountersX: true });
 cr('WOE', 'R', 'Elusive Otter', '{U}', 'Otter', 1, 1, '勇行\n冒險—《Grove\'s Bounty》{X}{G}（法術）：在目標由你操控的生物上放置X個+1/+1指示物。\n（你可以改為施放這個冒險法術。結算後此牌會被放逐，之後你可以從放逐區施放本體。）\n（簡化：沒有閃避阻擋的異能；指示物只放在一個生物上）', {
   keywords: ['prowess'],
   adventure: { name: "Grove's Bounty", cost: '{X}{G}', types: ['Sorcery'], text: '在目標由你操控的生物上放置X個+1/+1指示物。', spell: { targets: [MY_CR], effects: [{ e: 'counters', what: 'T0', n: X }] } },

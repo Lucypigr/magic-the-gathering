@@ -191,6 +191,10 @@ def target_spec(noun):
             zmid += '不具飛行異能的'
         else:
             raise Unsupported('target part ' + p)
+    if _pw:
+        # 「生物或鵬洛客」：改為任何永久物目標，限制在這兩種類別
+        f['type'] = ['Creature', 'Planeswalker']
+        return {'kind': 'permanent', 'filter': f}, '目標' + zctrl + zpre + zmid + '生物或鵬洛客'
     spec = {'kind': 'creature'}
     if f:
         spec['filter'] = f

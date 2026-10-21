@@ -87,6 +87,8 @@ function specPrompt(spec: TargetSpec): string {
       return '選擇堆疊上的咒語';
     case 'gyCard':
       return '選擇墳墓場中的牌';
+    case 'spellOrCreature':
+      return '選擇一個咒語或生物';
   }
 }
 
@@ -335,7 +337,7 @@ export function Battle(props: Props) {
     const a: PriorityAction =
       dr.kind === 'cast'
         ? { type: 'cast', card: dr.source, targets: dr.targets, mode: dr.mode, sac: dr.sac, alt: dr.alt, x: dr.x }
-        : { type: 'activate', card: dr.source, ability: dr.ability!, targets: dr.targets, sac: dr.sac };
+        : { type: 'activate', card: dr.source, ability: dr.ability!, targets: dr.targets, sac: dr.sac, x: dr.x };
     submitAction(a);
   }
 
@@ -370,7 +372,7 @@ export function Battle(props: Props) {
       label: o.label,
     };
     // X 咒語：先決定 X
-    if (o.kind === 'cast' && o.maxX !== undefined) {
+    if ((o.kind === 'cast' || o.kind === 'activate') && o.maxX !== undefined) {
       setXPick({ draft: dr, max: o.maxX, value: o.maxX });
       return;
     }
@@ -894,7 +896,7 @@ export function Battle(props: Props) {
       {xPick && (
         <Modal title={`決定 X 的值`} onClose={() => setXPick(null)}>
           <div className="x-pick">
-            <p className="muted small">{xPick.draft.label}：X 越大效果越強，但要多付 X 點法術力。你現在最多能付 X = {xPick.max}。</p>
+            <p className="muted small">{xPick.draft.label}：{xPick.draft.kind === 'activate' ? 'X 越大效果越強，但要多移除 X 個忠誠指示物。你現在最多能選 X' : 'X 越大效果越強，但要多付 X 點法術力。你現在最多能付 X'} = {xPick.max}。</p>
             <div className="x-row">
               <button className="btn" disabled={xPick.value <= 0} onClick={() => setXPick({ ...xPick, value: xPick.value - 1 })} aria-label="減少">
                 −

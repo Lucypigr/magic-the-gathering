@@ -313,6 +313,7 @@ export function stats(g: GameState, c: Card, ignoreEot = false): Stats {
         if (ab.selfPumpPerGy && s.id === c.id) {
           let n = 0;
           for (const id of g.players[s.controller].graveyard) if (matches(g, ab.selfPumpPerGy.filter, g.cards[id], s.controller, s.id)) n++;
+          n = Math.floor(n / (ab.selfPumpPerGy.per ?? 1));
           st.p += n * (ab.selfPumpPerGy.p ?? 0);
           st.t += n * (ab.selfPumpPerGy.t ?? 0);
         }
@@ -343,6 +344,8 @@ export function hasKw(g: GameState, c: Card, kw: Keyword): boolean {
 // 篩選
 // ------------------------------------------------------------
 export function matches(g: GameState, f: Filter | undefined, c: Card, pov: PID, sourceId?: number): boolean {
+  // 徽記不是永久物（只有明確要求徽記時才符合）
+  if (c.def.types.includes('Emblem') && !(f?.type && asArr(f.type).includes('Emblem'))) return false;
   if (!f) return true;
   const d = c.def;
   if (f.type && !asArr(f.type).some((t) => d.types.includes(t))) return false;
@@ -510,6 +513,18 @@ export function checkCond(
       return (me.speed ?? 0) >= 4;
     case 'always':
       return true;
+    case 'selfCounters':
+      return sourceId != null && (g.cards[sourceId]?.counters ?? 0) >= cond.n;
+    case 'or':
+      return cond.conds.some((x) => checkCond(g, x, controller, sourceId, targets, ev));
+    case 'jaceLoyaltyGte': {
+      let n = 0;
+      for (const id of g.battlefield) {
+        const c = g.cards[id];
+        if (c.controller === controller && c.def.types.includes('Planeswalker') && c.def.subtypes?.includes('Jace')) n += c.loyalty ?? 0;
+      }
+      return n >= cond.n;
+    }
     case 'morbid':
       return !!g.creatureDiedThisTurn;
     case 'delirium': {
@@ -530,7 +545,7 @@ export function checkCond(
 }
 
 /** 玩家操控的永久物中，有任何一個具有這個靜態標記 */
-export function hasStaticFlag(g: GameState, pid: PID, key: 'noZeroLoyaltyDeath' | 'pwOneAttacker'): boolean {
+export function hasStaticFlag(g: GameState, pid: PID, key: 'noZeroLoyaltyDeath' | 'pwOneAttacker' | 'exileOppDying'): boolean {
   for (const id of g.battlefield) {
     const c = g.cards[id];
     if (c.controller !== pid) continue;

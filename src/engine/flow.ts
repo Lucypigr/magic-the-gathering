@@ -340,7 +340,10 @@ export function* priorityStep(g: GameState): SubFlow {
         if (g.stack.length === 0) {
           g.priority = null;
           // 步驟結束：法術力池清空
-          for (const pl of g.players) pl.pool = [];
+          for (const pl of g.players) {
+            pl.pool = [];
+            pl.poolNoncreature = [];
+          }
           return;
         }
         yield* resolveTop(g);
@@ -484,13 +487,16 @@ function* turn(g: GameState): SubFlow {
     p.loyaltyActivatedThisTurn = false;
     p.mountainBonus = false;
     p.pool = [];
+    p.poolNoncreature = [];
     p.lifeLostThisTurn = 0;
   }
   g.attackedThisTurn = false;
   g.creatureDiedThisTurn = false;
   g.creaturesDiedCount = 0;
   g.voidThisTurn = false;
-  g.delayed = [];
+  // 「直到你的下一個回合」的延遲觸發與效果持續到該玩家的回合開始
+  g.delayed = (g.delayed ?? []).filter((d) => d.until !== undefined && d.until !== a);
+  g.eot = g.eot.filter((e) => e.until === undefined || e.until !== a);
   for (const id of g.battlefield) g.cards[id].usedThisTurn = [];
   log(g, `—— 第 ${g.turn} 回合：${pl.name} ——`, a, 'turn');
   if (g.turn > g.maxTurns) {
@@ -516,6 +522,7 @@ function* turn(g: GameState): SubFlow {
   yield* priorityStep(g);
   // 抓牌
   g.phase = 'draw';
+  emit(g, { type: 'step', step: 'draw', player: a });
   if (g.turn > 1) drawCards(g, a, 1);
   yield* priorityStep(g);
   // 主要階段一：傳奇在抓牌步驟後前進一章
@@ -576,7 +583,7 @@ function* turn(g: GameState): SubFlow {
       c.baseDef = undefined;
     }
   }
-  g.eot = [];
+  g.eot = g.eot.filter((e) => e.until !== undefined);
   // 清除階段若有觸發，再給一次優先權
   if (g.pending.length) yield* priorityStep(g);
 }

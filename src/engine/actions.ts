@@ -55,7 +55,8 @@ export function manaSources(g: GameState, pid: PID, exclude?: number, convoke = 
     if (abilitiesSuppressed(g, c)) continue;
     const cr = isCreature(c);
     if (cr && c.sick && !hasKw(g, c, 'haste')) continue;
-    out.push({ id, produces: c.def.produces, isCreature: cr, sac: c.def.sacOnMana, filter: c.def.filterMana, pain: c.def.painMana });
+    if (c.def.chosenColorMana && !c.chosenColor) continue;
+    out.push({ id, produces: c.def.chosenColorMana && c.chosenColor ? [c.chosenColor] : c.def.produces, isCreature: cr, sac: c.def.sacOnMana, filter: c.def.filterMana, pain: c.def.painMana });
     // 「{T}：加{C}{C}」（艾姆庫的放逐能力）
     if (c.bonusMana !== undefined && g.cards[c.bonusMana]?.zone === 'exile') out.push({ id: -100000 - id, produces: ['C'], isCreature: false, extra: true });
     // 「每當你為山脈橫置來產生法術力時，額外加一點{R}」
@@ -63,6 +64,10 @@ export function manaSources(g: GameState, pid: PID, exclude?: number, convoke = 
   }
   // 法術力池
   (g.players[pid].pool ?? []).forEach((m, i) => out.push({ id: -1000 - i, produces: [m], isCreature: false, pool: true }));
+  // 只能用來施放非生物咒語的法術力
+  if (forDef && !forDef.types.includes('Creature') && !forDef.types.includes('Land')) {
+    (g.players[pid].poolNoncreature ?? []).forEach((m, i) => out.push({ id: -50000 - i, produces: [m], isCreature: false, pool: true, noncreatureOnly: true }));
+  }
   return out;
 }
 
@@ -90,6 +95,8 @@ export function payCost(g: GameState, pid: PID, cost: ManaCost, exclude?: number
   // 用掉的法術力池
   const usedPool = new Set(pay.filter((p) => p.id <= -1000 && p.id > -2000).map((p) => -1000 - p.id));
   if (usedPool.size) g.players[pid].pool = (g.players[pid].pool ?? []).filter((_, i) => !usedPool.has(i));
+  const usedRestricted = new Set(pay.filter((p) => p.id <= -50000 && p.id > -100000).map((p) => -50000 - p.id));
+  if (usedRestricted.size) g.players[pid].poolNoncreature = (g.players[pid].poolNoncreature ?? []).filter((_, i) => !usedRestricted.has(i));
   g.version++;
   return true;
 }
@@ -243,6 +250,8 @@ export function spellCost(g: GameState, c: Card, pid: PID, mode?: number, target
   }
   let cost = parseCost(def.spell?.modes?.[mode ?? 0]?.cost ?? def.cost);
   if (cost.x) cost.generic += Math.max(0, x) * cost.x;
+  // 「額外費用：注視傑斯或支付 {1}」：沒有符合條件時多付
+  if (def.costMoreUnless && !checkCond(g, def.costMoreUnless.cond, pid, c.id, [])) cost = addCosts(cost, parseCost(def.costMoreUnless.mana));
   const cr = def.costReduce;
   if (cr) {
     if (cr.perGy) {
@@ -501,7 +510,8 @@ export function canActivate(g: GameState, pid: PID, c: Card, idx: number): boole
   if (ab.oncePerGame && c.exhausted?.includes(idx)) return false;
   if (ab.cost.loyalty !== undefined) {
     // 忠誠異能：法術時機、每回合一次、忠誠要夠扣
-    if (!sorceryTiming(g, pid) || c.usedThisTurn.includes(LOYALTY_USED)) return false;
+    const instantOk = !!(g.loyaltyInstant && g.loyaltyInstant.pid === pid && g.loyaltyInstant.turn === g.turn && c.def.subtypes?.includes('Jace'));
+    if ((!sorceryTiming(g, pid) && !instantOk) || c.usedThisTurn.includes(LOYALTY_USED)) return false;
     if (ab.cost.loyalty < 0 && (c.loyalty ?? 0) < -ab.cost.loyalty) return false;
   }
   if (ab.cond && !checkCond(g, ab.cond, pid, c.id, [])) return false;
@@ -717,6 +727,7 @@ export function playOptions(g: GameState, pid: PID): PlayOption[] {
         specs: abs[i].targets ?? [],
         sacFilter: abs[i].cost.sacOther,
         label: abs[i].label,
+        ...(abs[i].xLoyalty ? { maxX: c.loyalty ?? 0 } : {}),
       });
     }
   }
@@ -802,6 +813,11 @@ function doPlot(g: GameState, pid: PID, c: Card): string | null {
   return null;
 }
 
+/** 效果結算中施放一張牌（例如「你可以施放那張牌」）：不受時機限制，仍須支付費用 */
+export function castDuringResolution(g: GameState, pid: PID, cardId: number, targets: (TargetRef | null)[]): string | null {
+  return doCast(g, pid, { type: 'cast', card: cardId, targets, ignoreTiming: true });
+}
+
 function doCast(g: GameState, pid: PID, a: Extract<PriorityAction, { type: 'cast' }>): string | null {
   const c = g.cards[a.card];
   const alt = a.alt;
@@ -810,7 +826,7 @@ function doCast(g: GameState, pid: PID, a: Extract<PriorityAction, { type: 'cast
   if (c && alt === 'prepared') return doCastPrepared(g, pid, c, a);
   if (!c || isLand(c) || !inCastableZone(g, pid, c, alt)) return '無法施放這張牌';
   const def = castDef(c.def, alt);
-  if ((alt === 'plotted' || !instantSpeed(def)) && !sorceryTiming(g, pid)) return '只能在你的主要階段且堆疊為空時施放';
+  if ((alt === 'plotted' || !instantSpeed(def)) && !sorceryTiming(g, pid) && !a.ignoreTiming) return '只能在你的主要階段且堆疊為空時施放';
   if (c.def.castCond && !checkCond(g, c.def.castCond, pid, c.id, [])) return '不滿足施放此咒語的條件';
   const mode = def.spell?.modes ? Math.max(0, Math.min(def.spell.modes.length - 1, a.mode ?? 0)) : undefined;
   const specs = castTargetSpecs(def, mode);
@@ -918,6 +934,7 @@ function doActivate(g: GameState, pid: PID, a: Extract<PriorityAction, { type: '
     if (!sacCard || sacCard.zone !== 'battlefield' || sacCard.controller !== pid || !matches(g, ab.cost.sacOther, sacCard, pid, c.id))
       return '請選擇要犧牲的永久物';
   }
+  let xLoy = 0;
   const cost = parseCost(ab.cost.mana);
   if (ab.isEquip) {
     const t = targets[0];
@@ -956,11 +973,13 @@ function doActivate(g: GameState, pid: PID, a: Extract<PriorityAction, { type: '
   if (ab.oncePerTurn) c.usedThisTurn.push(1000 + a.ability);
   if (ab.oncePerGame) c.exhausted = [...(c.exhausted ?? []), a.ability];
   if (ab.cost.loyalty !== undefined) {
-    c.loyalty = (c.loyalty ?? 0) + ab.cost.loyalty;
+    // −X：X 由玩家選擇，不超過目前的忠誠
+    xLoy = ab.xLoyalty ? Math.max(0, Math.min(a.x ?? 0, c.loyalty ?? 0)) : 0;
+    c.loyalty = (c.loyalty ?? 0) + ab.cost.loyalty - xLoy;
     c.usedThisTurn.push(LOYALTY_USED);
     g.players[pid].loyaltyActivatedThisTurn = true;
     if (ab.cost.loyalty > 0) emit(g, { type: 'loyaltyPlaced', card: c.id, controller: pid, amount: ab.cost.loyalty });
-    emit(g, { type: 'loyaltyActivated', card: c.id, controller: pid, removed: Math.max(0, -ab.cost.loyalty) });
+    emit(g, { type: 'loyaltyActivated', card: c.id, controller: pid, removed: Math.max(0, -ab.cost.loyalty) + xLoy });
   }
   if (ab.cost.crew !== undefined) {
     const crew = crewChoice(g, pid, c, ab.cost.crew) ?? [];
@@ -978,6 +997,7 @@ function doActivate(g: GameState, pid: PID, a: Extract<PriorityAction, { type: '
     effects: ab.effects,
     text: ab.label,
     lkiPower: lki,
+    ...(ab.xLoyalty ? { x: xLoy } : {}),
   });
   show(g, { kind: 'activated', player: pid, card: c.id, targets, text: ab.label });
   log(g, `起動 ${cardName(c)}：${ab.label}${describeTargets(g, targets)}`, pid, 'cast');

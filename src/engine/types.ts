@@ -6,7 +6,7 @@
 export type PID = 0 | 1;
 export type Color = 'W' | 'U' | 'B' | 'R' | 'G';
 export type Mana = Color | 'C';
-export type CardType = 'Creature' | 'Instant' | 'Sorcery' | 'Enchantment' | 'Artifact' | 'Land' | 'Planeswalker';
+export type CardType = 'Creature' | 'Instant' | 'Sorcery' | 'Enchantment' | 'Artifact' | 'Land' | 'Planeswalker' | 'Emblem';
 export type Rarity = 'C' | 'U' | 'R' | 'M' | 'L' | 'T'; // L = 基本地, T = 衍生物
 /** 標準賽系列（依發售順序） */
 export const STANDARD_SETS = [
@@ -94,7 +94,7 @@ export interface Filter {
   attackedThisTurn?: boolean;
 }
 
-export type TargetKind = 'creature' | 'player' | 'opponent' | 'any' | 'permanent' | 'spell' | 'gyCard';
+export type TargetKind = 'creature' | 'player' | 'opponent' | 'any' | 'permanent' | 'spell' | 'gyCard' | 'spellOrCreature';
 
 export interface TargetSpec {
   kind: TargetKind;
@@ -112,6 +112,8 @@ export type Ref =
   | 'selfAny'
   /** 觸發事件中的牌，不論它在哪個區域 */
   | 'evCard'
+  /** 觸發事件（進行攻擊）中的所有攻擊生物 */
+  | 'evAttackers'
   /** 此效果中派出的所有衍生物 */
   | 'allCreated'
   | 'T0'
@@ -273,7 +275,13 @@ export type Cond =
   /** 你的速度已達最高（4） */
   | { c: 'maxSpeed' }
   /** 永遠成立 */
-  | { c: 'always' };
+  | { c: 'always' }
+  /** 此永久物上有 n 個或更多 +1/+1 指示物 */
+  | { c: 'selfCounters'; n: number }
+  /** 任一條件成立 */
+  | { c: 'or'; conds: Cond[] }
+  /** 由你操控的傑斯鵬洛客上的忠誠指示物總數至少為 n */
+  | { c: 'jaceLoyaltyGte'; n: number };
 
 export interface ExtraCost {
   /** 棄掉符合條件的牌 */
@@ -304,8 +312,8 @@ export type Effect =
   | { e: 'bounce'; what: Ref }
   | { e: 'tap'; what: Ref }
   | { e: 'untap'; what: Ref }
-  | { e: 'stun'; what: Ref; n?: number }
-  | { e: 'pump'; what: Ref; p: Amt; t: Amt; kw?: Keyword[] }
+  | { e: 'stun'; what: Ref; n?: Amt }
+  | { e: 'pump'; what: Ref; p: Amt; t: Amt; kw?: Keyword[]; untilNext?: boolean }
   | { e: 'counters'; what: Ref; n: Amt }
   | { e: 'doubleCounters'; what: Ref }
   /** temp：在下一個結束步驟開始時犧牲（動員） */
@@ -348,6 +356,20 @@ export type Effect =
   | { e: 'allowCastFromExile' }
   /** 直到回合結束，成為目標生物的複製 */
   | { e: 'becomeCopy'; what: Ref }
+  /** 直到回合結束，你可以在任何玩家的回合、能施放瞬間的任何時機起動你操控的傑斯鵬洛客的忠誠異能 */
+  | { e: 'jaceInstant' }
+  /** 抓兩張牌，棄兩張牌；每棄掉一張非地牌，就橫置至多一個目標生物並放置一個暈眩指示物 */
+  | { e: 'cryomancer' }
+  /** 此地選擇一種顏色（之後只能產生該顏色） */
+  | { e: 'chooseColor' }
+  /** 每位玩家犧牲一個生物；若你犧牲了生物，進行後續效果 */
+  | { e: 'edictEach'; then: Effect[] }
+  /** 每位對手棄 n 張牌；每位沒有棄掉 n 張非地牌的對手，你抓一張牌 */
+  | { e: 'discardNonlandOrDraw'; n: number }
+  /** 放逐目標玩家牌庫中除了最底下一張以外的所有牌 */
+  | { e: 'exileLibraryButBottom'; who: Ref }
+  /** 放逐牌庫頂的牌。你可以施放它；若你沒有，此來源對每位對手各造成 n 點傷害 */
+  | { e: 'impulseCastOrDamage'; n: number }
   /** 本回合傳奇規則不適用於你操控的永久物 */
   | { e: 'legendExempt' }
   /** 取消準備 */
@@ -371,7 +393,7 @@ export type Effect =
   /** 烏達羅斯：放逐你墳墓場中每種類別至多一張非地牌，複製它們，並免費施放總法術力值6或更少的複製品 */
   | { e: 'theorix' }
   /** 本回合的延遲觸發（once：只觸發一次） */
-  | { e: 'delayed'; on: TriggerOn; effects: Effect[]; once?: boolean; what?: Ref }
+  | { e: 'delayed'; on: TriggerOn; effects: Effect[]; once?: boolean; what?: Ref; untilNext?: boolean }
   /** 複製觸發的咒語（可以選擇新目標） */
   | { e: 'copySpell' }
   /** 你本回合施放的下一個咒語不能被反擊 */
@@ -384,7 +406,8 @@ export type Effect =
   | { e: 'suspect'; what: Ref }
   | { e: 'mill'; n: Amt; who?: Ref }
   | { e: 'scry'; n: number }
-  | { e: 'surveil'; n: number }
+  /** retrieve：刺探後放進墳墓場的牌若符合條件，改為放到手上（mvLeLife：法術力值不超過本回合獲得的生命） */
+  | { e: 'surveil'; n: number; retrieve?: { filter?: Filter; mvLeLife?: boolean } }
   | { e: 'dig'; n: Amt; take?: number; filter?: Filter; rest: 'bottom' | 'graveyard' | 'top'; to?: 'hand' | 'battlefield' }
   | { e: 'searchLand'; to: 'battlefield' | 'hand'; tapped?: boolean; untapIfLands?: number; who?: Ref; may?: boolean }
   | { e: 'counter'; what: Ref }
@@ -419,7 +442,7 @@ export type Effect =
   /** 反射觸發：「當你如此作時」——此時才選擇目標，並建立一個新的觸發式異能 */
   | { e: 'reflexive'; targets: TargetSpec[]; effects: Effect[] }
   /** 加入法術力到法術力池（直到此步驟結束） */
-  | { e: 'addMana'; mana: Mana[]; n?: Amt }
+  | { e: 'addMana'; mana: Mana[]; n?: Amt; only?: 'noncreature' }
   /** 你的法術力池加入：選擇一種顏色，依你操控的生物中不同力量的數量 */
   /** 選擇一種顏色，加入 n 點該顏色的法術力 */
   | { e: 'addManaOfChoice'; n: Amt }
@@ -516,7 +539,11 @@ export type TriggerOn =
   /** 在你的回合中，有一個或更多對手被造成戰鬥傷害時（每個傷害步驟一次） */
   | 'oppCombatDamaged'
   /** 當你棄掉這張牌時（來源在墳墓場） */
-  | 'discardSelf';
+  | 'discardSelf'
+  /** 在每位對手的抓牌步驟開始時 */
+  | 'oppDrawStep'
+  /** 每當有生物攻擊你或由你操控的鵬洛客時 */
+  | 'attackedYou';
 
 export interface TriggerMode {
   text: string;
@@ -574,6 +601,8 @@ export interface ActivatedAbility {
   targets?: TargetSpec[];
   effects: Effect[];
   sorcery?: boolean;
+  /** 忠誠異能的費用是 −X（X 由玩家選擇，不超過目前的忠誠） */
+  xLoyalty?: boolean;
   oncePerTurn?: boolean;
   /** 竭力：每場遊戲只能起動一次 */
   oncePerGame?: boolean;
@@ -611,7 +640,9 @@ export interface StaticAbility {
   /** 由你操控的鵬洛客忠誠為 0 時不會置入墳墓場 */
   noZeroLoyaltyDeath?: boolean;
   /** 此永久物的力量／防禦力隨你墳墓場中符合條件的牌數增加 */
-  selfPumpPerGy?: { filter: Filter; p?: number; t?: number };
+  selfPumpPerGy?: { filter: Filter; p?: number; t?: number; /** 每 n 張才算一次 */ per?: number };
+  /** 由對手操控的生物將要死去時，改為放逐 */
+  exileOppDying?: boolean;
   /** 如果有一個或更多神器衍生物將在你的操控下被派出，改為派出同樣數量的 5/5 紅色龍衍生物 */
   artifactTokenDragon?: boolean;
   /** 你可以從手上免費施放法術力值小於或等於你操控的生物數量的咒語 */
@@ -717,6 +748,8 @@ export interface CardDef {
   castCond?: Cond;
   /** 守護—棄掉一張牌 */
   wardDiscard?: boolean;
+  /** 此地產生的是進場時選定的顏色 */
+  chosenColorMana?: boolean;
   /** 守護—犧牲 n 個永久物 */
   wardSac?: number;
   /** 當你施放此咒語時的觸發效果 */
@@ -744,6 +777,8 @@ export interface CardDef {
   /** 額外費用（例如：犧牲一個生物、支付生命） */
   addCost?: ExtraCost;
   /** 此咒語的費用減免 */
+  /** 沒有符合條件時，費用多付這些（例如「注視傑斯或支付{1}」） */
+  costMoreUnless?: { cond: Cond; mana: string };
   costReduce?: { perGy?: Filter; perCount?: Filter; perMaxMv?: Filter; perMaxStat?: { stat: 'power' | 'toughness'; filter: Filter }; cond?: Cond; mana?: string };
   /** 以此生物為目標的裝備異能減少 {n} */
   equipDiscount?: number;
@@ -776,6 +811,8 @@ export interface Card {
   attackedTurn?: number;
   /** 此地獲得「{T}：加{C}{C}」，直到該來源牌離開放逐區 */
   bonusMana?: number;
+  /** 選定的顏色 */
+  chosenColor?: Color;
   /** 冒險中：在放逐區，可以施放本體 */
   onAdventure?: boolean;
   /** 已轉化：目前是背面，這是正面的定義 */
@@ -886,6 +923,8 @@ export interface Player {
   extraLandsThisTurn?: number;
   /** 法術力池（直到步驟結束） */
   pool?: Mana[];
+  /** 只能用來施放非生物咒語的法術力 */
+  poolNoncreature?: Mana[];
   /** 本回合山脈額外產生 {R} */
   mountainBonus?: boolean;
   /** 你本回合施放的下一個咒語不能被反擊 */
@@ -946,10 +985,14 @@ export interface EotEffect {
   kw: Keyword[];
   /** 直到回合結束的基礎力量與防禦力 */
   base?: { p: number; t: number };
+  /** 持續到該玩家的下一個回合開始（預設到回合結束） */
+  until?: PID;
 }
 
 /** 延遲觸發：本回合內，事件發生時觸發 */
 export interface DelayedTrigger {
+  /** 持續到該玩家的下一個回合開始（預設到回合結束） */
+  until?: PID;
   controller: PID;
   source: number;
   on: TriggerOn;
@@ -979,7 +1022,7 @@ export type GameEvent =
   | { type: 'attacks'; card: number }
   | { type: 'youAttack'; player: PID; attackers: number[] }
   | { type: 'blocks'; card: number }
-  | { type: 'step'; step: 'upkeep' | 'endStep' | 'combatStart' | 'main1'; player: PID }
+  | { type: 'step'; step: 'upkeep' | 'endStep' | 'combatStart' | 'main1' | 'draw'; player: PID }
   | { type: 'cast'; card: number; player: PID; opponentTurn: boolean }
   | { type: 'lifegain'; player: PID; amount: number }
   | { type: 'lifeloss'; player: PID; amount: number }
@@ -1061,6 +1104,8 @@ export interface GameState {
   voidThisTurn?: boolean;
   /** 傳奇規則不適用 */
   legendExempt?: { pid: PID; turn: number };
+  /** 本回合可以在瞬間時機起動傑斯的忠誠異能 */
+  loyaltyInstant?: { pid: PID; turn: number };
   maxTurns: number;
   /** 最近的畫面事件（模擬用的複本不記錄） */
   shows: Show[];
@@ -1120,8 +1165,8 @@ export type ChoosePurpose =
 export type PriorityAction =
   | { type: 'pass' }
   | { type: 'play'; card: number }
-  | { type: 'cast'; card: number; targets: (TargetRef | null)[]; mode?: number; sac?: number; discard?: number; alt?: CastAlt; x?: number }
-  | { type: 'activate'; card: number; ability: number; targets: (TargetRef | null)[]; sac?: number };
+  | { type: 'cast'; card: number; targets: (TargetRef | null)[]; mode?: number; sac?: number; discard?: number; alt?: CastAlt; x?: number; /** 效果結算中施放：不受時機限制 */ ignoreTiming?: boolean }
+  | { type: 'activate'; card: number; ability: number; targets: (TargetRef | null)[]; sac?: number; x?: number };
 
 export type Response =
   | PriorityAction
